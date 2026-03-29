@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Aparecida ERP
 
-## Getting Started
+Protótipo navegável completo de um ERP web para a **Borracharia Nossa Senhora Aparecida**, construído com Next.js 14, TypeScript, Tailwind CSS, shadcn/ui e dados mockados.
 
-First, run the development server:
+## Como rodar o projeto
+
+1. Instale as dependências:
+
+```bash
+npm install
+```
+
+2. Inicie o servidor de desenvolvimento:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Acesse [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+O projeto roda sem nenhuma variável de ambiente configurada. Para entrar, use o botão **Entrar como demo**.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Como configurar o `.env`
 
-## Learn More
+1. Copie o arquivo `.env.example` para `.env.local`.
+2. Preencha apenas quando for ativar banco, NextAuth ou Google Login.
+3. Enquanto isso não acontece, o sistema continua funcional com mocks e autenticação demo.
 
-To learn more about Next.js, take a look at the following resources:
+## Como ativar o Login com Google
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Crie um projeto no Google Cloud Console.
+2. Ative a API de identidade do Google.
+3. Gere um OAuth Client ID do tipo Web.
+4. Adicione a URI `http://localhost:3000/api/auth/callback/google`.
+5. Preencha no `.env.local`:
+   `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
+6. Em [`/lib/auth.ts`](/C:/Users/User/Desktop/Sistemas/Aparecida%20ERP/lib/auth.ts), descomente o provider do Google.
+7. Em [`/app/api/auth/[...nextauth]/route.ts`](/C:/Users/User/Desktop/Sistemas/Aparecida%20ERP/app/api/auth/[...nextauth]/route.ts), substitua o fallback pelo handler do NextAuth.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Como ativar o módulo de estoque
 
-## Deploy on Vercel
+1. Abra [`/lib/config.ts`](/C:/Users/User/Desktop/Sistemas/Aparecida%20ERP/lib/config.ts).
+2. Altere `ESTOQUE_ATIVO` para `true`.
+3. Reinicie o projeto se necessário.
+4. A rota `/estoque` continuará existindo, mas o item de menu só aparece quando a flag estiver ativa.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploy no Vercel + Railway
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Suba o projeto para um repositório Git.
+2. Crie um banco PostgreSQL no Railway e copie a `DATABASE_URL`.
+3. Importe o repositório no Vercel.
+4. Configure as variáveis do `.env.example` no painel da Vercel.
+5. Se usar autenticação Google, atualize a URL autorizada para o domínio final:
+   `https://seu-dominio.com/api/auth/callback/google`
+6. Faça o deploy.
+
+## Estrutura principal
+
+- `app/`: rotas e telas do protótipo.
+- `components/`: layout, autenticação demo e componentes reutilizáveis.
+- `lib/mock-data.ts`: base central de dados fake.
+- `lib/config.ts`: flags de módulos e workspaces.
+- `hooks/use-auth.ts`: sessão demo via `localStorage`.
