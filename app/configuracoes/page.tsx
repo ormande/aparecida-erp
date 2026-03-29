@@ -58,10 +58,10 @@ export default function ConfiguracoesPage() {
             {appUsers.map((user) => (
               <div key={user.id} className="flex items-center justify-between rounded-2xl border bg-muted/30 p-4">
                 <div>
-                  <p className="font-medium">{user.name}</p>
-                  <p className="text-sm text-muted-foreground">{user.role}</p>
+                  <p className="font-medium">{user.nomeCompleto}</p>
+                  <p className="text-sm text-muted-foreground">{user.nivelAcesso}</p>
                 </div>
-                <Badge>{user.status}</Badge>
+                <Badge>{user.situacao}</Badge>
               </div>
             ))}
           </CardContent>

@@ -9,6 +9,7 @@ export type FinancialStatus = "Pago" | "Pendente" | "Vencido";
 export type ClientType = "pf" | "pj";
 export type ClientSituation = "Ativo" | "Inativo";
 export type SupplierCategory = "Pneus" | "Peças" | "Insumos" | "Serviços" | "Outros";
+export type EmployeeAccessLevel = "Proprietário" | "Funcionário";
 
 type BasePerson = {
   id: string;
@@ -32,6 +33,15 @@ export type Client = BasePerson & {
 
 export type Supplier = BasePerson & {
   categoria: SupplierCategory;
+};
+
+export type Employee = {
+  id: string;
+  nomeCompleto: string;
+  email: string;
+  telefone: string;
+  nivelAcesso: EmployeeAccessLevel;
+  situacao: ClientSituation;
 };
 
 export type Vehicle = {
@@ -251,6 +261,25 @@ export const suppliers: Supplier[] = [
   },
 ];
 
+export const employees: Employee[] = [
+  {
+    id: "u1",
+    nomeCompleto: "Maria Aparecida",
+    email: "maria@aparecidaerp.com.br",
+    telefone: "(67) 99200-1101",
+    nivelAcesso: "Proprietário",
+    situacao: "Ativo",
+  },
+  {
+    id: "u2",
+    nomeCompleto: "José Roberto",
+    email: "jose@aparecidaerp.com.br",
+    telefone: "(67) 99200-1102",
+    nivelAcesso: "Funcionário",
+    situacao: "Ativo",
+  },
+];
+
 export const vehicles: Vehicle[] = [
   { id: "v1", plate: "QAB-1234", brand: "Fiat", model: "Strada", year: 2021, color: "Branco", clientId: "c1", notes: "Pneu traseiro direito troca recente." },
   { id: "v2", plate: "HJK1D23", brand: "Volkswagen", model: "Gol", year: 2018, color: "Prata", clientId: "c2", notes: "Alinhamento recorrente." },
@@ -391,10 +420,7 @@ export const dashboardRevenue = [
   { day: "Sex", revenue: 790 },
 ];
 
-export const appUsers = [
-  { id: "u1", name: "Maria Aparecida", role: "Proprietária", status: "Ativo" },
-  { id: "u2", name: "José Roberto", role: "Borracheiro", status: "Ativo" },
-];
+export const appUsers = employees;
 
 export const companyProfile = {
   name: "Borracharia Nossa Senhora Aparecida",
@@ -424,6 +450,10 @@ export function getClientById(id: string) {
 
 export function getSupplierById(id: string) {
   return suppliers.find((supplier) => supplier.id === id);
+}
+
+export function getEmployeeById(id: string) {
+  return employees.find((employee) => employee.id === id);
 }
 
 export function getVehicleById(id: string) {

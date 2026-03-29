@@ -1,9 +1,8 @@
 "use client";
 
 import { Check, ChevronsUpDown } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -27,6 +26,7 @@ export function SearchableSelect({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const listId = useId();
 
   const selected = useMemo(
     () => options.find((option) => option.value === value),
@@ -37,19 +37,25 @@ export function SearchableSelect({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={
-          <Button
-            variant="outline"
+          <button
+            type="button"
             role="combobox"
+            aria-controls={listId}
             aria-expanded={open}
-            className="w-full justify-between"
+            className={cn(
+              "flex h-8 w-full items-center justify-between rounded-lg border border-border bg-background px-3 text-sm transition-colors outline-none",
+              "hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+              "disabled:pointer-events-none disabled:opacity-50",
+              !selected && "text-muted-foreground",
+            )}
             disabled={disabled}
           >
             <span className="truncate">{selected?.label ?? placeholder}</span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
+          </button>
         }
       />
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
+      <PopoverContent id={listId} className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput placeholder="Buscar..." />
           <CommandList>

@@ -7,6 +7,7 @@ import {
   Boxes,
   CarFront,
   Gauge,
+  HardHat,
   Package,
   Settings,
   Truck,
@@ -33,6 +34,7 @@ const items = [
     children: [
       { href: "/clientes", label: "Clientes", icon: Users },
       { href: "/fornecedores", label: "Fornecedores", icon: Truck },
+      { href: "/funcionarios", label: "Funcionários", icon: HardHat },
     ],
   },
   { href: "/veiculos", label: "Veículos", icon: CarFront },
