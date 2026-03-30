@@ -1,13 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { EmployeeForm, employeeFormValuesToEmployee } from "@/components/employees/employee-form";
+import { EmployeeForm } from "@/components/employees/employee-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useEmployees } from "@/hooks/use-employees";
+import type { Employee } from "@/lib/app-types";
 
 function AccessLevelBadge({ level }: { level: "Proprietário" | "Funcionário" }) {
   const styles =
@@ -21,13 +22,45 @@ function AccessLevelBadge({ level }: { level: "Proprietário" | "Funcionário" }
 export default function FuncionarioDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { employees, hydrated, updateEmployee } = useEmployees();
-  const employee = employees.find((item) => item.id === params.id);
+  const [employee, setEmployee] = useState<Employee | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(`/api/employees/${params.id}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message ?? "Funcionário não encontrado.");
+        }
+        return data;
+      })
+      .then((data) => {
+        if (active) {
+          setEmployee(data.employee);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setEmployee(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setHydrated(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [params.id]);
 
   if (hydrated && !employee) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Funcionário não encontrado" subtitle="Esse registro não está mais disponível nesta sessão." />
+        <PageHeader title="Funcionário não encontrado" subtitle="Esse registro não está mais disponível." />
         <button
           type="button"
           onClick={() => router.push("/funcionarios")}
@@ -56,8 +89,23 @@ export default function FuncionarioDetailPage() {
             <EmployeeForm
               employee={employee}
               submitLabel="Salvar alterações"
-              onSubmit={(values) => {
-                updateEmployee(employeeFormValuesToEmployee(values, employee));
+              onSubmit={async (values) => {
+                const response = await fetch(`/api/employees/${employee.id}`, {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(values),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                  toast.error(data.message ?? "Não foi possível atualizar o funcionário.");
+                  return;
+                }
+
+                setEmployee(data.employee);
                 toast.success("Funcionário cadastrado com sucesso!");
               }}
             />

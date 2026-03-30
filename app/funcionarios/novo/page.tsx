@@ -3,14 +3,12 @@
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { EmployeeForm, employeeFormValuesToEmployee } from "@/components/employees/employee-form";
+import { EmployeeForm } from "@/components/employees/employee-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { useEmployees } from "@/hooks/use-employees";
 
 export default function NovoFuncionarioPage() {
   const router = useRouter();
-  const { addEmployee } = useEmployees();
 
   return (
     <div className="space-y-8">
@@ -26,8 +24,22 @@ export default function NovoFuncionarioPage() {
         <CardContent>
           <EmployeeForm
             submitLabel="Salvar funcionário"
-            onSubmit={(values) => {
-              addEmployee(employeeFormValuesToEmployee(values));
+            onSubmit={async (values) => {
+              const response = await fetch("/api/employees", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(values),
+              });
+
+              const data = await response.json();
+
+              if (!response.ok) {
+                toast.error(data.message ?? "Não foi possível cadastrar o funcionário.");
+                return;
+              }
+
               toast.success("Funcionário cadastrado com sucesso!");
               router.push("/funcionarios");
             }}

@@ -1,7 +1,7 @@
 "use client";
 
 import { LogOut, Menu } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -22,6 +23,8 @@ import { useAuth } from "@/hooks/use-auth";
 export function AppHeader() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const showWorkspaceSwitcher = pathname === "/dashboard";
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:left-[240px]">
@@ -29,7 +32,7 @@ export function AppHeader() {
         <Sheet>
           <SheetTrigger
             render={
-              <Button variant="outline" size="icon" className="md:hidden">
+              <Button variant="outline" size="icon-sm" className="md:hidden">
                 <Menu className="h-4 w-4" />
               </Button>
             }
@@ -40,7 +43,7 @@ export function AppHeader() {
         </Sheet>
 
         <div className="min-w-0 flex-1">
-          <WorkspaceSwitcher />
+          {showWorkspaceSwitcher ? <WorkspaceSwitcher /> : null}
         </div>
 
         <ThemeToggle />
@@ -48,33 +51,38 @@ export function AppHeader() {
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="ghost" className="h-auto rounded-full px-2 py-1.5">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-10 w-10 border border-border">
-                    <AvatarFallback className="bg-[var(--color-gold)] text-[var(--color-navy)]">
-                      {user?.avatar ?? "MA"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="hidden text-left sm:block">
-                    <p className="text-sm font-semibold">{user?.name}</p>
-                    <p className="text-xs text-muted-foreground">{user?.role}</p>
-                  </div>
-                </div>
-              </Button>
+              <button
+                type="button"
+                className="inline-flex items-center rounded-full px-2 py-1.5 transition hover:bg-muted"
+              />
             }
-          />
+          >
+            <div className="flex items-center gap-3">
+              <Avatar className="h-10 w-10 border border-border">
+                <AvatarFallback className="bg-[var(--color-gold)] text-[var(--color-navy)]">
+                  {user?.avatar ?? "AE"}
+                </AvatarFallback>
+              </Avatar>
+              <div className="hidden text-left sm:block">
+                <p className="text-sm font-semibold">{user?.name}</p>
+                <p className="text-xs text-muted-foreground">{user?.role}</p>
+              </div>
+            </div>
+          </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Conta demo</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => {
-                logout();
-                router.replace("/login");
-              }}
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sair
-            </DropdownMenuItem>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Conta</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={async () => {
+                  await logout();
+                  router.replace("/login");
+                }}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Sair
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

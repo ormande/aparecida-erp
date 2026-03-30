@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { Eye, HardHat, Pencil, Plus, UserX } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
+import { EmployeePreviewDialog } from "@/components/employees/employee-preview-dialog";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
@@ -20,7 +22,38 @@ function AccessLevelBadge({ level }: { level: "Proprietário" | "Funcionário" }
 }
 
 export default function FuncionariosPage() {
-  const { employees } = useEmployees();
+  const { employees, setEmployees } = useEmployees();
+  const [viewingEmployeeId, setViewingEmployeeId] = useState<string | null>(null);
+  const viewingEmployee = employees.find((employee) => employee.id === viewingEmployeeId) ?? null;
+
+  async function handleDeactivate(id: string, name: string) {
+    const current = employees.find((employee) => employee.id === id);
+
+    if (!current) {
+      return;
+    }
+
+    const response = await fetch(`/api/employees/${id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...current,
+        situacao: "Inativo",
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      toast.error(data.message ?? "Não foi possível desativar o funcionário.");
+      return;
+    }
+
+    setEmployees((items) => items.map((item) => (item.id === id ? data.employee : item)));
+    toast.success(`Funcionário ${name} desativado com sucesso!`);
+  }
 
   return (
     <div className="space-y-8">
@@ -28,12 +61,11 @@ export default function FuncionariosPage() {
         title="Funcionários"
         subtitle="Gerencie os registros da equipe com nível de acesso e situação operacional."
         actions={
-          <Link
-            href="/funcionarios/novo"
-            className="inline-flex h-9 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Novo funcionário
+          <Link href="/funcionarios/novo">
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Novo funcionário
+            </Button>
           </Link>
         }
       />
@@ -66,24 +98,21 @@ export default function FuncionariosPage() {
               header: "Ações",
               render: (row) => (
                 <div className="flex gap-2">
-                  <Link
-                    href={`/funcionarios/${row.id}`}
-                    className="inline-flex h-7 items-center justify-center rounded-[12px] border border-border bg-background px-2.5 text-[0.8rem] font-medium transition hover:bg-muted"
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setViewingEmployeeId(row.id)}>
                     <Eye className="mr-1 h-4 w-4" />
                     Ver
-                  </Link>
-                  <Link
-                    href={`/funcionarios/${row.id}`}
-                    className="inline-flex h-7 items-center justify-center rounded-[12px] border border-border bg-background px-2.5 text-[0.8rem] font-medium transition hover:bg-muted"
-                  >
-                    <Pencil className="mr-1 h-4 w-4" />
-                    Editar
+                  </Button>
+                  <Link href={`/funcionarios/${row.id}`}>
+                    <Button variant="outline" size="sm">
+                      <Pencil className="mr-1 h-4 w-4" />
+                      Editar
+                    </Button>
                   </Link>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => toast.success(`Funcionário ${row.nomeCompleto} marcado para desativação no protótipo.`)}
+                    onClick={() => handleDeactivate(row.id, row.nomeCompleto)}
+                    disabled={row.situacao === "Inativo"}
                   >
                     <UserX className="mr-1 h-4 w-4" />
                     Desativar
@@ -94,6 +123,12 @@ export default function FuncionariosPage() {
           ]}
         />
       </div>
+
+      <EmployeePreviewDialog
+        open={Boolean(viewingEmployee)}
+        onOpenChange={(open) => !open && setViewingEmployeeId(null)}
+        employee={viewingEmployee}
+      />
     </div>
   );
 }

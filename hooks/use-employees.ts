@@ -2,42 +2,49 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { employees as initialEmployees, type Employee } from "@/lib/mock-data";
-
-const EMPLOYEES_STORAGE_KEY = "aparecida-erp-employees";
+import type { Employee } from "@/lib/app-types";
 
 export function useEmployees() {
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(EMPLOYEES_STORAGE_KEY);
-      if (raw) {
-        setEmployees(JSON.parse(raw) as Employee[]);
-      }
-    } catch {
-      setEmployees(initialEmployees);
-    } finally {
-      setHydrated(true);
-    }
+    let active = true;
+
+    fetch("/api/employees", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Falha ao carregar funcionários.");
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        if (active) {
+          setEmployees(data.employees ?? []);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setEmployees([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setHydrated(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
-
-  useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
-
-    window.localStorage.setItem(EMPLOYEES_STORAGE_KEY, JSON.stringify(employees));
-  }, [employees, hydrated]);
 
   return useMemo(
     () => ({
       employees,
       hydrated,
-      addEmployee: (employee: Employee) => setEmployees((current) => [...current, employee]),
-      updateEmployee: (employee: Employee) =>
-        setEmployees((current) => current.map((item) => (item.id === employee.id ? employee : item))),
+      setEmployees,
     }),
     [employees, hydrated],
   );

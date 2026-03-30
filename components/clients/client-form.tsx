@@ -1,7 +1,7 @@
 "use client";
 
 import { CadastroPessoaForm, type CadastroPessoaFormValues } from "@/components/people/cadastro-pessoa-form";
-import type { Client } from "@/lib/mock-data";
+import type { Client } from "@/lib/app-types";
 
 function getInitialValues(client?: Client): CadastroPessoaFormValues {
   return {

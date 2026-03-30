@@ -1,26 +1,73 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { SupplierForm, supplierFormValuesToSupplier } from "@/components/suppliers/supplier-form";
+import { SupplierForm } from "@/components/suppliers/supplier-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { useSuppliers } from "@/hooks/use-suppliers";
-import { getSupplierDisplayName, getSupplierDocument } from "@/lib/mock-data";
+import type { Supplier } from "@/lib/app-types";
+
+function getSupplierDisplayName(supplier: Supplier) {
+  return supplier.tipo === "pf" ? supplier.nomeCompleto ?? "-" : supplier.nomeFantasia ?? "-";
+}
+
+function getSupplierDocument(supplier: Supplier) {
+  return supplier.tipo === "pf" ? supplier.cpf || "-" : supplier.cnpj || "-";
+}
 
 export default function FornecedorDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { suppliers, hydrated, updateSupplier } = useSuppliers();
-  const supplier = suppliers.find((item) => item.id === params.id);
+  const [supplier, setSupplier] = useState<Supplier | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(`/api/suppliers/${params.id}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message ?? "Fornecedor não encontrado.");
+        }
+
+        return data;
+      })
+      .then((data) => {
+        if (active) {
+          setSupplier(data.supplier);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSupplier(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setHydrated(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [params.id]);
 
   if (hydrated && !supplier) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Fornecedor não encontrado" subtitle="Esse registro não está mais disponível nesta sessão." />
-        <LinkBack onClick={() => router.push("/fornecedores")} />
+        <PageHeader title="Fornecedor não encontrado" subtitle="Esse registro não está mais disponível." />
+        <button
+          type="button"
+          onClick={() => router.push("/fornecedores")}
+          className="inline-flex h-9 items-center justify-center rounded-full border border-border bg-background px-4 text-sm font-medium transition hover:bg-muted"
+        >
+          Voltar para fornecedores
+        </button>
       </div>
     );
   }
@@ -45,9 +92,24 @@ export default function FornecedorDetailPage() {
             <SupplierForm
               supplier={supplier}
               submitLabel="Salvar alterações"
-              onSubmit={(values) => {
-                updateSupplier(supplierFormValuesToSupplier(values, supplier));
-                toast.success("Fornecedor cadastrado com sucesso!");
+              onSubmit={async (values) => {
+                const response = await fetch(`/api/suppliers/${supplier.id}`, {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(values),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                  toast.error(data.message ?? "Não foi possível atualizar o fornecedor.");
+                  return;
+                }
+
+                setSupplier(data.supplier);
+                toast.success("Fornecedor atualizado com sucesso!");
               }}
             />
           </CardContent>
@@ -82,17 +144,5 @@ export default function FornecedorDetailPage() {
         </Card>
       </div>
     </div>
-  );
-}
-
-function LinkBack({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex h-9 items-center justify-center rounded-full border border-border bg-background px-4 text-sm font-medium transition hover:bg-muted"
-    >
-      Voltar para fornecedores
-    </button>
   );
 }

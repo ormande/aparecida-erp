@@ -2,45 +2,50 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { suppliers as initialSuppliers, type Supplier } from "@/lib/mock-data";
-
-const SUPPLIERS_STORAGE_KEY = "aparecida-erp-suppliers";
+import type { Supplier } from "@/lib/app-types";
 
 export function useSuppliers() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(initialSuppliers);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(SUPPLIERS_STORAGE_KEY);
-      if (raw) {
-        setSuppliers(JSON.parse(raw) as Supplier[]);
-      }
-    } catch {
-      setSuppliers(initialSuppliers);
-    } finally {
-      setHydrated(true);
-    }
+    let active = true;
+
+    fetch("/api/suppliers", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Falha ao carregar fornecedores.");
+        }
+
+        return response.json();
+      })
+      .then((data) => {
+        if (active) {
+          setSuppliers(data.suppliers ?? []);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSuppliers([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setHydrated(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
-
-    window.localStorage.setItem(SUPPLIERS_STORAGE_KEY, JSON.stringify(suppliers));
-  }, [hydrated, suppliers]);
-
-  const api = useMemo(
+  return useMemo(
     () => ({
       suppliers,
       hydrated,
-      addSupplier: (supplier: Supplier) => setSuppliers((current) => [...current, supplier]),
-      updateSupplier: (supplier: Supplier) =>
-        setSuppliers((current) => current.map((item) => (item.id === supplier.id ? supplier : item))),
+      setSuppliers,
     }),
     [hydrated, suppliers],
   );
-
-  return api;
 }

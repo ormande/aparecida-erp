@@ -1,73 +1,73 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
+import { useMemo } from "react";
 
-import { DEMO_USER } from "@/lib/config";
-
-const STORAGE_KEY = "aparecida-erp-demo-session";
 const WORKSPACE_KEY = "aparecida-erp-workspace";
+const WORKSPACE_EVENT = "aparecida-erp-workspace-changed";
 
-export type AuthUser = typeof DEMO_USER;
-
-function readStoredUser() {
-  if (typeof window === "undefined") {
-    return null;
+function getInitials(name?: string | null) {
+  if (!name) {
+    return "AE";
   }
 
-  const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return null;
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "AE";
+}
+
+function getRoleLabel(level?: "PROPRIETARIO" | "FUNCIONARIO") {
+  if (level === "PROPRIETARIO") {
+    return "Proprietário";
   }
 
-  try {
-    return JSON.parse(raw) as AuthUser;
-  } catch {
-    return null;
-  }
+  return "Funcionário";
 }
 
 export function useAuth() {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: session, status } = useSession();
 
-  useEffect(() => {
-    setUser(readStoredUser());
-    setIsLoading(false);
-
-    const handleStorage = () => {
-      setUser(readStoredUser());
-    };
-
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
-
-  const loginDemo = useCallback(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(DEMO_USER));
-    if (!window.localStorage.getItem(WORKSPACE_KEY)) {
-      window.localStorage.setItem(WORKSPACE_KEY, "cg");
+  const user = useMemo(() => {
+    if (!session?.user) {
+      return null;
     }
-    setUser(DEMO_USER);
-  }, []);
 
-  const logout = useCallback(() => {
-    window.localStorage.removeItem(STORAGE_KEY);
-    setUser(null);
-  }, []);
+    return {
+      id: session.user.id,
+      name: session.user.name ?? "",
+      email: session.user.email ?? "",
+      role: getRoleLabel(session.user.accessLevel),
+      avatar: getInitials(session.user.name),
+      companyId: session.user.companyId,
+      accessLevel: session.user.accessLevel,
+      status: session.user.status,
+      units: session.user.units ?? [],
+    };
+  }, [session]);
 
   return useMemo(
     () => ({
       user,
-      isLoading,
-      isAuthenticated: Boolean(user),
-      loginDemo,
-      logout,
+      isLoading: status === "loading",
+      isAuthenticated: status === "authenticated",
+      login: async (email: string, password: string) =>
+        signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+        }),
+      logout: async () =>
+        signOut({
+          redirect: false,
+        }),
     }),
-    [isLoading, loginDemo, logout, user],
+    [status, user],
   );
 }
 
 export const authStorageKeys = {
-  session: STORAGE_KEY,
   workspace: WORKSPACE_KEY,
+};
+
+export const authEvents = {
+  workspaceChanged: WORKSPACE_EVENT,
 };

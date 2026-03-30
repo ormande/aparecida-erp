@@ -111,7 +111,7 @@
   h2,
   h3,
   h4 {
-    font-family: var(--font-display), serif;
+    font-family: var(--font-ui), sans-serif;
   }
 }
 

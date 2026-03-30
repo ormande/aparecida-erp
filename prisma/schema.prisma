@@ -1,0 +1,383 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserAccessLevel {
+  PROPRIETARIO
+  FUNCIONARIO
+}
+
+enum RecordStatus {
+  ATIVO
+  INATIVO
+}
+
+enum PersonType {
+  PF
+  PJ
+}
+
+enum SupplierCategory {
+  PNEUS
+  PECAS
+  INSUMOS
+  SERVICOS
+  OUTROS
+}
+
+enum ServiceOrderStatus {
+  ABERTA
+  EM_ANDAMENTO
+  AGUARDANDO_PECA
+  CONCLUIDA
+  CANCELADA
+}
+
+enum PaymentTerm {
+  A_VISTA
+  A_PRAZO
+}
+
+enum FinancialStatus {
+  PAGO
+  PENDENTE
+  VENCIDO
+}
+
+enum ReceivableOriginType {
+  SERVICE_ORDER
+  MANUAL
+}
+
+enum PayableCategory {
+  ALUGUEL
+  FORNECEDORES
+  AGUA_LUZ
+  FUNCIONARIOS
+  OUTROS
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  STATUS_CHANGE
+}
+
+model Company {
+  id            String              @id @default(cuid())
+  name          String
+  slug          String              @unique
+  phone         String?
+  address       String?
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  units         Unit[]
+  users         User[]
+  customers     Customer[]
+  suppliers     Supplier[]
+  services      ServiceCatalog[]
+  serviceOrders ServiceOrder[]
+  receivables   AccountReceivable[]
+  payables      AccountPayable[]
+  auditLogs     AuditLog[]
+  Vehicle       Vehicle[]
+}
+
+model Unit {
+  id            String              @id @default(cuid())
+  companyId     String
+  name          String
+  slug          String
+  phone         String?
+  address       String?
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  members       UserUnit[]
+  serviceOrders ServiceOrder[]
+  receivables   AccountReceivable[]
+  payables      AccountPayable[]
+  auditLogs     AuditLog[]
+
+  @@unique([companyId, slug])
+}
+
+model User {
+  id              String           @id @default(cuid())
+  companyId       String
+  name            String
+  email           String
+  phone           String?
+  passwordHash    String?
+  accessLevel     UserAccessLevel
+  status          RecordStatus     @default(ATIVO)
+  lastLoginAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  units           UserUnit[]
+  accounts        Account[]
+  sessions        Session[]
+  createdOrders   ServiceOrder[]   @relation("ServiceOrderCreatedBy")
+  updatedOrders   ServiceOrder[]   @relation("ServiceOrderUpdatedBy")
+  createdServices ServiceCatalog[] @relation("ServiceCreatedBy")
+  updatedServices ServiceCatalog[] @relation("ServiceUpdatedBy")
+  auditLogs       AuditLog[]
+
+  @@unique([companyId, email])
+}
+
+model UserUnit {
+  userId    String
+  unitId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  unit      Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@id([userId, unitId])
+}
+
+model Customer {
+  id            String              @id @default(cuid())
+  companyId     String
+  type          PersonType
+  status        RecordStatus        @default(ATIVO)
+  fullName      String?
+  cpf           String?
+  birthDate     DateTime?
+  tradeName     String?
+  legalName     String?
+  cnpj          String?
+  phone         String
+  whatsapp      String?
+  email         String?
+  notes         String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vehicles      Vehicle[]
+  serviceOrders ServiceOrder[]
+  receivables   AccountReceivable[]
+}
+
+model Supplier {
+  id        String           @id @default(cuid())
+  companyId String
+  type      PersonType       @default(PJ)
+  status    RecordStatus     @default(ATIVO)
+  category  SupplierCategory
+  fullName  String?
+  cpf       String?
+  birthDate DateTime?
+  tradeName String?
+  legalName String?
+  cnpj      String?
+  phone     String
+  whatsapp  String?
+  email     String?
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  company   Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  payables  AccountPayable[]
+}
+
+model ServiceCatalog {
+  id              String             @id @default(cuid())
+  companyId       String
+  name            String
+  description     String?
+  basePrice       Decimal            @db.Decimal(10, 2)
+  isActive        Boolean            @default(true)
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  company         Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy       User?              @relation("ServiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedBy       User?              @relation("ServiceUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  orderItems      ServiceOrderItem[]
+}
+
+model Vehicle {
+  id            String         @id @default(cuid())
+  companyId     String
+  customerId    String
+  plate         String
+  model         String
+  brand         String
+  year          Int
+  color         String?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  serviceOrders ServiceOrder[]
+
+  @@unique([companyId, plate])
+}
+
+model ServiceOrder {
+  id              String              @id @default(cuid())
+  companyId       String
+  unitId          String
+  customerId      String?
+  customerNameSnapshot String?
+  vehicleId       String?
+  number          String
+  status          ServiceOrderStatus  @default(ABERTA)
+  openedAt        DateTime            @default(now())
+  closedAt        DateTime?
+  mileage         Int?
+  dueDate         DateTime?
+  paymentTerm     PaymentTerm?
+  paymentMethod   String?
+  notes           String?
+  isStandalone    Boolean             @default(false)
+  totalAmount     Decimal             @default(0) @db.Decimal(10, 2)
+  createdByUserId String?
+  updatedByUserId String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unit            Unit                @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  customer        Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  createdBy       User?               @relation("ServiceOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedBy       User?               @relation("ServiceOrderUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  items           ServiceOrderItem[]
+  receivables     AccountReceivable[]
+
+  @@unique([companyId, number])
+  @@index([companyId, customerId, openedAt])
+  @@index([companyId, unitId, openedAt])
+}
+
+model ServiceOrderItem {
+  id             String          @id @default(cuid())
+  serviceOrderId String
+  serviceId      String?
+  description    String
+  quantity       Int             @default(1)
+  laborPrice     Decimal         @db.Decimal(10, 2)
+  lineTotal      Decimal         @db.Decimal(10, 2)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  serviceOrder   ServiceOrder    @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  service        ServiceCatalog? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+}
+
+model AccountReceivable {
+  id             String          @id @default(cuid())
+  companyId      String
+  unitId         String?
+  customerId     String?
+  serviceOrderId String?
+  originType     ReceivableOriginType @default(MANUAL)
+  description    String
+  amount         Decimal         @db.Decimal(10, 2)
+  dueDate        DateTime
+  paidAt         DateTime?
+  status         FinancialStatus @default(PENDENTE)
+  installmentGroupId String?
+  installmentNumber  Int?
+  installmentCount   Int?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unit           Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  serviceOrder   ServiceOrder?   @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, unitId, dueDate])
+}
+
+model AccountPayable {
+  id          String          @id @default(cuid())
+  companyId   String
+  unitId      String?
+  supplierId  String?
+  description String
+  category    PayableCategory
+  amount      Decimal         @db.Decimal(10, 2)
+  dueDate     DateTime
+  paidAt      DateTime?
+  status      FinancialStatus @default(PENDENTE)
+  installmentGroupId String?
+  installmentNumber  Int?
+  installmentCount   Int?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unit        Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  supplier    Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, unitId, dueDate])
+}
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  companyId  String
+  unitId     String?
+  userId     String?
+  entityType String
+  entityId   String
+  action     AuditAction
+  beforeData Json?
+  afterData  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unit       Unit?       @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, entityType, entityId])
+  @@index([companyId, createdAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

@@ -3,20 +3,18 @@
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { SupplierForm, supplierFormValuesToSupplier } from "@/components/suppliers/supplier-form";
+import { SupplierForm } from "@/components/suppliers/supplier-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
-import { useSuppliers } from "@/hooks/use-suppliers";
 
 export default function NovoFornecedorPage() {
   const router = useRouter();
-  const { addSupplier } = useSuppliers();
 
   return (
     <div className="space-y-8">
       <PageHeader
         title="Novo fornecedor"
-        subtitle="Cadastre parceiros de compra e prestação de serviço sem depender de backend neste protótipo."
+        subtitle="Cadastre parceiros reais da empresa para compras e despesas futuras."
       />
 
       <Card className="surface-card border-none">
@@ -26,8 +24,22 @@ export default function NovoFornecedorPage() {
         <CardContent>
           <SupplierForm
             submitLabel="Salvar fornecedor"
-            onSubmit={(values) => {
-              addSupplier(supplierFormValuesToSupplier(values));
+            onSubmit={async (values) => {
+              const response = await fetch("/api/suppliers", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(values),
+              });
+
+              const data = await response.json();
+
+              if (!response.ok) {
+                toast.error(data.message ?? "Não foi possível cadastrar o fornecedor.");
+                return;
+              }
+
               toast.success("Fornecedor cadastrado com sucesso!");
               router.push("/fornecedores");
             }}

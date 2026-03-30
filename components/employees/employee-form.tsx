@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ClientSituation, Employee, EmployeeAccessLevel } from "@/lib/mock-data";
+import type { ClientSituation, Employee, EmployeeAccessLevel } from "@/lib/app-types";
 
 export type EmployeeFormValues = {
   nomeCompleto: string;
@@ -26,7 +26,8 @@ type EmployeeFormErrors = Partial<Record<keyof EmployeeFormValues, string>>;
 
 function maskPhone(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 11);
-  if (digits.length <= 2) return digits ? `(${digits}` : "";
+  if (!digits) return "";
+  if (digits.length <= 2) return `(${digits}`;
   if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
@@ -128,7 +129,7 @@ export function EmployeeForm({
         <div className="grid gap-2">
           <Label>Nível de acesso *</Label>
           <Select value={values.nivelAcesso} onValueChange={(value) => updateField("nivelAcesso", value as EmployeeAccessLevel)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full rounded-2xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -142,7 +143,7 @@ export function EmployeeForm({
         <div className="grid gap-2">
           <Label>Situação</Label>
           <Select value={values.situacao} onValueChange={(value) => updateField("situacao", value as ClientSituation)}>
-            <SelectTrigger className="w-full">
+            <SelectTrigger className="w-full rounded-2xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

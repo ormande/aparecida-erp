@@ -5,7 +5,8 @@ import { Eye, MessageCircle, Pencil, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { ClientForm, clientFormValuesToClient } from "@/components/clients/client-form";
+import { ClientForm } from "@/components/clients/client-form";
+import { PersonPreviewDialog } from "@/components/people/person-preview-dialog";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import {
@@ -18,21 +19,24 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { clients as initialClients, getClientDisplayName, getClientDocument, getWhatsAppUrl } from "@/lib/mock-data";
+import { useCustomers } from "@/hooks/use-customers";
+import { getClientDisplayName, getClientDocument, getWhatsAppUrl } from "@/lib/formatters";
 
 export default function ClientesPage() {
   const [open, setOpen] = useState(false);
-  const [clients, setClients] = useState(initialClients);
+  const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(null);
+  const { customers, setCustomers } = useCustomers();
 
   const data = useMemo(
     () =>
-      clients.map((client) => ({
+      customers.map((client) => ({
         ...client,
         displayName: getClientDisplayName(client),
         document: getClientDocument(client),
       })),
-    [clients],
+    [customers],
   );
+  const viewingCustomer = customers.find((customer) => customer.id === viewingCustomerId) ?? null;
 
   return (
     <div className="space-y-8">
@@ -52,12 +56,27 @@ export default function ClientesPage() {
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Novo cliente</DialogTitle>
-                <DialogDescription>Os dados são mockados neste protótipo e ficam apenas em memória local.</DialogDescription>
+                <DialogDescription>Os dados agora são persistidos no banco de dados do sistema.</DialogDescription>
               </DialogHeader>
               <ClientForm
                 submitLabel="Salvar cliente"
-                onSubmit={(values) => {
-                  setClients((current) => [...current, clientFormValuesToClient(values)]);
+                onSubmit={async (values) => {
+                  const response = await fetch("/api/customers", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(values),
+                  });
+
+                  const data = await response.json();
+
+                  if (!response.ok) {
+                    toast.error(data.message ?? "Não foi possível cadastrar o cliente.");
+                    return;
+                  }
+
+                  setCustomers((current) => [...current, data.customer]);
                   toast.success("Cliente cadastrado com sucesso!");
                   setOpen(false);
                 }}
@@ -99,19 +118,18 @@ export default function ClientesPage() {
               header: "Ações",
               render: (row) => (
                 <div className="flex gap-2">
-                  <Link
-                    href={`/clientes/${row.id}`}
-                    className="inline-flex h-7 items-center justify-center rounded-[12px] border border-border bg-background px-2.5 text-[0.8rem] font-medium transition hover:bg-muted"
-                  >
+                  <Button variant="outline" size="sm" onClick={() => setViewingCustomerId(row.id)}>
                     <Eye className="mr-1 h-4 w-4" />
                     Ver
-                  </Link>
+                  </Button>
                   <Link
                     href={`/clientes/${row.id}`}
-                    className="inline-flex h-7 items-center justify-center rounded-[12px] border border-border bg-background px-2.5 text-[0.8rem] font-medium transition hover:bg-muted"
+                    className="inline-flex"
                   >
-                    <Pencil className="mr-1 h-4 w-4" />
-                    Editar
+                    <Button variant="outline" size="sm">
+                      <Pencil className="mr-1 h-4 w-4" />
+                      Editar
+                    </Button>
                   </Link>
                 </div>
               ),
@@ -119,6 +137,14 @@ export default function ClientesPage() {
           ]}
         />
       </div>
+
+      <PersonPreviewDialog
+        open={Boolean(viewingCustomer)}
+        onOpenChange={(open) => !open && setViewingCustomerId(null)}
+        person={viewingCustomer}
+        title="Cliente"
+        subtitle="Visualização rápida do cadastro."
+      />
     </div>
   );
 }

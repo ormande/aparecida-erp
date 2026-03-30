@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { ClientSituation, ClientType, SupplierCategory } from "@/lib/mock-data";
+import type { ClientSituation, ClientType, SupplierCategory } from "@/lib/app-types";
 
 export type CadastroPessoaFormValues = {
   tipo: ClientType;

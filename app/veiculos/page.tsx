@@ -1,10 +1,11 @@
 "use client";
 
-import { Eye, Pencil, Plus } from "lucide-react";
+import { Eye, Plus } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { PersonPreviewDialog } from "@/components/people/person-preview-dialog";
+import { VehicleForm, type VehicleFormValues } from "@/components/vehicles/vehicle-form";
 import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,111 +16,80 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
-import { Textarea } from "@/components/ui/textarea";
-import { clients, getClientById, getClientDisplayName, vehicles } from "@/lib/mock-data";
+import { useCustomers } from "@/hooks/use-customers";
+import { useVehicles } from "@/hooks/use-vehicles";
 
-function maskPlate(value: string) {
-  return value.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+function getClientDisplayName(client?: {
+  tipo: "pf" | "pj";
+  nomeCompleto?: string;
+  nomeFantasia?: string;
+}) {
+  if (!client) {
+    return "Nao vinculado";
+  }
+
+  return client.tipo === "pf" ? client.nomeCompleto ?? "Sem nome" : client.nomeFantasia ?? "Sem nome";
 }
 
 export default function VeiculosPage() {
   const [open, setOpen] = useState(false);
-  const [clientId, setClientId] = useState("");
-  const [form, setForm] = useState({
-    plate: "",
-    brand: "",
-    model: "",
-    year: "",
-    color: "",
-    notes: "",
-  });
+  const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(null);
+  const { customers, hydrated: customersHydrated } = useCustomers();
+  const { vehicles, hydrated: vehiclesHydrated, setVehicles } = useVehicles();
 
   const data = useMemo(
     () =>
       vehicles.map((vehicle) => ({
         ...vehicle,
-        clientName: getClientById(vehicle.clientId)
-          ? getClientDisplayName(getClientById(vehicle.clientId))
-          : "Não vinculado",
+        clientName: getClientDisplayName(customers.find((client) => client.id === vehicle.clientId)),
       })),
-    [],
+    [customers, vehicles],
   );
+  const viewingCustomer = customers.find((customer) => customer.id === viewingCustomerId) ?? null;
+
+  async function handleCreateVehicle(values: VehicleFormValues) {
+    const response = await fetch("/api/vehicles", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(values),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      toast.error(data.message ?? "Nao foi possivel cadastrar o veiculo.");
+      return;
+    }
+
+    setVehicles((current) => [...current, data.vehicle]);
+    setOpen(false);
+    toast.success("Veiculo cadastrado com sucesso!");
+  }
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Veículos"
-        subtitle="Controle de frota e veículos vinculados aos clientes da oficina."
+        title="Veiculos"
+        subtitle="Cadastre veiculos quando precisar vincula-los a clientes, inclusive durante a abertura da OS."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger
               render={
                 <Button className="rounded-full">
                   <Plus className="mr-2 h-4 w-4" />
-                  Novo veículo
+                  Novo veiculo
                 </Button>
               }
             />
             <DialogContent className="sm:max-w-xl">
               <DialogHeader>
-                <DialogTitle>Novo veículo</DialogTitle>
-                <DialogDescription>Vincule o veículo a um cliente já cadastrado.</DialogDescription>
+                <DialogTitle>Novo veiculo</DialogTitle>
+                <DialogDescription>Cadastre o veiculo e deixe-o disponivel para a proxima ordem de servico.</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-2">
-                <div className="grid gap-2">
-                  <Label htmlFor="plate">Placa</Label>
-                  <Input
-                    id="plate"
-                    value={form.plate}
-                    onChange={(e) => setForm({ ...form, plate: maskPlate(e.target.value) })}
-                    placeholder="ABC-1234 ou ABC1D23"
-                  />
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="brand">Marca</Label>
-                    <Input id="brand" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="model">Modelo</Label>
-                    <Input id="model" value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
-                  </div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="year">Ano</Label>
-                    <Input id="year" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="color">Cor</Label>
-                    <Input id="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} />
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Cliente vinculado</Label>
-                  <SearchableSelect
-                    value={clientId}
-                    onChange={setClientId}
-                    placeholder="Selecione um cliente"
-                    options={clients.map((client) => ({ value: client.id, label: getClientDisplayName(client) }))}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="notes">Observações</Label>
-                  <Textarea id="notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-                </div>
-                <Button
-                  onClick={() => {
-                    toast.success("Veículo mockado criado com sucesso.");
-                    setOpen(false);
-                  }}
-                >
-                  Salvar veículo
-                </Button>
-              </div>
+              <VehicleForm customers={customers} submitLabel="Salvar veiculo" onSubmit={handleCreateVehicle} />
             </DialogContent>
           </Dialog>
         }
@@ -129,34 +99,39 @@ export default function VeiculosPage() {
         <DataTable
           data={data}
           pageSize={10}
+          isLoading={!customersHydrated || !vehiclesHydrated}
           searchPlaceholder="Buscar por placa, modelo ou cliente"
           searchKeys={[(row) => row.plate, (row) => row.model, (row) => row.clientName]}
+          emptyTitle="Nenhum veiculo cadastrado"
+          emptyDescription="Cadastre veiculos por aqui ou diretamente durante a abertura de uma ordem de servico."
           columns={[
             { key: "plate", header: "Placa", render: (row) => <span className="font-medium">{row.plate}</span> },
             { key: "model", header: "Modelo", render: (row) => row.model },
             { key: "brand", header: "Marca", render: (row) => row.brand },
-            { key: "year", header: "Ano", render: (row) => row.year },
-            { key: "color", header: "Cor", render: (row) => row.color },
+            { key: "year", header: "Ano", render: (row) => String(row.year) },
+            { key: "color", header: "Cor", render: (row) => row.color || "-" },
             { key: "client", header: "Cliente vinculado", render: (row) => row.clientName },
             {
               key: "actions",
-              header: "Ações",
-              render: () => (
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">
-                    <Eye className="mr-1 h-4 w-4" />
-                    Ver
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Pencil className="mr-1 h-4 w-4" />
-                    Editar
-                  </Button>
-                </div>
+              header: "Acoes",
+              render: (row) => (
+                <Button variant="outline" size="sm" onClick={() => row.clientId && setViewingCustomerId(row.clientId)}>
+                  <Eye className="mr-1 h-4 w-4" />
+                  Ver cliente
+                </Button>
               ),
             },
           ]}
         />
       </div>
+
+      <PersonPreviewDialog
+        open={Boolean(viewingCustomer)}
+        onOpenChange={(open) => !open && setViewingCustomerId(null)}
+        person={viewingCustomer}
+        title="Cliente"
+        subtitle="Visualização rápida do cadastro do cliente vinculado."
+      />
     </div>
   );
 }
