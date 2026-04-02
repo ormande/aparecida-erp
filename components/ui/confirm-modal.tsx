@@ -12,13 +12,17 @@ import {
 
 export function ConfirmModal({
   trigger,
+  open,
+  onOpenChange,
   title,
   description,
   onConfirm,
   confirmLabel = "Confirmar",
   cancelLabel = "Cancelar",
 }: {
-  trigger: React.ReactElement;
+  trigger?: React.ReactElement;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   title: string;
   description: string;
   onConfirm: () => void;
@@ -26,8 +30,8 @@ export function ConfirmModal({
   cancelLabel?: string;
 }) {
   return (
-    <AlertDialog>
-      <AlertDialogTrigger render={trigger} />
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      {trigger ? <AlertDialogTrigger render={trigger} /> : null}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>

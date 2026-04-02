@@ -2,13 +2,13 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { authOptions } from "@/lib/auth";
+import { authOptions, checkRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const companySchema = z.object({
-  name: z.string().min(2),
-  address: z.string().optional().default(""),
-  phone: z.string().optional().default(""),
+  name: z.string().min(2).max(100),
+  address: z.string().max(300).optional().default(""),
+  phone: z.string().max(20).optional().default(""),
 });
 
 export async function GET() {
@@ -16,6 +16,10 @@ export async function GET() {
 
   if (!session?.user?.companyId) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  }
+
+  if (!checkRole(session, ["PROPRIETARIO"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const company = await prisma.company.findUnique({
@@ -43,6 +47,10 @@ export async function PATCH(request: Request) {
 
   if (!session?.user?.companyId || !session.user.id) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  }
+
+  if (!checkRole(session, ["PROPRIETARIO"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const payload = companySchema.parse(await request.json());

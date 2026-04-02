@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
-import { authOptions } from "@/lib/auth";
+import { authOptions, checkRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 function translateEntity(entityType: string) {
@@ -73,6 +73,10 @@ export async function GET() {
 
   if (!session?.user?.companyId) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  }
+
+  if (!checkRole(session, ["PROPRIETARIO"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const logs = await prisma.auditLog.findMany({

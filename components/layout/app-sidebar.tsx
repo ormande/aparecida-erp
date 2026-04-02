@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useMemo } from "react";
 import {
   BadgeDollarSign,
   Boxes,
@@ -24,12 +25,17 @@ import { useAuth } from "@/hooks/use-auth";
 import { ESTOQUE_ATIVO } from "@/lib/config";
 import { cn } from "@/lib/utils";
 
-type SidebarProps = {
-  mobile?: boolean;
-  onNavigate?: () => void;
+import type { LucideIcon } from "lucide-react";
+
+type NavChild = { href: string; label: string; icon: LucideIcon };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  children?: NavChild[];
 };
 
-const items = [
+const baseItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Gauge },
   {
     href: "/cadastros",
@@ -63,15 +69,57 @@ const items = [
       { href: "/financeiro/historico", label: "Histórico", icon: Package },
     ],
   },
-  ...(ESTOQUE_ATIVO ? [{ href: "/estoque", label: "Estoque", icon: Boxes }] : []),
+  ...(ESTOQUE_ATIVO ? [{ href: "/estoque", label: "Estoque", icon: Boxes } satisfies NavItem] : []),
   { href: "/auditoria", label: "Auditoria", icon: ClipboardList },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 
+type SidebarProps = {
+  mobile?: boolean;
+  onNavigate?: () => void;
+};
+
 export function AppSidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+
+  const items = useMemo((): NavItem[] => {
+    const level = user?.accessLevel;
+    const isFuncionario = level === "FUNCIONARIO";
+    const hideAuditAndSettings = level === "GESTOR" || level === "FUNCIONARIO";
+
+    return baseItems
+      .filter((item) => {
+        if (item.href === "/financeiro" && isFuncionario) {
+          return false;
+        }
+        if (item.href === "/auditoria" && hideAuditAndSettings) {
+          return false;
+        }
+        if (item.href === "/configuracoes" && hideAuditAndSettings) {
+          return false;
+        }
+        return true;
+      })
+      .map((item) => {
+        if (item.href === "/cadastros" && item.children && isFuncionario) {
+          return {
+            ...item,
+            children: item.children.filter(
+              (c) => c.href !== "/fornecedores" && c.href !== "/funcionarios" && c.href !== "/servicos",
+            ),
+          };
+        }
+        if (item.href === "/ordens-de-servico" && item.children && isFuncionario) {
+          return {
+            ...item,
+            children: item.children.filter((c) => c.href !== "/ordens-de-servico/fechamentos"),
+          };
+        }
+        return item;
+      });
+  }, [user?.accessLevel]);
 
   async function handleLogout() {
     await logout();
@@ -97,7 +145,7 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
             return (
               <div key={item.href} className="space-y-2">
                 <Link
-                  href={item.children ? item.children[0].href : item.href}
+                  href={item.children?.length ? item.children[0].href : item.href}
                   onClick={onNavigate}
                   className={cn(
                     "flex items-center gap-3 rounded-2xl px-3 py-3 text-sm font-medium transition-colors",
@@ -110,7 +158,7 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
                   <span>{item.label}</span>
                 </Link>
 
-                {item.children ? (
+                {item.children?.length ? (
                   <div className="ml-4 space-y-1 border-l border-sidebar-border pl-4">
                     {item.children.map((child) => {
                       const ChildIcon = child.icon;

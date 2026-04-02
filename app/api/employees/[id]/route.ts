@@ -1,140 +1,69 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapUserToEmployee } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { getRequiredSessionContext } from "@/lib/auth";
+import { employeeService } from "@/services/employee.service";
+import { ServiceError } from "@/services/service-error";
 
 const employeeSchema = z.object({
-  nomeCompleto: z.string().min(2),
+  nomeCompleto: z.string().min(2).max(150),
   email: z.string().email(),
-  telefone: z.string().optional().default(""),
-  nivelAcesso: z.enum(["Proprietário", "Funcionário"]),
+  telefone: z.string().max(20).optional().default(""),
+  nivelAcesso: z.enum(["Proprietário", "Gestor", "Funcionário"]),
   situacao: z.enum(["Ativo", "Inativo"]),
 });
 
-function mapAccessLevel(level: "Proprietário" | "Funcionário") {
-  return level === "Proprietário" ? "PROPRIETARIO" : "FUNCIONARIO";
-}
-
-function mapStatus(status: "Ativo" | "Inativo") {
-  return status === "Ativo" ? "ATIVO" : "INATIVO";
-}
-
-async function requireSession() {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId || !session.user.id) {
-    return null;
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, message: error.message, details: error.details }, { status: error.status });
   }
 
-  return session;
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
 }
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const session = await requireSession();
-
-  if (!session) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
-  }
-
-  const user = await prisma.user.findFirst({
-    where: {
-      id: params.id,
-      companyId: session.user.companyId,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      accessLevel: true,
-      status: true,
-    },
+  const auth = await getRequiredSessionContext({
+    allowedRoles: ["PROPRIETARIO", "GESTOR"],
   });
-
-  if (!user) {
-    return NextResponse.json({ message: "Funcionário não encontrado." }, { status: 404 });
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  return NextResponse.json({ employee: mapUserToEmployee(user) });
+  try {
+    const result = await employeeService.getById(params.id, { companyId: auth.context.companyId });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const session = await requireSession();
-
-  if (!session) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext({
+    allowedRoles: ["PROPRIETARIO", "GESTOR"],
+  });
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const payload = employeeSchema.parse(await request.json());
-  const email = payload.email.trim().toLowerCase();
-
-  const existing = await prisma.user.findFirst({
-    where: {
-      id: params.id,
-      companyId: session.user.companyId,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      accessLevel: true,
-      status: true,
-    },
-  });
-
-  if (!existing) {
-    return NextResponse.json({ message: "Funcionário não encontrado." }, { status: 404 });
+  let payload: z.infer<typeof employeeSchema>;
+  try {
+    payload = employeeSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const conflict = await prisma.user.findFirst({
-    where: {
-      companyId: session.user.companyId,
-      email,
-      id: { not: params.id },
-    },
-    select: { id: true },
-  });
+  try {
+    const result = await employeeService.update(params.id, payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
+    });
 
-  if (conflict) {
-    return NextResponse.json({ message: "Já existe um funcionário com esse e-mail." }, { status: 409 });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
   }
-
-  const user = await prisma.user.update({
-    where: {
-      id: params.id,
-    },
-    data: {
-      name: payload.nomeCompleto,
-      email,
-      phone: payload.telefone || null,
-      accessLevel: mapAccessLevel(payload.nivelAcesso),
-      status: mapStatus(payload.situacao),
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      accessLevel: true,
-      status: true,
-    },
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      companyId: session.user.companyId,
-      userId: session.user.id,
-      entityType: "employee",
-      entityId: user.id,
-      action: "UPDATE",
-      beforeData: existing,
-      afterData: user,
-    },
-  });
-
-  return NextResponse.json({ employee: mapUserToEmployee(user) });
 }

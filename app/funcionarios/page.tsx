@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Eye, HardHat, Pencil, Plus, UserX } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { EmployeePreviewDialog } from "@/components/employees/employee-preview-dialog";
@@ -11,12 +11,15 @@ import { DataTable } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useEmployees } from "@/hooks/use-employees";
+import type { EmployeeAccessLevel } from "@/lib/app-types";
 
-function AccessLevelBadge({ level }: { level: "Proprietário" | "Funcionário" }) {
+function AccessLevelBadge({ level }: { level: EmployeeAccessLevel }) {
   const styles =
     level === "Proprietário"
       ? "bg-[rgba(201,168,76,0.16)] text-[var(--color-gold-dark)]"
-      : "bg-blue-500/15 text-blue-700 dark:text-blue-300";
+      : level === "Gestor"
+        ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
+        : "bg-blue-500/15 text-blue-700 dark:text-blue-300";
 
   return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${styles}`}>{level}</span>;
 }
@@ -24,6 +27,10 @@ function AccessLevelBadge({ level }: { level: "Proprietário" | "Funcionário" }
 export default function FuncionariosPage() {
   const { employees, setEmployees } = useEmployees();
   const [viewingEmployeeId, setViewingEmployeeId] = useState<string | null>(null);
+  const searchKeys = useMemo<Array<(row: (typeof employees)[number]) => string>>(
+    () => [(row) => row.nomeCompleto, (row) => row.email, (row) => row.telefone],
+    [],
+  );
   const viewingEmployee = employees.find((employee) => employee.id === viewingEmployeeId) ?? null;
 
   async function handleDeactivate(id: string, name: string) {
@@ -75,7 +82,7 @@ export default function FuncionariosPage() {
           data={employees}
           pageSize={10}
           searchPlaceholder="Buscar por nome, e-mail ou telefone"
-          searchKeys={[(row) => row.nomeCompleto, (row) => row.email, (row) => row.telefone]}
+          searchKeys={searchKeys}
           columns={[
             {
               key: "name",

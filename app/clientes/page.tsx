@@ -25,7 +25,9 @@ import { getClientDisplayName, getClientDocument, getWhatsAppUrl } from "@/lib/f
 export default function ClientesPage() {
   const [open, setOpen] = useState(false);
   const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(null);
-  const { customers, setCustomers } = useCustomers();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const { customers, meta, refresh, hydrated } = useCustomers({ page, limit: 10, search });
 
   const data = useMemo(
     () =>
@@ -35,6 +37,10 @@ export default function ClientesPage() {
         document: getClientDocument(client),
       })),
     [customers],
+  );
+  const searchKeys = useMemo<Array<(row: (typeof data)[number]) => string>>(
+    () => [(row) => row.displayName, (row) => row.document, (row) => row.celular],
+    [],
   );
   const viewingCustomer = customers.find((customer) => customer.id === viewingCustomerId) ?? null;
 
@@ -76,7 +82,7 @@ export default function ClientesPage() {
                     return;
                   }
 
-                  setCustomers((current) => [...current, data.customer]);
+                  await refresh();
                   toast.success("Cliente cadastrado com sucesso!");
                   setOpen(false);
                 }}
@@ -90,8 +96,20 @@ export default function ClientesPage() {
         <DataTable
           data={data}
           pageSize={10}
+          isLoading={!hydrated}
+          totalItems={meta?.total}
+          searchValue={search}
+          onSearchChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          manualPagination={{
+            page: meta?.page ?? page,
+            totalPages: meta?.totalPages ?? 1,
+            onPageChange: setPage,
+          }}
           searchPlaceholder="Buscar por nome, CPF/CNPJ ou celular"
-          searchKeys={[(row) => row.displayName, (row) => row.document, (row) => row.celular]}
+          searchKeys={searchKeys}
           columns={[
             { key: "name", header: "Nome", render: (row) => <span className="font-medium">{row.displayName}</span> },
             { key: "document", header: "CPF/CNPJ", render: (row) => row.document },
@@ -122,10 +140,7 @@ export default function ClientesPage() {
                     <Eye className="mr-1 h-4 w-4" />
                     Ver
                   </Button>
-                  <Link
-                    href={`/clientes/${row.id}`}
-                    className="inline-flex"
-                  >
+                  <Link href={`/clientes/${row.id}`} className="inline-flex">
                     <Button variant="outline" size="sm">
                       <Pencil className="mr-1 h-4 w-4" />
                       Editar
@@ -140,7 +155,7 @@ export default function ClientesPage() {
 
       <PersonPreviewDialog
         open={Boolean(viewingCustomer)}
-        onOpenChange={(open) => !open && setViewingCustomerId(null)}
+        onOpenChange={(nextOpen) => !nextOpen && setViewingCustomerId(null)}
         person={viewingCustomer}
         title="Cliente"
         subtitle="Visualização rápida do cadastro."

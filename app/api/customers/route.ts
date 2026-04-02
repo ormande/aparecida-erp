@@ -1,109 +1,79 @@
-import { getServerSession } from "next-auth";
-import { NextResponse } from "next/server";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapCustomerToClient } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { getRequiredSessionContext } from "@/lib/auth";
+import { personSchema } from "@/lib/person-schema";
+import { customerService } from "@/services/customer.service";
+import { ServiceError } from "@/services/service-error";
 
-const customerSchema = z.object({
-  tipo: z.enum(["pf", "pj"]),
-  situacao: z.enum(["Ativo", "Inativo"]),
-  celular: z.string().min(1),
-  whatsapp: z.string().optional().default(""),
-  email: z.string().optional().default(""),
-  observacoes: z.string().optional().default(""),
-  nomeCompleto: z.string().optional().default(""),
-  cpf: z.string().optional().default(""),
-  dataNascimento: z.string().optional().default(""),
-  nomeFantasia: z.string().optional().default(""),
-  razaoSocial: z.string().optional().default(""),
-  cnpj: z.string().optional().default(""),
-});
+const customerSchema = personSchema.merge(
+  z.object({
+    nomeCompleto: z.string().max(150).optional().default(""),
+    nomeFantasia: z.string().max(150).optional().default(""),
+    razaoSocial: z.string().max(150).optional().default(""),
+    situacao: z.enum(["Ativo", "Inativo"]),
+    celular: z.string().min(1).max(20),
+    whatsapp: z.string().max(20).optional().default(""),
+    email: z.string().optional().default(""),
+    observacoes: z.string().max(2000).optional().default(""),
+  }),
+);
 
-function mapStatus(status: "Ativo" | "Inativo") {
-  return status === "Ativo" ? "ATIVO" : "INATIVO";
-}
-
-function mapType(type: "pf" | "pj") {
-  return type === "pf" ? "PF" : "PJ";
-}
-
-export async function GET() {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, details: error.details }, { status: error.status });
   }
 
-  const customers = await prisma.customer.findMany({
-    where: {
-      companyId: session.user.companyId,
-    },
-    include: {
-      _count: {
-        select: {
-          vehicles: true,
-        },
-      },
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-  });
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+}
 
-  return NextResponse.json({
-    customers: customers.map(mapCustomerToClient),
-  });
+export async function GET(request: NextRequest) {
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
+  const limit = Number(request.nextUrl.searchParams.get("limit") ?? "10");
+  const search = request.nextUrl.searchParams.get("search") ?? undefined;
+
+  try {
+    const result = await customerService.list(
+      { companyId: auth.context.companyId },
+      { page, limit, search },
+    );
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId || !session.user.id) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const payload = customerSchema.parse(await request.json());
+  let payload: z.infer<typeof customerSchema>;
+  try {
+    payload = customerSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
+    }
 
-  const customer = await prisma.customer.create({
-    data: {
-      companyId: session.user.companyId,
-      type: mapType(payload.tipo),
-      status: mapStatus(payload.situacao),
-      phone: payload.celular,
-      whatsapp: payload.whatsapp || payload.celular,
-      email: payload.email || null,
-      notes: payload.observacoes || null,
-      fullName: payload.tipo === "pf" ? payload.nomeCompleto || null : null,
-      cpf: payload.tipo === "pf" ? payload.cpf || null : null,
-      birthDate: payload.tipo === "pf" && payload.dataNascimento ? new Date(`${payload.dataNascimento}T00:00:00`) : null,
-      tradeName: payload.tipo === "pj" ? payload.nomeFantasia || null : null,
-      legalName: payload.tipo === "pj" ? payload.razaoSocial || null : null,
-      cnpj: payload.tipo === "pj" ? payload.cnpj || null : null,
-    },
-    include: {
-      _count: {
-        select: {
-          vehicles: true,
-        },
-      },
-    },
-  });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-  await prisma.auditLog.create({
-    data: {
-      companyId: session.user.companyId,
-      userId: session.user.id,
-      entityType: "customer",
-      entityId: customer.id,
-      action: "CREATE",
-      afterData: {
-        id: customer.id,
-        type: customer.type,
-      },
-    },
-  });
+  try {
+    const result = await customerService.create(payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
+    });
 
-  return NextResponse.json({ customer: mapCustomerToClient(customer) }, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }

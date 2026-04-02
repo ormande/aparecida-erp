@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
+import { useDebounce } from "@/hooks/use-debounce";
 import { usePayables } from "@/hooks/use-payables";
 import { useReceivables } from "@/hooks/use-receivables";
 import { useServiceOrders } from "@/hooks/use-service-orders";
@@ -30,16 +31,17 @@ function getTodayLocalIso() {
 
 export default function DashboardPage() {
   const { unitId, currentUnit, isLoading: unitLoading } = useCurrentUnit();
+  const debouncedUnitId = useDebounce(unitId, 300);
   const period = getMonthPrefixLocal();
   const previousPeriodDate = new Date();
   previousPeriodDate.setMonth(previousPeriodDate.getMonth() - 1);
   const previousPeriod = getMonthPrefixLocal(previousPeriodDate);
 
-  const { orders, hydrated: ordersHydrated } = useServiceOrders({ unitId });
-  const { receivables, hydrated: receivablesHydrated } = useReceivables({ unitId, period });
-  const { payables, hydrated: payablesHydrated } = usePayables({ unitId, period });
-  const { receivables: previousReceivables } = useReceivables({ unitId, period: previousPeriod });
-  const { payables: previousPayables } = usePayables({ unitId, period: previousPeriod });
+  const { orders, hydrated: ordersHydrated } = useServiceOrders({ unitId: debouncedUnitId });
+  const { receivables, hydrated: receivablesHydrated } = useReceivables({ unitId: debouncedUnitId, period });
+  const { payables, hydrated: payablesHydrated } = usePayables({ unitId: debouncedUnitId, period });
+  const { receivables: previousReceivables } = useReceivables({ unitId: debouncedUnitId, period: previousPeriod });
+  const { payables: previousPayables } = usePayables({ unitId: debouncedUnitId, period: previousPeriod });
 
   const today = getTodayLocalIso();
   const openedToday = orders.filter((order) => order.openedAt === today && order.status !== "Cancelada").length;

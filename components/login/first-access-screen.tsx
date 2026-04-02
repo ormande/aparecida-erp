@@ -11,7 +11,6 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSetupStatus } from "@/hooks/use-setup-status";
-import { authStorageKeys } from "@/hooks/use-auth";
 
 export function FirstAccessScreen() {
   const { hasUsers, isLoading } = useSetupStatus();
@@ -66,8 +65,6 @@ export function FirstAccessScreen() {
       toast.error(data.message ?? "Não foi possível concluir o primeiro acesso.");
       return;
     }
-
-    window.localStorage.setItem(authStorageKeys.workspace, data.unitId);
 
     const loginResult = await signIn("credentials", {
       email,

@@ -1,137 +1,76 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapSupplierToAppSupplier } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { getRequiredSessionContext } from "@/lib/auth";
+import { personSchema } from "@/lib/person-schema";
+import { ServiceError } from "@/services/service-error";
+import { supplierService } from "@/services/supplier.service";
 
-const supplierSchema = z.object({
-  tipo: z.enum(["pf", "pj"]),
-  situacao: z.enum(["Ativo", "Inativo"]),
-  categoria: z.enum(["Pneus", "Peças", "Insumos", "Serviços", "Outros"]),
-  celular: z.string().min(1),
-  whatsapp: z.string().optional().default(""),
-  email: z.string().optional().default(""),
-  observacoes: z.string().optional().default(""),
-  nomeCompleto: z.string().optional().default(""),
-  cpf: z.string().optional().default(""),
-  dataNascimento: z.string().optional().default(""),
-  nomeFantasia: z.string().optional().default(""),
-  razaoSocial: z.string().optional().default(""),
-  cnpj: z.string().optional().default(""),
-});
+const supplierSchema = personSchema.merge(
+  z.object({
+    nomeCompleto: z.string().max(150).optional().default(""),
+    nomeFantasia: z.string().max(150).optional().default(""),
+    razaoSocial: z.string().max(150).optional().default(""),
+    situacao: z.enum(["Ativo", "Inativo"]),
+    categoria: z.enum(["Pneus", "Peças", "Insumos", "Serviços", "Outros"]),
+    celular: z.string().min(1).max(20),
+    whatsapp: z.string().max(20).optional().default(""),
+    email: z.string().optional().default(""),
+    observacoes: z.string().max(2000).optional().default(""),
+  }),
+);
 
-function mapStatus(status: "Ativo" | "Inativo") {
-  return status === "Ativo" ? "ATIVO" : "INATIVO";
-}
-
-function mapType(type: "pf" | "pj") {
-  return type === "pf" ? "PF" : "PJ";
-}
-
-function mapCategory(category: "Pneus" | "Peças" | "Insumos" | "Serviços" | "Outros") {
-  switch (category) {
-    case "Pneus":
-      return "PNEUS";
-    case "Peças":
-      return "PECAS";
-    case "Insumos":
-      return "INSUMOS";
-    case "Serviços":
-      return "SERVICOS";
-    case "Outros":
-    default:
-      return "OUTROS";
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, message: error.message, details: error.details }, { status: error.status });
   }
-}
 
-async function requireSession() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.companyId || !session.user.id) {
-    return null;
-  }
-  return session;
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
 }
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const session = await requireSession();
-  if (!session) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
-  }
-
-  const supplier = await prisma.supplier.findFirst({
-    where: {
-      id: params.id,
-      companyId: session.user.companyId,
-    },
+  const auth = await getRequiredSessionContext({
+    allowedRoles: ["PROPRIETARIO", "GESTOR"],
   });
-
-  if (!supplier) {
-    return NextResponse.json({ message: "Fornecedor não encontrado." }, { status: 404 });
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  return NextResponse.json({ supplier: mapSupplierToAppSupplier(supplier) });
+  try {
+    const result = await supplierService.getById(params.id, { companyId: auth.context.companyId });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const session = await requireSession();
-  if (!session) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext({
+    allowedRoles: ["PROPRIETARIO", "GESTOR"],
+  });
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const payload = supplierSchema.parse(await request.json());
-  const existing = await prisma.supplier.findFirst({
-    where: {
-      id: params.id,
-      companyId: session.user.companyId,
-    },
-  });
-
-  if (!existing) {
-    return NextResponse.json({ message: "Fornecedor não encontrado." }, { status: 404 });
+  let payload: z.infer<typeof supplierSchema>;
+  try {
+    payload = supplierSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const supplier = await prisma.supplier.update({
-    where: {
-      id: params.id,
-    },
-    data: {
-      type: mapType(payload.tipo),
-      status: mapStatus(payload.situacao),
-      category: mapCategory(payload.categoria),
-      phone: payload.celular,
-      whatsapp: payload.whatsapp || payload.celular,
-      email: payload.email || null,
-      notes: payload.observacoes || null,
-      fullName: payload.tipo === "pf" ? payload.nomeCompleto || null : null,
-      cpf: payload.tipo === "pf" ? payload.cpf || null : null,
-      birthDate: payload.tipo === "pf" && payload.dataNascimento ? new Date(`${payload.dataNascimento}T00:00:00`) : null,
-      tradeName: payload.tipo === "pj" ? payload.nomeFantasia || null : null,
-      legalName: payload.tipo === "pj" ? payload.razaoSocial || null : null,
-      cnpj: payload.tipo === "pj" ? payload.cnpj || null : null,
-    },
-  });
+  try {
+    const result = await supplierService.update(params.id, payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
+    });
 
-  await prisma.auditLog.create({
-    data: {
-      companyId: session.user.companyId,
-      userId: session.user.id,
-      entityType: "supplier",
-      entityId: supplier.id,
-      action: "UPDATE",
-      beforeData: {
-        id: existing.id,
-        type: existing.type,
-        category: existing.category,
-      },
-      afterData: {
-        id: supplier.id,
-        type: supplier.type,
-        category: supplier.category,
-      },
-    },
-  });
-
-  return NextResponse.json({ supplier: mapSupplierToAppSupplier(supplier) });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }

@@ -1,8 +1,28 @@
 import { compare } from "bcryptjs";
-import type { NextAuthOptions } from "next-auth";
+import type { NextAuthOptions, Session } from "next-auth";
+import { getServerSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+
+export type AppAccessLevel = "PROPRIETARIO" | "GESTOR" | "FUNCIONARIO";
+
+export type RequiredSessionContext = {
+  session: Session;
+  userId: string;
+  companyId: string;
+  activeUnitId: string;
+};
+
+export function checkRole(session: Session, allowedRoles: AppAccessLevel[]): boolean {
+  const level = session.user?.accessLevel as AppAccessLevel | undefined;
+  return level != null && allowedRoles.includes(level);
+}
+
+export type GetRequiredSessionContextOptions = {
+  allowedRoles?: AppAccessLevel[];
+};
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -87,7 +107,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.companyId = user.companyId;
@@ -95,6 +115,24 @@ export const authOptions: NextAuthOptions = {
         token.status = user.status;
         token.phone = user.phone;
         token.units = user.units;
+
+        if (user.units.length === 1) {
+          token.activeUnitId = user.units[0].id;
+        } else {
+          delete token.activeUnitId;
+        }
+      }
+
+      if (trigger === "update" && session && typeof session === "object") {
+        const payload = session as Record<string, unknown>;
+        if ("activeUnitId" in payload) {
+          const next = payload.activeUnitId;
+          if (next === "" || next === null) {
+            token.activeUnitId = "";
+          } else if (typeof next === "string" && token.units?.some((u) => u.id === next)) {
+            token.activeUnitId = next;
+          }
+        }
       }
 
       return token;
@@ -107,9 +145,57 @@ export const authOptions: NextAuthOptions = {
         session.user.status = token.status;
         session.user.phone = token.phone;
         session.user.units = token.units ?? [];
+        session.user.activeUnitId = token.activeUnitId;
       }
+
+      session.activeUnitId = token.activeUnitId;
 
       return session;
     },
   },
 };
+
+/**
+ * Sessão autenticada com unidade ativa obrigatória (não aceita visão geral vazia em rotas de negócio).
+ * Retorna NextResponse pronto quando faltar autenticação ou unidade ativa.
+ */
+export async function getRequiredSessionContext(
+  options?: GetRequiredSessionContextOptions,
+): Promise<
+  { ok: true; context: RequiredSessionContext } | { ok: false; response: NextResponse }
+> {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id || !session.user.companyId) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
+  }
+
+  const activeUnitId = session.user.activeUnitId ?? session.activeUnitId;
+
+  if (activeUnitId === undefined || activeUnitId === null || activeUnitId === "") {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Unauthorized or no active unit" }, { status: 403 }),
+    };
+  }
+
+  if (options?.allowedRoles?.length && !checkRole(session, options.allowedRoles)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+    };
+  }
+
+  return {
+    ok: true,
+    context: {
+      session,
+      userId: session.user.id,
+      companyId: session.user.companyId,
+      activeUnitId,
+    },
+  };
+}

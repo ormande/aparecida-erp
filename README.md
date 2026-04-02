@@ -26,6 +26,25 @@ O projeto roda sem nenhuma variável de ambiente configurada. Para entrar, use o
 2. Preencha apenas quando for ativar banco, NextAuth ou Google Login.
 3. Enquanto isso não acontece, o sistema continua funcional com mocks e autenticação demo.
 
+## Variáveis de Ambiente
+
+- `DATABASE_URL` (Railway + pooling): URL usada pela aplicação (e pelo Prisma Client) em ambiente serverless. Nesta codebase, ela deve conter os parâmetros `connection_limit` e `pool_timeout` para evitar esgotamento de conexões.
+- `DIRECT_URL` (sem pooling): URL usada pelo Prisma em operações de migrations (mantém o comportamento sem pooling para migrações).
+
+- `CRON_SECRET`: segredo usado para autorizar o cron `GET /api/cron/mark-overdue`. No Railway/Vercel, configure este valor no painel de Environment Variables com o mesmo `CRON_SECRET` do `.env`. Para gerar um valor seguro, você pode usar `crypto.randomUUID()`.
+
+Ao atualizar o banco no Railway, mantenha os mesmos parâmetros de pooling na `DATABASE_URL`.
+
+## Monitoramento de Erros
+
+1. Crie uma conta no [Sentry](https://sentry.io/).
+2. Crie um novo projeto para **Next.js** (ou **Browser + Node**).
+3. Copie o DSN do projeto e configure em `NEXT_PUBLIC_SENTRY_DSN` na Vercel.
+4. Configure também `SENTRY_ORG` e `SENTRY_PROJECT` na Vercel.
+5. Se precisar enviar sourcemaps automaticamente, configure `SENTRY_AUTH_TOKEN` na Vercel.
+
+Após configurar as variáveis no painel da Vercel, os erros de produção serão capturados automaticamente e enviados para o Sentry.
+
 ## Como ativar o Login com Google
 
 1. Crie um projeto no Google Cloud Console.

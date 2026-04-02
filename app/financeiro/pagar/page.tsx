@@ -24,6 +24,7 @@ import { usePayables } from "@/hooks/use-payables";
 import { useSuppliers } from "@/hooks/use-suppliers";
 import { useUnits } from "@/hooks/use-units";
 import { currency, date } from "@/lib/formatters";
+import { getPersonName } from "@/lib/person-helpers";
 
 const categoryOptions = [
   { value: "Aluguel", label: "Aluguel" },
@@ -57,7 +58,7 @@ export default function FinanceiroPagarPage() {
 
   const supplierOptions = suppliers.map((supplier) => ({
     value: supplier.id,
-    label: supplier.tipo === "pf" ? supplier.nomeCompleto ?? "-" : supplier.nomeFantasia ?? "-",
+    label: getPersonName(supplier, "-"),
   }));
   const unitOptions = [
     { value: "general", label: "Geral" },
@@ -78,6 +79,11 @@ export default function FinanceiroPagarPage() {
             : "-",
       })),
     [payables],
+  );
+
+  const searchKeys = useMemo<Array<(row: (typeof data)[number]) => string>>(
+    () => [(row) => row.description, (row) => row.supplierName, (row) => row.category],
+    [],
   );
 
   const editingPayable = data.find((item) => item.id === editingPayableId) ?? null;
@@ -227,7 +233,7 @@ export default function FinanceiroPagarPage() {
                 </DialogHeader>
               <div className="grid gap-4 py-2">
                 <div className="grid gap-2">
-                  <Label htmlFor="description">Descricao</Label>
+                  <Label htmlFor="description">Descrição</Label>
                   <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} />
                 </div>
                 <div className="grid gap-2">
@@ -272,7 +278,7 @@ export default function FinanceiroPagarPage() {
                   </div>
                 </div>
                 <Button onClick={editingPayable ? handleUpdatePayable : handleCreatePayable}>
-                  {editingPayable ? "Salvar alteracoes" : "Salvar conta a pagar"}
+                  {editingPayable ? "Salvar alterações" : "Salvar conta a pagar"}
                 </Button>
               </div>
             </DialogContent>
@@ -311,7 +317,7 @@ export default function FinanceiroPagarPage() {
         </Card>
         <Card className="surface-card border-none">
           <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground">Total pago no mes</p>
+            <p className="text-sm text-muted-foreground">Total pago no mês</p>
             <p className="mt-3 text-3xl font-semibold">{currency(totalPagoMes)}</p>
           </CardContent>
         </Card>
@@ -320,19 +326,19 @@ export default function FinanceiroPagarPage() {
       <div className="surface-card space-y-5 p-6">
         <div className="grid gap-3 md:grid-cols-3">
           <Input value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} placeholder="Filtrar por status" />
-          <Input value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} placeholder="Filtrar por periodo (AAAA-MM)" />
+          <Input value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} placeholder="Filtrar por período (AAAA-MM)" />
           <SearchableSelect value={unitFilter} onChange={setUnitFilter} placeholder="Filtrar por unidade" options={unitOptions} />
         </div>
         <DataTable
           data={data}
           isLoading={!hydrated}
           pageSize={10}
-          searchPlaceholder="Buscar por descricao, fornecedor ou categoria"
-          searchKeys={[(row) => row.description, (row) => row.supplierName, (row) => row.category]}
+          searchPlaceholder="Buscar por descrição, fornecedor ou categoria"
+          searchKeys={searchKeys}
           emptyTitle="Nenhuma conta a pagar encontrada"
           emptyDescription="Lance despesas por unidade ou no geral conforme a necessidade da operação."
           columns={[
-            { key: "description", header: "Descricao", render: (row) => <span className="font-medium">{row.description}</span> },
+            { key: "description", header: "Descrição", render: (row) => <span className="font-medium">{row.description}</span> },
             { key: "supplier", header: "Fornecedor", render: (row) => row.supplierName },
             { key: "category", header: "Categoria", render: (row) => row.category },
             { key: "unit", header: "Unidade", render: (row) => row.unitName },

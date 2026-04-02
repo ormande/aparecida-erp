@@ -2,11 +2,11 @@ import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { authOptions } from "@/lib/auth";
+import { authOptions, checkRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const createUnitSchema = z.object({
-  name: z.string().min(2),
+  name: z.string().min(2).max(100),
 });
 
 function slugify(value: string) {
@@ -26,11 +26,25 @@ export async function GET() {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
   }
 
+  const where: {
+    companyId: string;
+    isActive: boolean;
+    id?: { in: string[] };
+  } = {
+    companyId: session.user.companyId,
+    isActive: true,
+  };
+
+  if (session.user.accessLevel !== "PROPRIETARIO") {
+    const unitIds = (session.user.units ?? []).map((u) => u.id);
+    if (unitIds.length === 0) {
+      return NextResponse.json({ units: [] });
+    }
+    where.id = { in: unitIds };
+  }
+
   const units = await prisma.unit.findMany({
-    where: {
-      companyId: session.user.companyId,
-      isActive: true,
-    },
+    where,
     orderBy: {
       createdAt: "asc",
     },
@@ -52,7 +66,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
   }
 
-  if (session.user.accessLevel !== "PROPRIETARIO") {
+  if (!checkRole(session, ["PROPRIETARIO"])) {
     return NextResponse.json({ message: "Sem permissão." }, { status: 403 });
   }
 

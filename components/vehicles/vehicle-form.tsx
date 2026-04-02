@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Client } from "@/lib/app-types";
+import { getPersonName } from "@/lib/person-helpers";
 
 export type VehicleFormValues = {
   plate: string;
@@ -33,10 +34,6 @@ function maskPlate(value: string) {
   return value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 8);
 }
 
-function getClientDisplayName(client: Client) {
-  return client.tipo === "pf" ? client.nomeCompleto ?? "Sem nome" : client.nomeFantasia ?? "Sem nome";
-}
-
 export function VehicleForm({
   customers,
   submitLabel,
@@ -59,7 +56,7 @@ export function VehicleForm({
     () =>
       customers.map((customer) => ({
         value: customer.id,
-        label: getClientDisplayName(customer),
+        label: getPersonName(customer),
       })),
     [customers],
   );
@@ -141,7 +138,7 @@ export function VehicleForm({
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="notes">Observacoes</Label>
+        <Label htmlFor="notes">Observações</Label>
         <Textarea id="notes" value={values.notes} onChange={(event) => updateField("notes", event.target.value)} />
       </div>
 

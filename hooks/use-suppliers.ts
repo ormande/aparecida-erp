@@ -1,51 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback } from "react";
+import useSWR from "swr";
 
 import type { Supplier } from "@/lib/app-types";
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 export function useSuppliers() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const { data, error, mutate } = useSWR<{ suppliers?: Supplier[] }>("/api/suppliers", fetcher);
 
-  useEffect(() => {
-    let active = true;
+  const setSuppliers = useCallback(
+    (value: Supplier[] | ((current: Supplier[]) => Supplier[])) => {
+      void mutate((current) => {
+        const suppliers = current?.suppliers ?? [];
+        const nextSuppliers = typeof value === "function" ? value(suppliers) : value;
 
-    fetch("/api/suppliers", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Falha ao carregar fornecedores.");
-        }
-
-        return response.json();
-      })
-      .then((data) => {
-        if (active) {
-          setSuppliers(data.suppliers ?? []);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setSuppliers([]);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setHydrated(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return useMemo(
-    () => ({
-      suppliers,
-      hydrated,
-      setSuppliers,
-    }),
-    [hydrated, suppliers],
+        return {
+          suppliers: nextSuppliers,
+        };
+      }, false);
+    },
+    [mutate],
   );
+
+  return {
+    suppliers: data?.suppliers ?? [],
+    hydrated: data !== undefined || error !== undefined,
+    setSuppliers,
+  };
 }

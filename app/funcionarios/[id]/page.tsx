@@ -8,13 +8,15 @@ import { EmployeeForm } from "@/components/employees/employee-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { Employee } from "@/lib/app-types";
+import type { Employee, EmployeeAccessLevel } from "@/lib/app-types";
 
-function AccessLevelBadge({ level }: { level: "Proprietário" | "Funcionário" }) {
+function AccessLevelBadge({ level }: { level: EmployeeAccessLevel }) {
   const styles =
     level === "Proprietário"
       ? "bg-[rgba(201,168,76,0.16)] text-[var(--color-gold-dark)]"
-      : "bg-blue-500/15 text-blue-700 dark:text-blue-300";
+      : level === "Gestor"
+        ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
+        : "bg-blue-500/15 text-blue-700 dark:text-blue-300";
 
   return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${styles}`}>{level}</span>;
 }

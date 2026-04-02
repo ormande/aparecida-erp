@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { getSession } from "next-auth/react";
 import { LogIn } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,9 +26,23 @@ export function LoginScreen() {
   const canSubmit = email.trim().length > 0 && password.trim().length > 0 && !submitting;
 
   useEffect(() => {
-    if (isAuthenticated) {
-      router.replace(searchParams.get("next") || "/dashboard");
+    if (!isAuthenticated) {
+      return;
     }
+
+    async function redirectAfterAuth() {
+      const session = await getSession();
+      const units = session?.user?.units ?? [];
+      const active = session?.activeUnitId ?? session?.user?.activeUnitId;
+      const nextUrl = searchParams.get("next") || "/dashboard";
+      if (units.length > 1 && active === undefined) {
+        router.replace(`/selecionar-unidade?next=${encodeURIComponent(nextUrl)}`);
+        return;
+      }
+      router.replace(nextUrl);
+    }
+
+    void redirectAfterAuth();
   }, [isAuthenticated, router, searchParams]);
 
   async function handleLogin() {
@@ -48,7 +63,16 @@ export function LoginScreen() {
     }
 
     toast.success("Login realizado com sucesso.");
-    router.push(searchParams.get("next") || "/dashboard");
+
+    const session = await getSession();
+    const units = session?.user?.units ?? [];
+    const active = session?.activeUnitId ?? session?.user?.activeUnitId;
+    const nextUrl = searchParams.get("next") || "/dashboard";
+    if (units.length > 1 && active === undefined) {
+      router.push(`/selecionar-unidade?next=${encodeURIComponent(nextUrl)}`);
+      return;
+    }
+    router.push(nextUrl);
   }
 
   return (
@@ -73,7 +97,7 @@ export function LoginScreen() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="border-white/10 bg-white/95 text-[var(--color-navy)]"
-              placeholder="voce@empresa.com"
+              placeholder="email@exemplo.com"
             />
           </div>
           <div className="grid gap-2">

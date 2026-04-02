@@ -44,10 +44,12 @@ export function ClientForm({
   client,
   submitLabel,
   onSubmit,
+  onDirtyChange,
 }: {
   client?: Client;
   submitLabel: string;
   onSubmit: (values: CadastroPessoaFormValues) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) {
   return (
     <CadastroPessoaForm
@@ -55,6 +57,7 @@ export function ClientForm({
       submitLabel={submitLabel}
       initialValues={getInitialValues(client)}
       onSubmit={onSubmit}
+      onDirtyChange={onDirtyChange}
     />
   );
 }

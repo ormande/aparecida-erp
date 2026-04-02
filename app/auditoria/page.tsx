@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
@@ -31,6 +31,10 @@ function formatDateTime(value: string) {
 export default function AuditoriaPage() {
   const [logs, setLogs] = useState<AuditRow[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const searchKeys = useMemo<Array<(row: AuditRow) => string>>(
+    () => [(row) => row.userName, (row) => row.summary, (row) => row.entityType, (row) => row.unitName],
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -80,7 +84,7 @@ export default function AuditoriaPage() {
             isLoading={!hydrated}
             pageSize={10}
             searchPlaceholder="Buscar por usuário, ação ou resumo"
-            searchKeys={[(row) => row.userName, (row) => row.summary, (row) => row.entityType, (row) => row.unitName]}
+            searchKeys={searchKeys}
             emptyTitle="Nenhuma movimentação registrada"
             emptyDescription="As alterações importantes do sistema aparecerão aqui automaticamente."
             columns={[

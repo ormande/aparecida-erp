@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/primeiro-acesso"]);
+const PUBLIC_PATHS = new Set(["/", "/login", "/primeiro-acesso", "/selecionar-unidade"]);
 
 export function RootAppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

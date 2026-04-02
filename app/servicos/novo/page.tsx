@@ -13,17 +13,17 @@ export default function NovoServicoPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Novo servico"
-        subtitle="Cadastre um servico para reutilizar na abertura das ordens de servico."
+        title="Novo serviço"
+        subtitle="Cadastre um serviço para reutilizar na abertura das ordens de serviço."
       />
 
       <Card className="surface-card border-none">
         <CardHeader>
-          <CardTitle>Cadastro de servico</CardTitle>
+          <CardTitle>Cadastro de serviço</CardTitle>
         </CardHeader>
         <CardContent>
           <ServiceForm
-            submitLabel="Salvar servico"
+            submitLabel="Salvar serviço"
             onSubmit={async (values) => {
               const response = await fetch("/api/services", {
                 method: "POST",
@@ -36,11 +36,11 @@ export default function NovoServicoPage() {
               const data = await response.json();
 
               if (!response.ok) {
-                toast.error(data.message ?? "Nao foi possivel cadastrar o servico.");
+                toast.error(data.message ?? "Não foi possível cadastrar o serviço.");
                 return;
               }
 
-              toast.success("Servico cadastrado com sucesso!");
+              toast.success("Serviço cadastrado com sucesso!");
               router.push("/servicos");
             }}
           />

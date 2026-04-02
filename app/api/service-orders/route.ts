@@ -1,237 +1,108 @@
-import { getServerSession } from "next-auth";
-import { NextResponse } from "next/server";
-import { z } from "zod";
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapServiceOrderStatus } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { getRequiredSessionContext } from "@/lib/auth";
+import { ServiceError } from "@/services/service-error";
+import { serviceOrderService } from "@/services/service-order.service";
 
 const orderSchema = z.object({
-  unitId: z.string().min(1),
   customerId: z.string().optional().nullable(),
-  customerNameSnapshot: z.string().optional().default(""),
+  customerNameSnapshot: z.string().max(100).optional().default(""),
   vehicleId: z.string().optional().nullable(),
   mileage: z.coerce.number().optional().nullable(),
   dueDate: z.string().optional().nullable(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).optional().nullable(),
-  paymentMethod: z.string().optional().default(""),
-  notes: z.string().optional().default(""),
+  paymentMethod: z.string().max(100).optional().default(""),
+  notes: z.string().max(2000).optional().default(""),
   services: z
     .array(
       z.object({
         serviceId: z.string().optional().nullable(),
-        description: z.string().min(1),
+        description: z.string().min(1).max(500),
         laborPrice: z.coerce.number().min(0),
       }),
     )
     .min(1),
 });
 
-function buildOrderNumber(year: number, sequence: number) {
-  return `OS-${year}-${String(sequence).padStart(4, "0")}`;
-}
-
-async function getNextOrderNumber(companyId: string) {
-  const currentYear = new Date().getFullYear();
-  const orders = await prisma.serviceOrder.findMany({
-    where: {
-      companyId,
-      number: {
-        startsWith: `OS-${currentYear}-`,
-      },
-    },
-    select: {
-      number: true,
-    },
-    orderBy: {
-      number: "asc",
-    },
-  });
-
-  const used = new Set(
-    orders
-      .map((order) => Number(order.number.split("-").at(-1)))
-      .filter((value) => Number.isFinite(value) && value > 0),
-  );
-
-  let next = 1;
-  while (used.has(next)) {
-    next += 1;
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, details: error.details }, { status: error.status });
   }
 
-  return buildOrderNumber(currentYear, next);
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
 }
 
-function getCustomerDisplayName(order: {
-  customer: { type: "PF" | "PJ"; fullName: string | null; tradeName: string | null } | null;
-  customerNameSnapshot: string | null;
-}) {
-  if (order.customer) {
-    return order.customer.type === "PF" ? order.customer.fullName ?? "-" : order.customer.tradeName ?? "-";
+export async function GET(request: NextRequest) {
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  return order.customerNameSnapshot ?? "Cliente avulso";
-}
+  const searchParams = request.nextUrl.searchParams;
+  const page = Number(searchParams.get("page") ?? "1");
+  const limit = Number(searchParams.get("limit") ?? "10");
 
-export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
+  try {
+    const result = await serviceOrderService.list(
+      {
+        page,
+        limit,
+        search: searchParams.get("search") ?? undefined,
+        status: searchParams.get("status") ?? undefined,
+        unitId: searchParams.get("unitId") ?? undefined,
+        vehicleId: searchParams.get("vehicleId") ?? undefined,
+        customerId: searchParams.get("customerId") ?? undefined,
+      },
+      {
+        companyId: auth.context.companyId,
+      },
+    );
 
-  if (!session?.user?.companyId) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
   }
-
-  const { searchParams } = new URL(request.url);
-  const vehicleId = searchParams.get("vehicleId");
-  const customerId = searchParams.get("customerId");
-  const unitId = searchParams.get("unitId");
-
-  const orders = await prisma.serviceOrder.findMany({
-    where: {
-      companyId: session.user.companyId,
-      unitId: unitId || undefined,
-      vehicleId: vehicleId || undefined,
-      customerId: customerId || undefined,
-    },
-    orderBy: {
-      openedAt: "desc",
-    },
-    include: {
-      customer: {
-        select: {
-          type: true,
-          fullName: true,
-          tradeName: true,
-        },
-      },
-      vehicle: {
-        select: {
-          plate: true,
-        },
-      },
-      unit: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-      items: {
-        select: {
-          description: true,
-        },
-      },
-      receivables: {
-        select: {
-          status: true,
-        },
-      },
-    },
-  });
-
-  return NextResponse.json({
-    orders: orders.map((order) => ({
-      id: order.id,
-      number: order.number,
-      clientId: order.customerId,
-      vehicleId: order.vehicleId,
-      clientName: getCustomerDisplayName(order),
-      plate: order.vehicle?.plate ?? "-",
-      unitId: order.unitId,
-      unitName: order.unit.name,
-      servicesLabel: order.items.map((service) => service.description).join(", "),
-      status: mapServiceOrderStatus(order.status),
-      total: Number(order.totalAmount),
-      openedAt: order.openedAt.toISOString().slice(0, 10),
-      dueDate: order.dueDate?.toISOString().slice(0, 10) ?? null,
-      paymentTerm: order.paymentTerm,
-      paymentMethod: order.paymentMethod ?? "",
-      isStandalone: order.isStandalone,
-      receivableStatus: order.receivables[0]?.status ?? null,
-    })),
-  });
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId || !session.user.id) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const payload = orderSchema.parse(await request.json());
-  const totalAmount = payload.services.reduce((sum, item) => sum + Number(item.laborPrice), 0);
-  const number = await getNextOrderNumber(session.user.companyId);
-  const paymentTerm = payload.paymentTerm ?? "A_VISTA";
-  const dueDate =
-    paymentTerm === "A_PRAZO" && payload.dueDate
-      ? new Date(`${payload.dueDate}T00:00:00`)
-      : new Date();
+  let payload: z.infer<typeof orderSchema>;
+  try {
+    payload = orderSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
+    }
 
-  const order = await prisma.serviceOrder.create({
-    data: {
-      companyId: session.user.companyId,
-      unitId: payload.unitId,
-      customerId: payload.customerId || null,
-      customerNameSnapshot: payload.customerId ? null : payload.customerNameSnapshot || "Cliente avulso",
-      vehicleId: payload.vehicleId || null,
-      number,
-      mileage: payload.mileage ?? null,
-      dueDate,
-      paymentTerm,
-      paymentMethod: payload.paymentMethod || null,
-      notes: payload.notes || null,
-      isStandalone: !payload.customerId,
-      totalAmount,
-      createdByUserId: session.user.id,
-      updatedByUserId: session.user.id,
-      items: {
-        create: payload.services.map((service) => ({
-          serviceId: service.serviceId || null,
-          description: service.description,
-          laborPrice: service.laborPrice,
-          lineTotal: service.laborPrice,
-        })),
-      },
-    },
-  });
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-  await prisma.auditLog.create({
-    data: {
-      companyId: session.user.companyId,
-      unitId: payload.unitId,
-      userId: session.user.id,
-      entityType: "service_order",
-      entityId: order.id,
-      action: "CREATE",
-      afterData: {
-        number: order.number,
-        customerId: order.customerId,
-        customerNameSnapshot: order.customerNameSnapshot,
-        vehicleId: order.vehicleId,
-        totalAmount: Number(order.totalAmount),
-        dueDate: order.dueDate?.toISOString(),
-        paymentTerm: order.paymentTerm,
-        sourceModule: "service_orders",
-        originType: "SERVICE_ORDER",
-      },
-    },
-  });
+  try {
+    const result = await serviceOrderService.create(payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
+    });
 
-  await prisma.accountReceivable.create({
-    data: {
-      companyId: session.user.companyId,
-      unitId: payload.unitId,
-      customerId: payload.customerId || null,
-      serviceOrderId: order.id,
-      originType: "SERVICE_ORDER",
-      description: order.number,
-      amount: totalAmount,
-      dueDate,
-      status: "PENDENTE",
-      installmentGroupId: null,
-      installmentNumber: null,
-      installmentCount: null,
-    },
-  });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      error.meta?.modelName === "ServiceOrder"
+    ) {
+      return NextResponse.json(
+        { message: "Conflito ao gerar número da OS. Tente novamente." },
+        { status: 409 },
+      );
+    }
 
-  return NextResponse.json({ orderId: order.id, number: order.number }, { status: 201 });
+    return handleServiceError(error);
+  }
 }

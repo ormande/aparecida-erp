@@ -1,149 +1,81 @@
-import { randomUUID } from "crypto";
-
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapReceivableToAppReceivable } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { getRequiredSessionContext } from "@/lib/auth";
+import { receivableService } from "@/services/receivable.service";
+import { ServiceError } from "@/services/service-error";
 
 const receivableSchema = z.object({
-  description: z.string().min(2),
+  description: z.string().min(2).max(500),
   customerId: z.string().min(1),
   amount: z.coerce.number().min(0.01),
   dueDate: z.string().min(1),
-  unitId: z.string().optional().nullable(),
   installments: z.coerce.number().int().min(1).max(24).default(1),
 });
 
-function addMonths(base: Date, months: number) {
-  const next = new Date(base);
-  next.setMonth(next.getMonth() + months);
-  return next;
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, message: error.message, details: error.details }, { status: error.status });
+  }
+
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
 }
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext({
+    allowedRoles: ["PROPRIETARIO", "GESTOR"],
+  });
+  if (!auth.ok) {
+    return auth.response;
   }
 
   const { searchParams } = new URL(request.url);
-  const status = searchParams.get("status");
-  const unitId = searchParams.get("unitId");
-  const period = searchParams.get("period");
 
-  const receivables = await prisma.accountReceivable.findMany({
-    where: {
-      companyId: session.user.companyId,
-      status: status === "Pago" ? "PAGO" : status === "Vencido" ? "VENCIDO" : status === "Pendente" ? "PENDENTE" : undefined,
-      unitId: unitId === "general" ? null : unitId || undefined,
-      ...(period
-        ? {
-            dueDate: {
-              gte: new Date(`${period}-01T00:00:00`),
-              lt: new Date(`${period}-31T23:59:59`),
-            },
-          }
-        : {}),
-    },
-    include: {
-      customer: {
-        select: {
-          type: true,
-          fullName: true,
-          tradeName: true,
-        },
+  try {
+    const result = await receivableService.list(
+      {
+        status: searchParams.get("status"),
+        period: searchParams.get("period"),
       },
-      unit: {
-        select: {
-          name: true,
-        },
+      {
+        companyId: auth.context.companyId,
+        unitId: auth.context.activeUnitId,
       },
-    },
-    orderBy: {
-      dueDate: "asc",
-    },
-  });
+    );
 
-  return NextResponse.json({
-    receivables: receivables.map((receivable) => ({
-      ...mapReceivableToAppReceivable(receivable),
-      clientName: receivable.customer
-        ? receivable.customer.type === "PF"
-          ? receivable.customer.fullName ?? "-"
-          : receivable.customer.tradeName ?? "-"
-        : "-",
-      unitName: receivable.unit?.name ?? "Geral",
-    })),
-  });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId || !session.user.id) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext({
+    allowedRoles: ["PROPRIETARIO", "GESTOR"],
+  });
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const payload = receivableSchema.parse(await request.json());
-  const installmentGroupId = payload.installments > 1 ? randomUUID() : null;
-  const baseDate = new Date(`${payload.dueDate}T00:00:00`);
-
-  const created = await prisma.$transaction(async (tx) => {
-    const items = [];
-
-    for (let index = 0; index < payload.installments; index += 1) {
-      const dueDate = addMonths(baseDate, index);
-      const item = await tx.accountReceivable.create({
-        data: {
-          companyId: session.user.companyId,
-          unitId: payload.unitId || null,
-          customerId: payload.customerId,
-          description:
-            payload.installments > 1
-              ? `${payload.description} (${index + 1}/${payload.installments})`
-              : payload.description,
-          amount: payload.amount,
-          dueDate,
-          status: "PENDENTE",
-          originType: "MANUAL",
-          installmentGroupId,
-          installmentNumber: payload.installments > 1 ? index + 1 : null,
-          installmentCount: payload.installments > 1 ? payload.installments : null,
-        },
-      });
-      items.push(item);
+  let payload: z.infer<typeof receivableSchema>;
+  try {
+    payload = receivableSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
     }
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-    await tx.auditLog.create({
-      data: {
-        companyId: session.user.companyId,
-        unitId: payload.unitId || null,
-        userId: session.user.id,
-        entityType: "receivable",
-        entityId: installmentGroupId ?? items[0].id,
-        action: "CREATE",
-        afterData: {
-          count: items.length,
-          customerId: payload.customerId,
-          amount: payload.amount,
-          sourceModule: "financeiro_receber",
-          originType: "MANUAL",
-          installmentGroupId,
-        },
-      },
+  try {
+    const result = await receivableService.create(payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
     });
 
-    return items;
-  });
-
-  return NextResponse.json(
-    {
-      receivables: created.map(mapReceivableToAppReceivable),
-    },
-    { status: 201 },
-  );
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }

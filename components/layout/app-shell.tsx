@@ -2,6 +2,7 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { PageTransition } from "@/components/layout/page-transition";
+import { RouteProgress } from "@/components/layout/route-progress";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -11,6 +12,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <AppSidebar />
         </div>
         <AppHeader />
+        <RouteProgress />
         <main className="min-h-screen px-4 pb-8 pt-24 md:ml-[240px] md:px-8">
           <PageTransition>{children}</PageTransition>
         </main>

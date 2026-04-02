@@ -1,51 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback } from "react";
+import useSWR from "swr";
 
 import type { Employee } from "@/lib/app-types";
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 export function useEmployees() {
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const { data, error, mutate } = useSWR<{ employees?: Employee[] }>("/api/employees", fetcher);
 
-  useEffect(() => {
-    let active = true;
+  const setEmployees = useCallback(
+    (value: Employee[] | ((current: Employee[]) => Employee[])) => {
+      void mutate((current) => {
+        const employees = current?.employees ?? [];
+        const nextEmployees = typeof value === "function" ? value(employees) : value;
 
-    fetch("/api/employees", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Falha ao carregar funcionários.");
-        }
-
-        return response.json();
-      })
-      .then((data) => {
-        if (active) {
-          setEmployees(data.employees ?? []);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setEmployees([]);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setHydrated(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return useMemo(
-    () => ({
-      employees,
-      hydrated,
-      setEmployees,
-    }),
-    [employees, hydrated],
+        return {
+          employees: nextEmployees,
+        };
+      }, false);
+    },
+    [mutate],
   );
+
+  return {
+    employees: data?.employees ?? [],
+    hydrated: data !== undefined || error !== undefined,
+    setEmployees,
+  };
 }

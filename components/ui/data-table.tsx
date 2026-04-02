@@ -32,6 +32,10 @@ export function DataTable<T>({
   isLoading = false,
   emptyTitle = "Nenhum registro encontrado",
   emptyDescription = "Ajuste os filtros ou cadastre novos itens para preencher esta tabela.",
+  searchValue,
+  onSearchChange,
+  manualPagination,
+  totalItems,
 }: {
   data: T[];
   columns: Column<T>[];
@@ -41,11 +45,25 @@ export function DataTable<T>({
   isLoading?: boolean;
   emptyTitle?: string;
   emptyDescription?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  manualPagination?: {
+    page: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+  };
+  totalItems?: number;
 }) {
-  const [query, setQuery] = useState("");
+  const [internalQuery, setInternalQuery] = useState("");
   const [page, setPage] = useState(1);
+  const query = searchValue ?? internalQuery;
+  const isManualSearch = typeof onSearchChange === "function";
 
   const filtered = useMemo(() => {
+    if (isManualSearch) {
+      return data;
+    }
+
     if (!query.trim()) {
       return data;
     }
@@ -54,11 +72,12 @@ export function DataTable<T>({
     return data.filter((row) =>
       searchKeys.some((getValue) => getValue(row).toLowerCase().includes(normalized)),
     );
-  }, [data, query, searchKeys]);
+  }, [data, isManualSearch, query, searchKeys]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalPages = manualPagination?.totalPages ?? Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = manualPagination?.page ?? Math.min(page, totalPages);
+  const paginated = manualPagination ? filtered : filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalCount = totalItems ?? filtered.length;
 
   return (
     <div className="space-y-4">
@@ -68,7 +87,12 @@ export function DataTable<T>({
           <Input
             value={query}
             onChange={(event) => {
-              setQuery(event.target.value);
+              if (isManualSearch) {
+                onSearchChange?.(event.target.value);
+                return;
+              }
+
+              setInternalQuery(event.target.value);
               setPage(1);
             }}
             placeholder={searchPlaceholder}
@@ -76,7 +100,7 @@ export function DataTable<T>({
           />
         </div>
         <div className="text-sm text-muted-foreground">
-          {filtered.length} registro{filtered.length === 1 ? "" : "s"}
+          {totalCount} registro{totalCount === 1 ? "" : "s"}
         </div>
       </div>
 
@@ -121,7 +145,15 @@ export function DataTable<T>({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <Button variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1}>
+        <Button
+          variant="outline"
+          onClick={() =>
+            manualPagination
+              ? manualPagination.onPageChange(Math.max(1, currentPage - 1))
+              : setPage((value) => Math.max(1, value - 1))
+          }
+          disabled={currentPage === 1}
+        >
           Anterior
         </Button>
         <span className="text-sm text-muted-foreground">
@@ -129,7 +161,11 @@ export function DataTable<T>({
         </span>
         <Button
           variant="outline"
-          onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+          onClick={() =>
+            manualPagination
+              ? manualPagination.onPageChange(Math.min(totalPages, currentPage + 1))
+              : setPage((value) => Math.min(totalPages, value + 1))
+          }
           disabled={currentPage === totalPages}
         >
           Próxima

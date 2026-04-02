@@ -10,6 +10,7 @@ datasource db {
 
 enum UserAccessLevel {
   PROPRIETARIO
+  GESTOR
   FUNCIONARIO
 }
 
@@ -230,35 +231,35 @@ model Vehicle {
 }
 
 model ServiceOrder {
-  id              String              @id @default(cuid())
-  companyId       String
-  unitId          String
-  customerId      String?
+  id                   String              @id @default(cuid())
+  companyId            String
+  unitId               String
+  customerId           String?
   customerNameSnapshot String?
-  vehicleId       String?
-  number          String
-  status          ServiceOrderStatus  @default(ABERTA)
-  openedAt        DateTime            @default(now())
-  closedAt        DateTime?
-  mileage         Int?
-  dueDate         DateTime?
-  paymentTerm     PaymentTerm?
-  paymentMethod   String?
-  notes           String?
-  isStandalone    Boolean             @default(false)
-  totalAmount     Decimal             @default(0) @db.Decimal(10, 2)
-  createdByUserId String?
-  updatedByUserId String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  unit            Unit                @relation(fields: [unitId], references: [id], onDelete: Restrict)
-  customer        Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
-  createdBy       User?               @relation("ServiceOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  updatedBy       User?               @relation("ServiceOrderUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
-  items           ServiceOrderItem[]
-  receivables     AccountReceivable[]
+  vehicleId            String?
+  number               String
+  status               ServiceOrderStatus  @default(ABERTA)
+  openedAt             DateTime            @default(now())
+  closedAt             DateTime?
+  mileage              Int?
+  dueDate              DateTime?
+  paymentTerm          PaymentTerm?
+  paymentMethod        String?
+  notes                String?
+  isStandalone         Boolean             @default(false)
+  totalAmount          Decimal             @default(0) @db.Decimal(10, 2)
+  createdByUserId      String?
+  updatedByUserId      String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  company              Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unit                 Unit                @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  customer             Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  vehicle              Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  createdBy            User?               @relation("ServiceOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedBy            User?               @relation("ServiceOrderUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  items                ServiceOrderItem[]
+  receivables          AccountReceivable[]
 
   @@unique([companyId, number])
   @@index([companyId, customerId, openedAt])
@@ -266,63 +267,64 @@ model ServiceOrder {
 }
 
 model ServiceOrderItem {
-  id             String          @id @default(cuid())
-  serviceOrderId String
-  serviceId      String?
-  description    String
-  quantity       Int             @default(1)
-  laborPrice     Decimal         @db.Decimal(10, 2)
-  lineTotal      Decimal         @db.Decimal(10, 2)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  serviceOrder   ServiceOrder    @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
-  service        ServiceCatalog? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  id                    String               @id @default(cuid())
+  serviceOrderId        String
+  serviceId             String?
+  description           String
+  quantity              Int                  @default(1)
+  laborPrice            Decimal              @db.Decimal(10, 2)
+  lineTotal             Decimal              @db.Decimal(10, 2)
+  previousOrderStatus   ServiceOrderStatus?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  serviceOrder          ServiceOrder         @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  service               ServiceCatalog?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 }
 
 model AccountReceivable {
-  id             String          @id @default(cuid())
-  companyId      String
-  unitId         String?
-  customerId     String?
-  serviceOrderId String?
-  originType     ReceivableOriginType @default(MANUAL)
-  description    String
-  amount         Decimal         @db.Decimal(10, 2)
-  dueDate        DateTime
-  paidAt         DateTime?
-  status         FinancialStatus @default(PENDENTE)
+  id                 String               @id @default(cuid())
+  companyId          String
+  unitId             String?
+  customerId         String?
+  serviceOrderId     String?
+  originType         ReceivableOriginType @default(MANUAL)
+  description        String
+  amount             Decimal              @db.Decimal(10, 2)
+  dueDate            DateTime
+  paidAt             DateTime?
+  status             FinancialStatus      @default(PENDENTE)
   installmentGroupId String?
   installmentNumber  Int?
   installmentCount   Int?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  unit           Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  serviceOrder   ServiceOrder?   @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  company            Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unit               Unit?                @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  customer           Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  serviceOrder       ServiceOrder?        @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
 
   @@index([companyId, unitId, dueDate])
 }
 
 model AccountPayable {
-  id          String          @id @default(cuid())
-  companyId   String
-  unitId      String?
-  supplierId  String?
-  description String
-  category    PayableCategory
-  amount      Decimal         @db.Decimal(10, 2)
-  dueDate     DateTime
-  paidAt      DateTime?
-  status      FinancialStatus @default(PENDENTE)
+  id                 String          @id @default(cuid())
+  companyId          String
+  unitId             String?
+  supplierId         String?
+  description        String
+  category           PayableCategory
+  amount             Decimal         @db.Decimal(10, 2)
+  dueDate            DateTime
+  paidAt             DateTime?
+  status             FinancialStatus @default(PENDENTE)
   installmentGroupId String?
   installmentNumber  Int?
   installmentCount   Int?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  unit        Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
-  supplier    Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  company            Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  unit               Unit?           @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  supplier           Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([companyId, unitId, dueDate])
 }

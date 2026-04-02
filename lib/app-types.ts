@@ -9,7 +9,7 @@ export type FinancialStatusLabel = "Pago" | "Pendente" | "Vencido";
 export type ClientType = "pf" | "pj";
 export type ClientSituation = "Ativo" | "Inativo";
 export type SupplierCategory = "Pneus" | "Peças" | "Insumos" | "Serviços" | "Outros";
-export type EmployeeAccessLevel = "Proprietário" | "Funcionário";
+export type EmployeeAccessLevel = "Proprietário" | "Gestor" | "Funcionário";
 
 type BasePerson = {
   id: string;

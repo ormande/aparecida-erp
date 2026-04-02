@@ -1,101 +1,77 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapVehicleToAppVehicle } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { getRequiredSessionContext } from "@/lib/auth";
+import { ServiceError } from "@/services/service-error";
+import { vehicleService } from "@/services/vehicle.service";
 
 const vehicleSchema = z.object({
-  plate: z.string().min(7),
-  brand: z.string().min(1),
-  model: z.string().min(1),
+  plate: z.string().min(7).max(10),
+  brand: z.string().min(1).max(60),
+  model: z.string().min(1).max(60),
   year: z.coerce.number().int(),
-  color: z.string().optional().default(""),
-  notes: z.string().optional().default(""),
+  color: z.string().max(60).optional().default(""),
+  notes: z.string().max(2000).optional().default(""),
   clientId: z.string().min(1),
 });
 
-export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, message: error.message, details: error.details }, { status: error.status });
+  }
 
-  if (!session?.user?.companyId) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+}
+
+export async function GET(request: Request) {
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
   }
 
   const { searchParams } = new URL(request.url);
-  const customerId = searchParams.get("customerId");
 
-  const vehicles = await prisma.vehicle.findMany({
-    where: {
-      companyId: session.user.companyId,
-      customerId: customerId || undefined,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-    select: {
-      id: true,
-      plate: true,
-      brand: true,
-      model: true,
-      year: true,
-      color: true,
-      notes: true,
-      customerId: true,
-    },
-  });
+  try {
+    const result = await vehicleService.list(
+      {
+        customerId: searchParams.get("customerId") ?? undefined,
+      },
+      {
+        companyId: auth.context.companyId,
+      },
+    );
 
-  return NextResponse.json({
-    vehicles: vehicles.map(mapVehicleToAppVehicle),
-  });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId || !session.user.id) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const payload = vehicleSchema.parse(await request.json());
+  let payload: z.infer<typeof vehicleSchema>;
+  try {
+    payload = vehicleSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-  const vehicle = await prisma.vehicle.create({
-    data: {
-      companyId: session.user.companyId,
-      customerId: payload.clientId,
-      plate: payload.plate,
-      brand: payload.brand,
-      model: payload.model,
-      year: payload.year,
-      color: payload.color || null,
-      notes: payload.notes || null,
-    },
-    select: {
-      id: true,
-      plate: true,
-      brand: true,
-      model: true,
-      year: true,
-      color: true,
-      notes: true,
-      customerId: true,
-    },
-  });
+  try {
+    const result = await vehicleService.create(payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
+    });
 
-  await prisma.auditLog.create({
-    data: {
-      companyId: session.user.companyId,
-      userId: session.user.id,
-      entityType: "vehicle",
-      entityId: vehicle.id,
-      action: "CREATE",
-      afterData: {
-        plate: vehicle.plate,
-        customerId: vehicle.customerId,
-      },
-    },
-  });
-
-  return NextResponse.json({ vehicle: mapVehicleToAppVehicle(vehicle) }, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }

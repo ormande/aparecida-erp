@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import { useCustomers } from "@/hooks/use-customers";
 import { useServiceOrders } from "@/hooks/use-service-orders";
 import { useUnits } from "@/hooks/use-units";
 import { currency, date, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
+import { getPersonName } from "@/lib/person-helpers";
 
 type OrderPreview = {
   id: string;
@@ -83,9 +85,14 @@ export default function FechamentosPage() {
       });
   }, [customFrom, customTo, datePreset, maxValue, minValue, orders, statusFilter]);
 
+  const searchKeys = useMemo<Array<(row: (typeof rows)[number]) => string>>(
+    () => [(row) => row.number, (row) => row.clientName],
+    [],
+  );
+
   const customerOptions = customers.map((customer) => ({
     value: customer.id,
-    label: customer.tipo === "pf" ? customer.nomeCompleto ?? "-" : customer.nomeFantasia ?? "-",
+    label: getPersonName(customer, "-"),
   }));
 
   async function handleStatusChange(id: string, mode: "settle" | "reopen") {
@@ -102,8 +109,7 @@ export default function FechamentosPage() {
     toast.success(mode === "settle" ? "Fechamento baixado com sucesso!" : "Fechamento reaberto com sucesso!");
   }
 
-  async function handleDelete(id: string) {
-    if (!window.confirm("Deseja realmente excluir este fechamento?")) return;
+  async function executeDelete(id: string) {
     const response = await fetch(`/api/service-orders/${id}`, { method: "DELETE" });
     const data = await response.json();
     if (!response.ok) return toast.error(data.message ?? "Não foi possível excluir o fechamento.");
@@ -171,7 +177,7 @@ export default function FechamentosPage() {
           pageSize={10}
           isLoading={!hydrated}
           searchPlaceholder="Buscar por número ou cliente"
-          searchKeys={[(row) => row.number, (row) => row.clientName]}
+          searchKeys={searchKeys}
           emptyTitle="Nenhum fechamento encontrado"
           emptyDescription="Gere um fechamento mensal a partir da página de ordens de serviço."
           columns={[
@@ -192,9 +198,19 @@ export default function FechamentosPage() {
                   <Button variant="outline" size="sm" onClick={() => row.receivableStatus === "PAGO" ? handleStatusChange(row.id, "reopen") : openSettleDialog(row.id)}>
                     {row.receivableStatus === "PAGO" ? "Reabrir" : "Baixar"}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => handleDelete(row.id)}>
-                    Excluir
-                  </Button>
+                  <ConfirmModal
+                    trigger={
+                      <Button variant="outline" size="sm">
+                        Excluir
+                      </Button>
+                    }
+                    title="Excluir fechamento"
+                    description="Deseja realmente excluir este fechamento?"
+                    onConfirm={() => {
+                      void executeDelete(row.id);
+                    }}
+                    confirmLabel="Excluir"
+                  />
                 </div>
               ),
             },

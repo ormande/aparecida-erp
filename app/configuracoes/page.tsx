@@ -21,6 +21,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEmployees } from "@/hooks/use-employees";
+import { useAuth } from "@/hooks/use-auth";
 import { useUnits } from "@/hooks/use-units";
 
 function maskPhone(value: string) {
@@ -41,6 +42,9 @@ export default function ConfiguracoesPage() {
   const [activeUnitId, setActiveUnitId] = useState("");
   const [unitDrafts, setUnitDrafts] = useState<Record<string, { name: string; address: string; phone: string }>>({});
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
+  const [exportingBackup, setExportingBackup] = useState(false);
+
+  const { user } = useAuth();
 
   const { units, addUnit, updateUnit } = useUnits();
   const { employees } = useEmployees();
@@ -180,6 +184,45 @@ export default function ConfiguracoesPage() {
 
     updateUnit(data.unit);
     toast.success("Unidade atualizada com sucesso!");
+  }
+
+  async function handleExportBackup() {
+    try {
+      setExportingBackup(true);
+
+      const response = await fetch("/api/backup");
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error((data as { message?: string } | null)?.message ?? "Falha ao exportar backup.");
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+
+      let filename = `backup-${new Date().toISOString().slice(0, 10)}.json`;
+
+      const match = disposition.match(/filename\*?=(?:UTF-8'')?["']?([^"';\n]+)["']?/i);
+      if (match?.[1]) {
+        filename = decodeURIComponent(match[1]);
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+
+      toast.success("Backup exportado com sucesso!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao exportar backup.");
+    } finally {
+      setExportingBackup(false);
+    }
   }
 
   const userCards = useMemo(
@@ -362,6 +405,23 @@ export default function ConfiguracoesPage() {
             </div>
           </CardContent>
         </Card>
+
+        {user?.accessLevel === "PROPRIETARIO" ? (
+          <Card className="surface-card border-none xl:col-span-2">
+            <CardHeader>
+              <CardTitle>Backup de Dados</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Exporte todos os dados da empresa em formato JSON. Guarde o arquivo em local seguro para uso em caso de
+                restauração.
+              </p>
+              <Button onClick={handleExportBackup} disabled={exportingBackup}>
+                {exportingBackup ? "Exportando..." : "Exportar backup"}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </div>
   );

@@ -134,6 +134,7 @@ export function EmployeeForm({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="Proprietário">Proprietário</SelectItem>
+              <SelectItem value="Gestor">Gestor</SelectItem>
               <SelectItem value="Funcionário">Funcionário</SelectItem>
             </SelectContent>
           </Select>

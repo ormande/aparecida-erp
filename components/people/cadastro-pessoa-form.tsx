@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -40,6 +40,7 @@ type CadastroPessoaFormProps = {
   submitLabel: string;
   initialValues: CadastroPessoaFormValues;
   onSubmit: (values: CadastroPessoaFormValues) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 };
 
 const supplierCategories: SupplierCategory[] = ["Pneus", "Peças", "Insumos", "Serviços", "Outros"];
@@ -81,9 +82,17 @@ export function CadastroPessoaForm({
   submitLabel,
   initialValues,
   onSubmit,
+  onDirtyChange,
 }: CadastroPessoaFormProps) {
   const [values, setValues] = useState<CadastroPessoaFormValues>(initialValues);
   const [errors, setErrors] = useState<CadastroPessoaFormErrors>(getEmptyErrors());
+
+  useEffect(() => {
+    if (!onDirtyChange) {
+      return;
+    }
+    onDirtyChange(JSON.stringify(values) !== JSON.stringify(initialValues));
+  }, [values, initialValues, onDirtyChange]);
 
   const titleByType = useMemo(() => getClientTypeLabel(values.tipo), [values.tipo]);
   const entityLabel = tipo === "cliente" ? "cliente" : "fornecedor";

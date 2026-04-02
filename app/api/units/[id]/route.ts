@@ -6,9 +6,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const unitSchema = z.object({
-  name: z.string().min(2),
-  address: z.string().optional().default(""),
-  phone: z.string().optional().default(""),
+  name: z.string().min(2).max(100),
+  address: z.string().max(300).optional().default(""),
+  phone: z.string().max(20).optional().default(""),
 });
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {

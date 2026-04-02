@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+const UNITS_BROADCAST_CHANNEL = "aparecida-erp-units";
 
 export type AppUnit = {
   id: string;
@@ -26,6 +28,7 @@ async function fetchUnits() {
 export function useUnits() {
   const [units, setUnits] = useState<AppUnit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const broadcastRef = useRef<BroadcastChannel | null>(null);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -49,9 +52,21 @@ export function useUnits() {
       void refresh();
     }
 
+    broadcastRef.current = new BroadcastChannel(UNITS_BROADCAST_CHANNEL);
+    const channel = broadcastRef.current;
+
+    channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
+      if (event.data?.type === unitsEvents.changed) {
+        handleUnitsChanged();
+      }
+    };
+
     window.addEventListener(unitsEvents.changed, handleUnitsChanged);
+
     return () => {
       window.removeEventListener(unitsEvents.changed, handleUnitsChanged);
+      channel.close();
+      broadcastRef.current = null;
     };
   }, [refresh]);
 
@@ -62,10 +77,12 @@ export function useUnits() {
       addUnit(unit: AppUnit) {
         setUnits((current) => [...current, unit]);
         window.dispatchEvent(new Event(unitsEvents.changed));
+        broadcastRef.current?.postMessage({ type: unitsEvents.changed });
       },
       updateUnit(unit: AppUnit) {
         setUnits((current) => current.map((item) => (item.id === unit.id ? unit : item)));
         window.dispatchEvent(new Event(unitsEvents.changed));
+        broadcastRef.current?.postMessage({ type: unitsEvents.changed });
       },
       refresh,
     }),

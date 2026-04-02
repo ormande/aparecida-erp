@@ -54,6 +54,11 @@ export default function FinanceiroHistoricoPage() {
     return [...incoming, ...outgoing].sort((a, b) => b.vencimento.localeCompare(a.vencimento));
   }, [payables, receivables]);
 
+  const searchKeys = useMemo<Array<(row: (typeof rows)[number]) => string>>(
+    () => [(row) => row.descricao, (row) => row.pessoa, (row) => row.origem, (row) => row.unidade],
+    [],
+  );
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -87,7 +92,7 @@ export default function FinanceiroHistoricoPage() {
             isLoading={!receivablesHydrated || !payablesHydrated}
             pageSize={12}
             searchPlaceholder="Buscar por descrição, pessoa, origem ou unidade"
-            searchKeys={[(row) => row.descricao, (row) => row.pessoa, (row) => row.origem, (row) => row.unidade]}
+            searchKeys={searchKeys}
             emptyTitle="Nenhuma movimentação financeira"
             emptyDescription={`Cadastros financeiros das ${units.length} unidade(s) aparecerão aqui.`}
             columns={[

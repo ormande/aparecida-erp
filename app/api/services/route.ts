@@ -1,87 +1,64 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapServiceToAppService } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { getRequiredSessionContext } from "@/lib/auth";
+import { catalogService } from "@/services/catalog.service";
+import { ServiceError } from "@/services/service-error";
 
 const serviceSchema = z.object({
-  name: z.string().min(2),
-  description: z.string().optional().default(""),
+  name: z.string().min(2).max(100),
+  description: z.string().max(500).optional().default(""),
   basePrice: z.coerce.number().min(0),
   isActive: z.boolean().default(true),
 });
 
-export async function GET() {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, message: error.message, details: error.details }, { status: error.status });
   }
 
-  const services = await prisma.serviceCatalog.findMany({
-    where: {
-      companyId: session.user.companyId,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      basePrice: true,
-      isActive: true,
-    },
-  });
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+}
 
-  return NextResponse.json({
-    services: services.map(mapServiceToAppService),
-  });
+export async function GET() {
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  try {
+    const result = await catalogService.list({ companyId: auth.context.companyId });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId || !session.user.id) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const payload = serviceSchema.parse(await request.json());
+  let payload: z.infer<typeof serviceSchema>;
+  try {
+    payload = serviceSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
 
-  const service = await prisma.serviceCatalog.create({
-    data: {
-      companyId: session.user.companyId,
-      name: payload.name,
-      description: payload.description || null,
-      basePrice: payload.basePrice,
-      isActive: payload.isActive,
-      createdByUserId: session.user.id,
-      updatedByUserId: session.user.id,
-    },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      basePrice: true,
-      isActive: true,
-    },
-  });
+  try {
+    const result = await catalogService.create(payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
+    });
 
-  await prisma.auditLog.create({
-    data: {
-      companyId: session.user.companyId,
-      userId: session.user.id,
-      entityType: "service_catalog",
-      entityId: service.id,
-      action: "CREATE",
-      afterData: {
-        name: service.name,
-        basePrice: Number(service.basePrice),
-      },
-    },
-  });
-
-  return NextResponse.json({ service: mapServiceToAppService(service) }, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }

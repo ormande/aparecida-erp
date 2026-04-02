@@ -18,8 +18,14 @@ function mapRecordStatus(status: "ATIVO" | "INATIVO") {
   return status === "ATIVO" ? "Ativo" : "Inativo";
 }
 
-function mapUserAccessLevel(level: "PROPRIETARIO" | "FUNCIONARIO") {
-  return level === "PROPRIETARIO" ? "Proprietário" : "Funcionário";
+function mapUserAccessLevel(level: "PROPRIETARIO" | "GESTOR" | "FUNCIONARIO") {
+  if (level === "PROPRIETARIO") {
+    return "Proprietário";
+  }
+  if (level === "GESTOR") {
+    return "Gestor";
+  }
+  return "Funcionário";
 }
 
 function formatPhone(value?: string | null) {

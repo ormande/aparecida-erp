@@ -3,14 +3,15 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { prisma } from "@/lib/prisma";
+import { getRateLimitIdentifier, setupRatelimit } from "@/lib/ratelimit";
 
 const setupSchema = z.object({
-  companyName: z.string().min(2),
-  unitName: z.string().min(2),
-  ownerName: z.string().min(2),
+  companyName: z.string().min(2).max(100),
+  unitName: z.string().min(2).max(100),
+  ownerName: z.string().min(2).max(150),
   email: z.string().email(),
-  phone: z.string().optional().default(""),
-  password: z.string().min(6),
+  phone: z.string().max(20).optional().default(""),
+  password: z.string().min(6).max(128),
 });
 
 function slugify(value: string) {
@@ -24,6 +25,14 @@ function slugify(value: string) {
 }
 
 export async function POST(request: Request) {
+  const { success } = await setupRatelimit.limit(getRateLimitIdentifier(request));
+  if (!success) {
+    return NextResponse.json(
+      { message: "Muitas tentativas. Tente novamente em instantes." },
+      { status: 429 },
+    );
+  }
+
   const existingUsers = await prisma.user.count();
 
   if (existingUsers > 0) {

@@ -1,131 +1,71 @@
-import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
-import { authOptions } from "@/lib/auth";
-import { mapUserToEmployee } from "@/lib/db-mappers";
-import { prisma } from "@/lib/prisma";
+import { checkRole, getRequiredSessionContext } from "@/lib/auth";
+import { employeeService } from "@/services/employee.service";
+import { ServiceError } from "@/services/service-error";
 
 const employeeSchema = z.object({
-  nomeCompleto: z.string().min(2),
+  nomeCompleto: z.string().min(2).max(150),
   email: z.string().email(),
-  telefone: z.string().optional().default(""),
-  nivelAcesso: z.enum(["Proprietário", "Funcionário"]),
+  telefone: z.string().max(20).optional().default(""),
+  nivelAcesso: z.enum(["Proprietário", "Gestor", "Funcionário"]),
   situacao: z.enum(["Ativo", "Inativo"]),
 });
 
-function mapAccessLevel(level: "Proprietário" | "Funcionário") {
-  return level === "Proprietário" ? "PROPRIETARIO" : "FUNCIONARIO";
-}
+function handleServiceError(error: unknown) {
+  if (error instanceof ServiceError) {
+    return NextResponse.json({ error: error.message, message: error.message, details: error.details }, { status: error.status });
+  }
 
-function mapStatus(status: "Ativo" | "Inativo") {
-  return status === "Ativo" ? "ATIVO" : "INATIVO";
+  return NextResponse.json({ error: "Internal server error" }, { status: 500 });
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext({
+    allowedRoles: ["PROPRIETARIO", "GESTOR"],
+  });
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  const users = await prisma.user.findMany({
-    where: {
-      companyId: session.user.companyId,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      accessLevel: true,
-      status: true,
-    },
-  });
-
-  return NextResponse.json({
-    employees: users.map(mapUserToEmployee),
-  });
+  try {
+    const result = await employeeService.list({ companyId: auth.context.companyId });
+    return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-
-  if (!session?.user?.companyId || !session.user.id) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
   }
 
-  if (session.user.accessLevel !== "PROPRIETARIO") {
+  if (!checkRole(auth.context.session, ["PROPRIETARIO"])) {
     return NextResponse.json({ message: "Sem permissão." }, { status: 403 });
   }
 
-  const payload = employeeSchema.parse(await request.json());
-  const email = payload.email.trim().toLowerCase();
-
-  const exists = await prisma.user.findFirst({
-    where: {
-      companyId: session.user.companyId,
-      email,
-    },
-    select: { id: true },
-  });
-
-  if (exists) {
-    return NextResponse.json({ message: "Já existe um funcionário com esse e-mail." }, { status: 409 });
+  let payload: z.infer<typeof employeeSchema>;
+  try {
+    payload = employeeSchema.parse(await request.json());
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return NextResponse.json({ error: "Invalid request body", details: error.flatten() }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const firstUnit = await prisma.userUnit.findFirst({
-    where: {
-      userId: session.user.id,
-    },
-    select: {
-      unitId: true,
-    },
-  });
+  try {
+    const result = await employeeService.create(payload, {
+      companyId: auth.context.companyId,
+      unitId: auth.context.activeUnitId,
+      userId: auth.context.userId,
+    });
 
-  const user = await prisma.user.create({
-    data: {
-      companyId: session.user.companyId,
-      name: payload.nomeCompleto,
-      email,
-      phone: payload.telefone || null,
-      accessLevel: mapAccessLevel(payload.nivelAcesso),
-      status: mapStatus(payload.situacao),
-      units: firstUnit
-        ? {
-            create: {
-              unitId: firstUnit.unitId,
-            },
-          }
-        : undefined,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phone: true,
-      accessLevel: true,
-      status: true,
-    },
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      companyId: session.user.companyId,
-      unitId: firstUnit?.unitId,
-      userId: session.user.id,
-      entityType: "employee",
-      entityId: user.id,
-      action: "CREATE",
-      afterData: {
-        name: user.name,
-        email: user.email,
-      },
-    },
-  });
-
-  return NextResponse.json({ employee: mapUserToEmployee(user) }, { status: 201 });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error) {
+    return handleServiceError(error);
+  }
 }

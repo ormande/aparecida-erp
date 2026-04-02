@@ -1,51 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback } from "react";
+import useSWR from "swr";
 
 import type { AppService } from "@/lib/db-mappers";
 
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 export function useServices() {
-  const [services, setServices] = useState<AppService[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  const { data, error, mutate } = useSWR<{ services?: AppService[] }>("/api/services", fetcher);
 
-  useEffect(() => {
-    let active = true;
+  const setServices = useCallback(
+    (value: AppService[] | ((current: AppService[]) => AppService[])) => {
+      void mutate((current) => {
+        const services = current?.services ?? [];
+        const nextServices = typeof value === "function" ? value(services) : value;
 
-    fetch("/api/services", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Falha ao carregar serviços.");
-        }
-
-        return response.json();
-      })
-      .then((data) => {
-        if (active) {
-          setServices(data.services ?? []);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setServices([]);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setHydrated(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  return useMemo(
-    () => ({
-      services,
-      hydrated,
-      setServices,
-    }),
-    [hydrated, services],
+        return {
+          services: nextServices,
+        };
+      }, false);
+    },
+    [mutate],
   );
+
+  return {
+    services: data?.services ?? [],
+    hydrated: data !== undefined || error !== undefined,
+    setServices,
+  };
 }

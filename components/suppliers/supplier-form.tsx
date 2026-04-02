@@ -45,10 +45,12 @@ export function SupplierForm({
   supplier,
   submitLabel,
   onSubmit,
+  onDirtyChange,
 }: {
   supplier?: Supplier;
   submitLabel: string;
   onSubmit: (values: CadastroPessoaFormValues) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) {
   return (
     <CadastroPessoaForm
@@ -56,6 +58,7 @@ export function SupplierForm({
       submitLabel={submitLabel}
       initialValues={getInitialValues(supplier)}
       onSubmit={onSubmit}
+      onDirtyChange={onDirtyChange}
     />
   );
 }

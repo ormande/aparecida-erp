@@ -19,18 +19,7 @@ import {
 import { PageHeader } from "@/components/ui/page-header";
 import { useCustomers } from "@/hooks/use-customers";
 import { useVehicles } from "@/hooks/use-vehicles";
-
-function getClientDisplayName(client?: {
-  tipo: "pf" | "pj";
-  nomeCompleto?: string;
-  nomeFantasia?: string;
-}) {
-  if (!client) {
-    return "Nao vinculado";
-  }
-
-  return client.tipo === "pf" ? client.nomeCompleto ?? "Sem nome" : client.nomeFantasia ?? "Sem nome";
-}
+import { getPersonName } from "@/lib/person-helpers";
 
 export default function VeiculosPage() {
   const [open, setOpen] = useState(false);
@@ -40,11 +29,18 @@ export default function VeiculosPage() {
 
   const data = useMemo(
     () =>
-      vehicles.map((vehicle) => ({
-        ...vehicle,
-        clientName: getClientDisplayName(customers.find((client) => client.id === vehicle.clientId)),
-      })),
+      vehicles.map((vehicle) => {
+        const client = customers.find((c) => c.id === vehicle.clientId);
+        return {
+          ...vehicle,
+          clientName: client ? getPersonName(client) : "Não vinculado",
+        };
+      }),
     [customers, vehicles],
+  );
+  const searchKeys = useMemo<Array<(row: (typeof data)[number]) => string>>(
+    () => [(row) => row.plate, (row) => row.model, (row) => row.clientName],
+    [],
   );
   const viewingCustomer = customers.find((customer) => customer.id === viewingCustomerId) ?? null;
 
@@ -60,36 +56,38 @@ export default function VeiculosPage() {
     const data = await response.json();
 
     if (!response.ok) {
-      toast.error(data.message ?? "Nao foi possivel cadastrar o veiculo.");
+      toast.error(data.message ?? "Não foi possível cadastrar o veículo.");
       return;
     }
 
     setVehicles((current) => [...current, data.vehicle]);
     setOpen(false);
-    toast.success("Veiculo cadastrado com sucesso!");
+    toast.success("Veículo cadastrado com sucesso!");
   }
 
   return (
     <div className="space-y-8">
       <PageHeader
-        title="Veiculos"
-        subtitle="Cadastre veiculos quando precisar vincula-los a clientes, inclusive durante a abertura da OS."
+        title="Veículos"
+        subtitle="Cadastre veículos quando precisar vinculá-los a clientes, inclusive durante a abertura da OS."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger
               render={
                 <Button className="rounded-full">
                   <Plus className="mr-2 h-4 w-4" />
-                  Novo veiculo
+                  Novo veículo
                 </Button>
               }
             />
             <DialogContent className="sm:max-w-xl">
               <DialogHeader>
-                <DialogTitle>Novo veiculo</DialogTitle>
-                <DialogDescription>Cadastre o veiculo e deixe-o disponivel para a proxima ordem de servico.</DialogDescription>
+                <DialogTitle>Novo veículo</DialogTitle>
+                <DialogDescription>
+                  Cadastre o veículo e deixe-o disponível para a próxima ordem de serviço.
+                </DialogDescription>
               </DialogHeader>
-              <VehicleForm customers={customers} submitLabel="Salvar veiculo" onSubmit={handleCreateVehicle} />
+              <VehicleForm customers={customers} submitLabel="Salvar veículo" onSubmit={handleCreateVehicle} />
             </DialogContent>
           </Dialog>
         }
@@ -101,9 +99,9 @@ export default function VeiculosPage() {
           pageSize={10}
           isLoading={!customersHydrated || !vehiclesHydrated}
           searchPlaceholder="Buscar por placa, modelo ou cliente"
-          searchKeys={[(row) => row.plate, (row) => row.model, (row) => row.clientName]}
-          emptyTitle="Nenhum veiculo cadastrado"
-          emptyDescription="Cadastre veiculos por aqui ou diretamente durante a abertura de uma ordem de servico."
+          searchKeys={searchKeys}
+          emptyTitle="Nenhum veículo cadastrado"
+          emptyDescription="Cadastre veículos por aqui ou diretamente durante a abertura de uma ordem de serviço."
           columns={[
             { key: "plate", header: "Placa", render: (row) => <span className="font-medium">{row.plate}</span> },
             { key: "model", header: "Modelo", render: (row) => row.model },
@@ -113,7 +111,7 @@ export default function VeiculosPage() {
             { key: "client", header: "Cliente vinculado", render: (row) => row.clientName },
             {
               key: "actions",
-              header: "Acoes",
+              header: "Ações",
               render: (row) => (
                 <Button variant="outline" size="sm" onClick={() => row.clientId && setViewingCustomerId(row.clientId)}>
                   <Eye className="mr-1 h-4 w-4" />

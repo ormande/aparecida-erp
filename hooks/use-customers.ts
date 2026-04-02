@@ -1,51 +1,67 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
+import useSWR from "swr";
 
 import type { Client } from "@/lib/app-types";
 
-export function useCustomers() {
-  const [customers, setCustomers] = useState<Client[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-  useEffect(() => {
-    let active = true;
+type UseCustomersParams = {
+  page?: number;
+  limit?: number;
+  search?: string;
+};
 
-    fetch("/api/customers", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Falha ao carregar clientes.");
-        }
+type CustomersResponse = {
+  data?: Client[];
+  meta?: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+};
 
-        return response.json();
-      })
-      .then((data) => {
-        if (active) {
-          setCustomers(data.customers ?? []);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setCustomers([]);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setHydrated(true);
-        }
-      });
+export function useCustomers(params?: UseCustomersParams) {
+  const page = params?.page ?? 1;
+  const limit = params?.limit ?? 10;
+  const search = params?.search?.trim() ?? "";
 
-    return () => {
-      active = false;
-    };
-  }, []);
+  const key = useMemo(() => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("page", String(page));
+    searchParams.set("limit", String(limit));
 
-  return useMemo(
-    () => ({
-      customers,
-      hydrated,
-      setCustomers,
-    }),
-    [customers, hydrated],
+    if (search) {
+      searchParams.set("search", search);
+    }
+
+    return `/api/customers?${searchParams.toString()}`;
+  }, [limit, page, search]);
+
+  const { data, error, mutate } = useSWR<CustomersResponse>(key, fetcher);
+
+  const setCustomers = useCallback(
+    (value: Client[] | ((current: Client[]) => Client[])) => {
+      void mutate((current) => {
+        const customers = current?.data ?? [];
+        const nextCustomers = typeof value === "function" ? value(customers) : value;
+
+        return {
+          data: nextCustomers,
+          meta: current?.meta,
+        };
+      }, false);
+    },
+    [mutate],
   );
+
+  return {
+    customers: data?.data ?? [],
+    meta: data?.meta,
+    hydrated: data !== undefined || error !== undefined,
+    setCustomers,
+    refresh: mutate,
+  };
 }

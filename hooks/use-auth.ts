@@ -3,9 +3,6 @@
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useMemo } from "react";
 
-const WORKSPACE_KEY = "aparecida-erp-workspace";
-const WORKSPACE_EVENT = "aparecida-erp-workspace-changed";
-
 function getInitials(name?: string | null) {
   if (!name) {
     return "AE";
@@ -15,9 +12,12 @@ function getInitials(name?: string | null) {
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "AE";
 }
 
-function getRoleLabel(level?: "PROPRIETARIO" | "FUNCIONARIO") {
+function getRoleLabel(level?: "PROPRIETARIO" | "GESTOR" | "FUNCIONARIO") {
   if (level === "PROPRIETARIO") {
     return "Proprietário";
+  }
+  if (level === "GESTOR") {
+    return "Gestor";
   }
 
   return "Funcionário";
@@ -41,6 +41,7 @@ export function useAuth() {
       accessLevel: session.user.accessLevel,
       status: session.user.status,
       units: session.user.units ?? [],
+      activeUnitId: session.activeUnitId ?? session.user.activeUnitId,
     };
   }, [session]);
 
@@ -63,11 +64,3 @@ export function useAuth() {
     [status, user],
   );
 }
-
-export const authStorageKeys = {
-  workspace: WORKSPACE_KEY,
-};
-
-export const authEvents = {
-  workspaceChanged: WORKSPACE_EVENT,
-};
