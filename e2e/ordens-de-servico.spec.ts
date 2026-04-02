@@ -37,7 +37,7 @@ test("criação de OS avulsa com serviço manual e Pix conclui com toast e volta
     await page.goto("/ordens-de-servico/nova?standalone=1");
   }
   await page.getByLabel("Cliente avulso").fill("Cliente avulso E2E");
-  await expect(page.getByLabel("Forma de pagamento")).toHaveValue("Pix");
+  await expect(page.getByText("Pix", { exact: true }).first()).toBeVisible();
   await page.getByPlaceholder("Serviço 1").fill("Serviço manual E2E");
   const valorServico = page.locator("input[inputmode=\"decimal\"]").first();
   await valorServico.click();

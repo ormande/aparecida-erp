@@ -39,6 +39,9 @@ jobs:
       - name: Gerar Prisma Client
         run: npx prisma generate
 
+      - name: Aplicar migrations no banco
+        run: npx prisma migrate deploy
+
       - name: Checagem de tipos
         run: npx tsc --noEmit
 
