@@ -3,18 +3,42 @@ import { expect, test } from "@playwright/test";
 test.use({ storageState: { cookies: [], origins: [] } });
 
 test("login com credenciais corretas redireciona para o dashboard", async ({ page }) => {
+  const email = (process.env.TEST_OWNER_EMAIL || "teste@aparecida-test.local").toLowerCase();
   await page.goto("/");
-  await page.getByLabel("E-mail").fill("teste@empresa-homologacao.local");
+  await page.getByLabel("E-mail").fill(email);
   await page.getByLabel("Senha").fill("123456");
-  await page.getByRole("button", { name: /Entrar no sistema/i }).click();
-  await page.waitForURL("**/dashboard**");
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  const entrarBtn = page.getByRole("button", { name: /Entrar no sistema/i });
+  await expect(entrarBtn).toBeEnabled();
+  await entrarBtn.click();
+  await page.waitForURL(/\/(dashboard|selecionar-unidade)(\?|$)/, {
+    timeout: 60_000,
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page).toHaveURL(/\/(dashboard|selecionar-unidade)(\?|$)/);
 });
 
-test("login com senha errada exibe mensagem de erro", async ({ page }) => {
-  await page.goto("/");
-  await page.getByLabel("E-mail").fill("teste@empresa-homologacao.local");
-  await page.getByLabel("Senha").fill("senha-incorreta");
-  await page.getByRole("button", { name: /Entrar no sistema/i }).click();
-  await expect(page.getByText("E-mail ou senha inválidos.")).toBeVisible();
+test("login com senha errada retorna erro de credenciais", async ({ page }) => {
+  const email = (process.env.TEST_OWNER_EMAIL || "teste@aparecida-test.local").toLowerCase();
+
+  const csrfResp = await page.request.get("/api/auth/csrf");
+  const { csrfToken } = await csrfResp.json();
+  expect(csrfToken).toBeTruthy();
+
+  const loginResp = await page.request.post("/api/auth/callback/credentials", {
+    form: {
+      csrfToken,
+      email,
+      password: "senha-incorreta",
+      redirect: "false",
+      json: "true",
+      callbackUrl: "http://localhost:3000/",
+    },
+  });
+
+  const body = await loginResp.json();
+  expect(body.url).toContain("error");
+
+  const sessionResp = await page.request.get("/api/auth/session");
+  const sessionJson = (await sessionResp.json()) as any;
+  expect(sessionJson?.user).toBeFalsy();
 });

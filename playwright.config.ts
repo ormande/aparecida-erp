@@ -14,9 +14,19 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm run dev",
+    command: "npx dotenv -e .env.test -- next dev",
     url: "http://localhost:3000",
-    reuseExistingServer: true,
+    reuseExistingServer: false,
+    // Força o secret de teste mesmo que o Next.js carregue .env automaticamente.
+    env: {
+      NEXTAUTH_SECRET: "test-secret-aparecida-erp-32chars!!",
+      NEXTAUTH_URL: "http://localhost:3000",
+      DATABASE_URL:
+        "postgresql://postgres:QloKyAqGjmNxhvgtpAJTucdektPkqtQo@interchange.proxy.rlwy.net:29864/railway",
+      DIRECT_URL:
+        "postgresql://postgres:QloKyAqGjmNxhvgtpAJTucdektPkqtQo@interchange.proxy.rlwy.net:29864/railway",
+      DISABLE_RATE_LIMIT: "true",
+    },
   },
   projects: [
     {

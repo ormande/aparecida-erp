@@ -59,7 +59,8 @@ function buildOrderNumber(year: number, sequence: number) {
 
 async function getNextOrderNumber(tx: Prisma.TransactionClient, companyId: string) {
   const lockKey = `${companyId}-os-number`;
-  await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
+  // pg_advisory_xact_lock(...) retorna void; use executeRaw para não desserializar resultado.
+  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
 
   const currentYear = new Date().getFullYear();
   const orders = await tx.serviceOrder.findMany({

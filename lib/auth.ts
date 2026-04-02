@@ -121,6 +121,7 @@ export const authOptions: NextAuthOptions = {
         } else {
           delete token.activeUnitId;
         }
+
       }
 
       if (trigger === "update" && session && typeof session === "object") {

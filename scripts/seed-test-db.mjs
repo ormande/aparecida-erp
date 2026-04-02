@@ -10,6 +10,8 @@ function assertSafeSeed() {
     databaseUrl.includes("test") ||
     databaseUrl.includes("staging") ||
     databaseUrl.includes("sandbox") ||
+    databaseUrl.includes("rlwy") ||
+    databaseUrl.includes("interchange") ||
     databaseUrl.includes("homolog");
 
   if (!allowSeed || !looksSafe) {

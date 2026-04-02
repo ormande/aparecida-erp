@@ -1,25 +1,25 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-const redis = Redis.fromEnv();
+const isRateLimitDisabled = process.env.DISABLE_RATE_LIMIT === "true";
 
-export const loginRatelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(10, "1 m"),
-  prefix: "ratelimit:login",
-});
+const noopLimiter = {
+  limit: async () => ({ success: true, limit: 0, remaining: 0, reset: 0, pending: Promise.resolve() }),
+} as unknown as Ratelimit;
 
-export const setupRatelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, "1 h"),
-  prefix: "ratelimit:setup",
-});
+const redis = isRateLimitDisabled ? null : Redis.fromEnv();
 
-export const apiRatelimit = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(60, "1 m"),
-  prefix: "ratelimit:api",
-});
+export const loginRatelimit = isRateLimitDisabled
+  ? noopLimiter
+  : new Ratelimit({ redis: redis!, limiter: Ratelimit.slidingWindow(10, "1 m"), prefix: "ratelimit:login" });
+
+export const setupRatelimit = isRateLimitDisabled
+  ? noopLimiter
+  : new Ratelimit({ redis: redis!, limiter: Ratelimit.slidingWindow(5, "1 h"), prefix: "ratelimit:setup" });
+
+export const apiRatelimit = isRateLimitDisabled
+  ? noopLimiter
+  : new Ratelimit({ redis: redis!, limiter: Ratelimit.slidingWindow(60, "1 m"), prefix: "ratelimit:api" });
 
 export function getRateLimitIdentifier(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");

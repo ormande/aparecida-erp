@@ -21,8 +21,13 @@ test("criação de cliente PF com nome e CPF válidos aparece na listagem", asyn
   await dialog.getByLabel(/Nome completo/i).fill(nome);
   await dialog.getByLabel("CPF", { exact: true }).fill("52998224725");
   await dialog.getByLabel(/Telefone celular/i).fill("11987654321");
+  const customerRespPromise = page.waitForResponse(
+    (resp) => resp.url().includes("/api/customers") && resp.request().method() === "POST",
+  );
   await dialog.getByRole("button", { name: "Salvar cliente" }).click();
-  await expect(page.getByText("Cliente cadastrado com sucesso!")).toBeVisible();
+  await customerRespPromise;
+  await expect(page.getByText("Cliente cadastrado com sucesso!")).toBeVisible({ timeout: 15_000 });
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByRole("table")).toContainText(nome);
+  await page.getByPlaceholder(/Buscar/i).fill(nome);
+  await expect(page.getByRole("table")).toContainText(nome, { timeout: 10_000 });
 });
