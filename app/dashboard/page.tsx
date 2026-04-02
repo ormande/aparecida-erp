@@ -1,8 +1,11 @@
 "use client";
 
-import { Activity, AlertTriangle, CircleDollarSign, ClipboardList, Wallet } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Activity, AlertTriangle, CircleDollarSign, ClipboardList, Wallet, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
@@ -14,6 +17,8 @@ import { usePayables } from "@/hooks/use-payables";
 import { useReceivables } from "@/hooks/use-receivables";
 import { useServiceOrders } from "@/hooks/use-service-orders";
 import { currency, date } from "@/lib/formatters";
+import { cn } from "@/lib/utils";
+import { isFirstSevenDaysOfMonth } from "@/lib/report-dates";
 
 function getMonthPrefixLocal(dateValue = new Date()) {
   const year = dateValue.getFullYear();
@@ -80,8 +85,66 @@ export default function DashboardPage() {
   const hasHistory = previousReceivables.length > 0 || previousPayables.length > 0;
   const hydrated = !unitLoading && ordersHydrated && receivablesHydrated && payablesHydrated;
 
+  const showReportBanner = isFirstSevenDaysOfMonth();
+  const previousMonthDate = new Date();
+  previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
+  const previousMonthRaw = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(previousMonthDate);
+  const previousMonthLabel = previousMonthRaw.charAt(0).toUpperCase() + previousMonthRaw.slice(1);
+
+  const dismissStorageKey = `report-badge-dismissed-${previousPeriod}`;
+  const [reportBadgeDismissed, setReportBadgeDismissed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setReportBadgeDismissed(window.localStorage.getItem(dismissStorageKey) === "true");
+  }, [dismissStorageKey]);
+
+  const showReportBadge =
+    showReportBanner && reportBadgeDismissed === false;
+
+  function dismissReportBadge() {
+    window.localStorage.setItem(dismissStorageKey, "true");
+    setReportBadgeDismissed(true);
+  }
+
   return (
     <div className="space-y-8">
+      {showReportBadge ? (
+        <div className="flex flex-col gap-4 rounded-2xl border border-[rgba(201,168,76,0.4)] bg-[rgba(201,168,76,0.12)] p-5 dark:bg-[rgba(201,168,76,0.08)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--color-gold-dark)] dark:text-[var(--color-gold-light)]">
+              Relatório de {previousMonthLabel} disponível
+            </p>
+            <p className="mt-1 text-sm text-foreground/70">
+              Consulte indicadores da empresa e o desempenho por funcionário.
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/relatorios"
+              className={cn(
+                buttonVariants({ size: "default" }),
+                "border border-[rgba(201,168,76,0.45)] bg-[var(--color-gold)] text-[var(--color-navy)] no-underline hover:bg-[var(--color-gold-light)]",
+              )}
+            >
+              Ver relatório
+            </Link>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-foreground/70 hover:bg-[rgba(201,168,76,0.15)] hover:text-foreground"
+              aria-label="Dispensar"
+              onClick={dismissReportBadge}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <PageHeader
         title="Dashboard"
         subtitle={

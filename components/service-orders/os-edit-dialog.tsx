@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,11 +147,10 @@ export function OsEditDialog({
               </div>
               <div className="grid gap-2">
                 <Label>Vencimento</Label>
-                <Input
-                  type="date"
+                <DatePicker
                   disabled={editableData.paymentTerm !== "A_PRAZO"}
                   value={editableData.dueDate}
-                  onChange={(event) => setEditableData((current) => ({ ...current, dueDate: event.target.value }))}
+                  onChange={(v) => setEditableData((current) => ({ ...current, dueDate: v }))}
                 />
               </div>
             </div>

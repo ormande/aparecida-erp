@@ -27,6 +27,7 @@ export type GetRequiredSessionContextOptions = {
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
+    maxAge: 14 * 60 * 60,
   },
   pages: {
     signIn: "/login",

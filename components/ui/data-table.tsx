@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -105,38 +106,40 @@ export function DataTable<T>({
       </div>
 
       <div className="overflow-hidden rounded-3xl border bg-card">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              {columns.map((column) => (
-                <TableHead key={column.key} className={column.className}>
-                  {column.header}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading
-              ? Array.from({ length: 4 }).map((_, index) => (
-                  <TableRow key={index}>
-                    {columns.map((column) => (
-                      <TableCell key={column.key}>
-                        <Skeleton className="h-5 w-full max-w-[160px]" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              : paginated.map((row, index) => (
-                  <TableRow key={index}>
-                    {columns.map((column) => (
-                      <TableCell key={column.key} className={column.className}>
-                        {column.render(row)}
-                      </TableCell>
-                    ))}
-                  </TableRow>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                {columns.map((column) => (
+                  <TableHead key={column.key} className={cn("px-4", column.className)}>
+                    {column.header}
+                  </TableHead>
                 ))}
-          </TableBody>
-        </Table>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading
+                ? Array.from({ length: 4 }).map((_, index) => (
+                    <TableRow key={index}>
+                      {columns.map((column) => (
+                        <TableCell key={column.key} className={cn("px-4", column.className)}>
+                          <Skeleton className="h-5 w-full max-w-[160px]" />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                : paginated.map((row, index) => (
+                    <TableRow key={index}>
+                      {columns.map((column) => (
+                        <TableCell key={column.key} className={cn("px-4", column.className)}>
+                          {column.render(row)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+            </TableBody>
+          </Table>
+        </div>
         {!isLoading && paginated.length === 0 ? (
           <div className="p-6">
             <EmptyState title={emptyTitle} description={emptyDescription} />

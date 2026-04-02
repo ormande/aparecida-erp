@@ -50,6 +50,7 @@ export function employeeFormValuesToEmployee(values: EmployeeFormValues, base?: 
     telefone: values.telefone,
     nivelAcesso: values.nivelAcesso,
     situacao: values.situacao,
+    monthlyGoal: base?.monthlyGoal ?? null,
   };
 }
 

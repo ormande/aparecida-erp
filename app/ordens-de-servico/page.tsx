@@ -10,6 +10,7 @@ import { OsStatusModal } from "@/components/service-orders/os-status-modal";
 import { OsViewDialog } from "@/components/service-orders/os-view-dialog";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -39,7 +40,7 @@ export default function OrdensDeServicoPage() {
           </div>
         }
       />
-      <div className="surface-card space-y-5 p-6">
+      <div className="surface-card space-y-5 overflow-x-auto p-6 [&_td:last-child>div]:flex-nowrap [&_td:last-child]:whitespace-nowrap">
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={p.selectedUnitId === "" ? "default" : "outline"} onClick={() => p.setSelectedUnitId("")}>Geral</Button>
           {p.units.map((unit) => (
@@ -64,13 +65,23 @@ export default function OrdensDeServicoPage() {
           </div>
           {p.datePreset === "custom" ? (
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <Input type="date" value={p.customFrom} onChange={(e) => p.setCustomFrom(e.target.value)} />
-              <Input type="date" value={p.customTo} onChange={(e) => p.setCustomTo(e.target.value)} />
+              <DatePicker value={p.customFrom} onChange={p.setCustomFrom} />
+              <DatePicker value={p.customTo} onChange={p.setCustomTo} />
             </div>
           ) : null}
         </div>
         {p.groupByCustomer ? (
-          <DataTable data={p.groupedOrders} pageSize={10} isLoading={p.unitLoading || !p.hydrated} searchPlaceholder="Buscar por cliente" searchKeys={p.groupedOrdersSearchKeys} columns={p.groupedTableColumns} />
+          <DataTable
+            data={p.groupedOrders}
+            pageSize={10}
+            isLoading={p.unitLoading || !p.hydrated}
+            searchPlaceholder="Buscar por cliente"
+            searchKeys={p.groupedOrdersSearchKeys}
+            columns={p.groupedTableColumns.map((col) => ({
+              ...col,
+              className: (col as { className?: string }).className ?? "px-4",
+            }))}
+          />
         ) : (
           <DataTable
             data={p.filteredOrders}
@@ -82,7 +93,10 @@ export default function OrdensDeServicoPage() {
             manualPagination={{ page: p.meta?.page ?? p.page, totalPages: p.meta?.totalPages ?? 1, onPageChange: p.setPage }}
             searchPlaceholder="Buscar por numero, cliente ou placa"
             searchKeys={p.filteredOrdersSearchKeys}
-            columns={p.filteredTableColumns}
+            columns={p.filteredTableColumns.map((col) => ({
+              ...col,
+              className: (col as { className?: string }).className ?? "px-4",
+            }))}
           />
         )}
       </div>

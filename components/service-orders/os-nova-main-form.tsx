@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -150,12 +151,10 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
           </div>
           <div className="grid gap-2">
             <Label htmlFor="dueDate">Vencimento</Label>
-            <Input
-              id="dueDate"
-              type="date"
+            <DatePicker
               value={os.dueDate}
               disabled={os.paymentTerm !== "A_PRAZO"}
-              onChange={(e) => os.setDueDate(e.target.value)}
+              onChange={os.setDueDate}
             />
           </div>
         </div>

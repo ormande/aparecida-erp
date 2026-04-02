@@ -1,8 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ClosureRow } from "@/hooks/use-os-page";
 import { currency } from "@/lib/formatters";
@@ -59,11 +59,10 @@ export function OsClosureDialog({
             </div>
             <div className="grid gap-2">
               <Label>Vencimento</Label>
-              <Input
-                type="date"
+              <DatePicker
                 disabled={paymentTerm !== "A_PRAZO"}
                 value={dueDate}
-                onChange={(event) => setDueDate(event.target.value)}
+                onChange={setDueDate}
               />
             </div>
             <div className="flex justify-end">

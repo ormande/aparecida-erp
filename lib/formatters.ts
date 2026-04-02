@@ -75,3 +75,31 @@ export function parseCurrencyInput(value: string) {
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
+
+const brlMoneyMaskFormatter = new Intl.NumberFormat("pt-BR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/** Máscara 0.000,00 para campo com prefixo R$ separado (apenas o valor, sem símbolo). */
+export function formatMoneyMaskInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits === "") {
+    return "";
+  }
+  const amount = Number(digits) / 100;
+  return brlMoneyMaskFormatter.format(amount);
+}
+
+export function formatMoneyMaskFromNumber(value: number) {
+  return brlMoneyMaskFormatter.format(value);
+}
+
+/** Centavos digitados → valor decimal; string vazia → null. */
+export function parseMoneyMaskInput(value: string): number | null {
+  const digits = value.replace(/\D/g, "");
+  if (digits === "") {
+    return null;
+  }
+  return Number(digits) / 100;
+}

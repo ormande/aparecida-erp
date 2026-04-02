@@ -47,6 +47,7 @@ export const employeeService = {
         phone: true,
         accessLevel: true,
         status: true,
+        monthlyGoal: true,
       },
     });
 
@@ -68,6 +69,7 @@ export const employeeService = {
         phone: true,
         accessLevel: true,
         status: true,
+        monthlyGoal: true,
       },
     });
 
@@ -120,6 +122,7 @@ export const employeeService = {
         phone: true,
         accessLevel: true,
         status: true,
+        monthlyGoal: true,
       },
     });
 
@@ -185,6 +188,7 @@ export const employeeService = {
         phone: true,
         accessLevel: true,
         status: true,
+        monthlyGoal: true,
       },
     });
 

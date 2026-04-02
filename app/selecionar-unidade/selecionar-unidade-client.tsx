@@ -18,29 +18,13 @@ export function SelecionarUnidadeClient() {
 
   const nextHref = searchParams.get("next") ?? "/dashboard";
   const units = session?.user?.units ?? [];
-  const active = session?.activeUnitId ?? session?.user?.activeUnitId ?? undefined;
-
   useEffect(() => {
     if (status === "unauthenticated") {
       router.replace(
         `/login?next=${encodeURIComponent(`/selecionar-unidade?next=${encodeURIComponent(nextHref)}`)}`,
       );
-      return;
     }
-
-    if (status !== "authenticated") {
-      return;
-    }
-
-    if (units.length <= 1) {
-      router.replace(nextHref);
-      return;
-    }
-
-    if (active !== undefined) {
-      router.replace(nextHref);
-    }
-  }, [active, nextHref, router, status, units.length]);
+  }, [nextHref, router, status]);
 
   async function handleSelect(unitId: string) {
     setSelectingId(unitId);
@@ -74,7 +58,7 @@ export function SelecionarUnidadeClient() {
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold text-white">Selecione a unidade</h1>
             <p className="text-sm text-[rgba(240,244,248,0.72)]">
-              Sua conta possui mais de uma unidade. Escolha em qual deseja trabalhar nesta sessão.
+              Escolha em qual unidade deseja trabalhar.
             </p>
           </div>
         </CardHeader>

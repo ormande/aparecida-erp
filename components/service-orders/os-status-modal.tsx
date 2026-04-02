@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { serviceOrderStatusBadgeClasses } from "@/components/ui/status-badge";
 import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = [
@@ -14,6 +13,32 @@ const STATUS_OPTIONS = [
   "Concluída",
   "Cancelada",
 ] as const;
+
+const STATUS_SELECTED: Record<
+  (typeof STATUS_OPTIONS)[number],
+  { option: string; radio: string }
+> = {
+  Aberta: {
+    option: "bg-blue-500/15 border-blue-500 text-blue-700 dark:text-blue-300",
+    radio: "border-blue-600 bg-blue-600 dark:border-blue-500 dark:bg-blue-500",
+  },
+  "Em andamento": {
+    option: "bg-amber-500/15 border-amber-500 text-amber-700 dark:text-amber-300",
+    radio: "border-amber-600 bg-amber-600 dark:border-amber-500 dark:bg-amber-500",
+  },
+  "Aguardando peça": {
+    option: "bg-orange-500/15 border-orange-500 text-orange-700 dark:text-orange-300",
+    radio: "border-orange-600 bg-orange-600 dark:border-orange-500 dark:bg-orange-500",
+  },
+  Concluída: {
+    option: "bg-emerald-500/15 border-emerald-500 text-emerald-700 dark:text-emerald-300",
+    radio: "border-emerald-600 bg-emerald-600 dark:border-emerald-500 dark:bg-emerald-500",
+  },
+  Cancelada: {
+    option: "bg-rose-500/15 border-rose-500 text-rose-700 dark:text-rose-300",
+    radio: "border-rose-600 bg-rose-600 dark:border-rose-500 dark:bg-rose-500",
+  },
+};
 
 type StatusOrder = { id: string; number: string; status: string };
 
@@ -48,20 +73,24 @@ export function OsStatusModal({ order, onClose, onConfirm }: OsStatusModalProps)
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-md" showCloseButton>
+      <DialogContent className="sm:max-w-lg px-6 pb-6" showCloseButton>
         <DialogHeader>
-          <DialogTitle>Alterar status do trabalho</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-slate-950 dark:text-foreground">Alterar status do trabalho</DialogTitle>
+          <DialogDescription className="text-slate-700 dark:text-muted-foreground">
             {order ? (
               <>
-                OS <span className="font-medium text-foreground">{order.number}</span> — escolha o novo status.
+                OS{" "}
+                <span className="font-semibold text-slate-900 dark:font-medium dark:text-foreground">
+                  {order.number}
+                </span>{" "}
+                — escolha o novo status.
               </>
             ) : null}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-2">
+        <div className="grid gap-3 pb-2">
           {STATUS_OPTIONS.map((status) => {
-            const colorClass = serviceOrderStatusBadgeClasses[status] ?? "bg-muted text-foreground";
+            const sel = STATUS_SELECTED[status];
             const isSelected = selected === status;
             return (
               <button
@@ -69,15 +98,16 @@ export function OsStatusModal({ order, onClose, onConfirm }: OsStatusModalProps)
                 type="button"
                 onClick={() => setSelected(status)}
                 className={cn(
-                  "flex w-full items-center rounded-2xl border px-3 py-2.5 text-left text-sm font-medium transition-colors",
-                  isSelected ? "border-ring ring-2 ring-ring/30" : "border-border hover:bg-muted/50",
-                  colorClass,
+                  "flex w-full items-center rounded-2xl border px-4 py-3 text-left text-sm font-medium transition-colors",
+                  isSelected
+                    ? sel.option
+                    : "bg-muted/40 border-border text-foreground hover:bg-muted/70",
                 )}
               >
                 <span
                   className={cn(
                     "mr-3 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
-                    isSelected ? "border-primary bg-primary" : "border-muted-foreground/40",
+                    isSelected ? sel.radio : "border-border bg-transparent",
                   )}
                 >
                   {isSelected ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
@@ -87,7 +117,7 @@ export function OsStatusModal({ order, onClose, onConfirm }: OsStatusModalProps)
             );
           })}
         </div>
-        <DialogFooter className="border-t-0 bg-transparent p-0 sm:justify-end">
+        <DialogFooter className="border-t-0 bg-transparent p-0 pt-2 sm:justify-end">
           <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
             Cancelar
           </Button>

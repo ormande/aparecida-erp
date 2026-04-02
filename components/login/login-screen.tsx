@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getSession } from "next-auth/react";
 import { LogIn } from "lucide-react";
 import { toast } from "sonner";
 
@@ -13,11 +12,9 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
-import { useSetupStatus } from "@/hooks/use-setup-status";
 
 export function LoginScreen() {
   const { isAuthenticated, login } = useAuth();
-  const { hasUsers, isLoading } = useSetupStatus();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -30,19 +27,8 @@ export function LoginScreen() {
       return;
     }
 
-    async function redirectAfterAuth() {
-      const session = await getSession();
-      const units = session?.user?.units ?? [];
-      const active = session?.activeUnitId ?? session?.user?.activeUnitId;
-      const nextUrl = searchParams.get("next") || "/dashboard";
-      if (units.length > 1 && active === undefined) {
-        router.replace(`/selecionar-unidade?next=${encodeURIComponent(nextUrl)}`);
-        return;
-      }
-      router.replace(nextUrl);
-    }
-
-    void redirectAfterAuth();
+    const nextUrl = searchParams.get("next") || "/dashboard";
+    router.replace(nextUrl);
   }, [isAuthenticated, router, searchParams]);
 
   async function handleLogin() {
@@ -58,21 +44,14 @@ export function LoginScreen() {
     setSubmitting(false);
 
     if (result?.error) {
-      toast.error("E-mail ou senha inválidos.");
+      toast.error("E-mail ou senha inv\u00e1lidos.");
       return;
     }
 
     toast.success("Login realizado com sucesso.");
 
-    const session = await getSession();
-    const units = session?.user?.units ?? [];
-    const active = session?.activeUnitId ?? session?.user?.activeUnitId;
     const nextUrl = searchParams.get("next") || "/dashboard";
-    if (units.length > 1 && active === undefined) {
-      router.push(`/selecionar-unidade?next=${encodeURIComponent(nextUrl)}`);
-      return;
-    }
-    router.push(nextUrl);
+    router.push(`/selecionar-unidade?next=${encodeURIComponent(nextUrl)}`);
   }
 
   return (
@@ -121,19 +100,15 @@ export function LoginScreen() {
             {submitting ? "Entrando..." : "Entrar no sistema"}
           </Button>
 
-          {hasUsers === false && !isLoading ? (
-            <Link href="/primeiro-acesso" className="block">
-              <Button
-                variant="outline"
-                className="h-11 w-full border-[rgba(201,168,76,0.5)] bg-transparent text-[var(--color-gold-light)] hover:bg-[rgba(201,168,76,0.08)] hover:text-[var(--color-gold-light)]"
-              >
-                Primeiro acesso
-              </Button>
-            </Link>
-          ) : null}
+          <Link
+            href="/primeiro-acesso"
+            className="block text-center text-sm text-[var(--color-gold-light)] no-underline hover:underline"
+          >
+            Primeiro acesso ao sistema →
+          </Link>
         </CardContent>
         <CardFooter className="justify-center pt-2 text-xs text-[rgba(240,244,248,0.58)]">
-          © 2026 Aparecida ERP
+          {"\u00a9"} 2026 Aparecida ERP
         </CardFooter>
       </Card>
     </div>

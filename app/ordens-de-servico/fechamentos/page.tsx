@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FileDown } from "lucide-react";
+import { createElement, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useAuth } from "@/hooks/use-auth";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useCustomers } from "@/hooks/use-customers";
+import { usePdfDownload } from "@/hooks/use-pdf-download";
 import { useServiceOrders } from "@/hooks/use-service-orders";
 import { useUnits } from "@/hooks/use-units";
 import { currency, date, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
@@ -37,6 +41,9 @@ export default function FechamentosPage() {
   const { unitId } = useCurrentUnit();
   const { units } = useUnits();
   const { customers } = useCustomers();
+  const { user } = useAuth();
+  const { download: downloadPdf } = usePdfDownload();
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [settleOrder, setSettleOrder] = useState<OrderPreview | null>(null);
@@ -124,10 +131,51 @@ export default function FechamentosPage() {
     setOrderPreview(data.order);
   }
 
+  const handleFecPdfDownload = useCallback(
+    async (orderId: string, orderNumber: string) => {
+      setDownloadingPdfId(orderId);
+      try {
+        const [orderRes, companyRes] = await Promise.all([
+          fetch(`/api/service-orders/${orderId}`, { cache: "no-store" }).then((r) => r.json() as Promise<{ order?: OrderPreview }>),
+          fetch("/api/company/public").then((r) => r.json() as Promise<{ company?: { name?: string } }>),
+        ]);
+        const order = orderRes.order;
+        if (!order) {
+          toast.error("Não foi possível carregar o fechamento.");
+          return;
+        }
+        const companyName = companyRes.company?.name ?? "";
+        const { FechamentoPdf } = await import("@/components/pdf/fechamento-pdf");
+        await downloadPdf(
+          createElement(FechamentoPdf, {
+            order: {
+              ...order,
+              clientId: null,
+              vehicleId: null,
+              unitId: "",
+              status: "Aberta" as const,
+              mileage: null,
+              isStandalone: false,
+              receivableStatus: null,
+            },
+            companyName,
+            unitName: "",
+          }),
+          `Fechamento-${orderNumber}`,
+        );
+      } catch {
+        toast.error("Não foi possível gerar o PDF.");
+      } finally {
+        setDownloadingPdfId(null);
+      }
+    },
+    [downloadPdf],
+  );
+
   async function openSettleDialog(orderId: string) {
     const response = await fetch(`/api/service-orders/${orderId}`, { cache: "no-store" });
     const data = await response.json();
-    if (!response.ok) return toast.error(data.message ?? "NÃ£o foi possÃ­vel carregar o fechamento.");
+    if (!response.ok) return toast.error(data.message ?? "Não foi possível carregar o fechamento.");
     setDiscountInput("");
     setSettleOrder(data.order);
   }
@@ -166,8 +214,8 @@ export default function FechamentosPage() {
           </div>
           {datePreset === "custom" ? (
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <Input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} />
-              <Input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} />
+              <DatePicker value={customFrom} onChange={setCustomFrom} />
+              <DatePicker value={customTo} onChange={setCustomTo} />
             </div>
           ) : null}
         </div>
@@ -198,6 +246,17 @@ export default function FechamentosPage() {
                   <Button variant="outline" size="sm" onClick={() => row.receivableStatus === "PAGO" ? handleStatusChange(row.id, "reopen") : openSettleDialog(row.id)}>
                     {row.receivableStatus === "PAGO" ? "Reabrir" : "Baixar"}
                   </Button>
+                  {user?.accessLevel === "PROPRIETARIO" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={downloadingPdfId === row.id}
+                      onClick={() => void handleFecPdfDownload(row.id, row.number)}
+                    >
+                      <FileDown className="mr-1 h-4 w-4" />
+                      {downloadingPdfId === row.id ? "..." : "PDF"}
+                    </Button>
+                  ) : null}
                   <ConfirmModal
                     trigger={
                       <Button variant="outline" size="sm">
@@ -267,15 +326,15 @@ export default function FechamentosPage() {
                 <div><span className="text-sm text-muted-foreground">Vencimento</span><p>{settleOrder.paymentTerm === "A_PRAZO" && settleOrder.dueDate ? date(settleOrder.dueDate) : "À vista"}</p></div>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Valor devido</p>
-                  <p className="mt-2 text-3xl font-semibold text-amber-900 dark:text-amber-100">
+                <div className="rounded-2xl border bg-muted/20 p-4">
+                  <p className="text-sm font-medium text-muted-foreground">Valor devido</p>
+                  <p className="mt-2 text-3xl font-semibold">
                     {currency(Math.max((settleOrder.receivableAmount ?? 0) - parseCurrencyInput(discountInput), 0))}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-sky-300 bg-sky-50 p-4 dark:border-sky-900/60 dark:bg-sky-950/30">
-                  <p className="text-sm font-medium text-sky-800 dark:text-sky-200">Valor total gasto</p>
-                  <p className="mt-2 text-3xl font-semibold text-sky-900 dark:text-sky-100">{currency(settleOrder.total)}</p>
+                <div className="rounded-2xl border bg-muted/20 p-4">
+                  <p className="text-sm font-medium text-muted-foreground">Valor total gasto</p>
+                  <p className="mt-2 text-3xl font-semibold">{currency(settleOrder.total)}</p>
                 </div>
               </div>
               <div className="rounded-2xl border bg-muted/20 p-4">

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -220,11 +221,9 @@ export function CadastroPessoaForm({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="dataNascimento">Data de nascimento</Label>
-              <Input
-                id="dataNascimento"
-                type="date"
+              <DatePicker
                 value={values.dataNascimento}
-                onChange={(event) => updateField("dataNascimento", event.target.value)}
+                onChange={(v) => updateField("dataNascimento", v)}
               />
             </div>
           </div>

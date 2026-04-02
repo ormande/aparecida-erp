@@ -40,7 +40,11 @@ function mapPersonType(type: "PF" | "PJ") {
   return type === "PF" ? "pf" : "pj";
 }
 
-export function mapUserToEmployee(user: Pick<User, "id" | "name" | "email" | "phone" | "accessLevel" | "status">): Employee {
+export function mapUserToEmployee(
+  user: Pick<User, "id" | "name" | "email" | "phone" | "accessLevel" | "status"> & {
+    monthlyGoal?: User["monthlyGoal"] | null;
+  },
+): Employee {
   return {
     id: user.id,
     nomeCompleto: user.name,
@@ -48,6 +52,8 @@ export function mapUserToEmployee(user: Pick<User, "id" | "name" | "email" | "ph
     telefone: formatPhone(user.phone),
     nivelAcesso: mapUserAccessLevel(user.accessLevel),
     situacao: mapRecordStatus(user.status),
+    monthlyGoal:
+      user.monthlyGoal === undefined || user.monthlyGoal === null ? null : Number(user.monthlyGoal),
   };
 }
 

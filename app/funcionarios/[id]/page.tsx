@@ -2,12 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 
 import { EmployeeForm } from "@/components/employees/employee-form";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
+import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  currency,
+  formatMoneyMaskFromNumber,
+  formatMoneyMaskInput,
+  parseMoneyMaskInput,
+} from "@/lib/formatters";
 import type { Employee, EmployeeAccessLevel } from "@/lib/app-types";
 
 function AccessLevelBadge({ level }: { level: EmployeeAccessLevel }) {
@@ -24,8 +42,14 @@ function AccessLevelBadge({ level }: { level: EmployeeAccessLevel }) {
 export default function FuncionarioDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { data: session } = useSession();
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [goalInput, setGoalInput] = useState("");
+  const [goalSaving, setGoalSaving] = useState(false);
+
+  const isProprietario = session?.user?.accessLevel === "PROPRIETARIO";
 
   useEffect(() => {
     let active = true;
@@ -59,6 +83,14 @@ export default function FuncionarioDetailPage() {
     };
   }, [params.id]);
 
+  useEffect(() => {
+    if (goalOpen && employee) {
+      setGoalInput(
+        employee.monthlyGoal != null ? formatMoneyMaskFromNumber(employee.monthlyGoal) : "",
+      );
+    }
+  }, [goalOpen, employee]);
+
   if (hydrated && !employee) {
     return (
       <div className="space-y-6">
@@ -76,6 +108,36 @@ export default function FuncionarioDetailPage() {
 
   if (!employee) {
     return null;
+  }
+
+  async function handleSaveGoal() {
+    if (!employee) {
+      return;
+    }
+    const monthlyGoal = parseMoneyMaskInput(goalInput);
+
+    setGoalSaving(true);
+    try {
+      const response = await fetch(`/api/employees/${employee.id}/goal`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monthlyGoal }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.message ?? "Não foi possível salvar a meta.");
+        return;
+      }
+      setEmployee((prev) =>
+        prev ? { ...prev, monthlyGoal: data.user.monthlyGoal as number | null } : prev,
+      );
+      toast.success("Meta salva com sucesso.");
+      setGoalOpen(false);
+    } catch {
+      toast.error("Não foi possível salvar a meta.");
+    } finally {
+      setGoalSaving(false);
+    }
   }
 
   return (
@@ -115,8 +177,13 @@ export default function FuncionarioDetailPage() {
         </Card>
 
         <Card className="surface-card border-none">
-          <CardHeader>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
             <CardTitle>Resumo</CardTitle>
+            {isProprietario ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => setGoalOpen(true)}>
+                Definir meta
+              </Button>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="flex items-center justify-between">
@@ -126,6 +193,10 @@ export default function FuncionarioDetailPage() {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Situação</span>
               <StatusBadge status={employee.situacao} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Meta mensal</span>
+              <span>{employee.monthlyGoal != null ? currency(employee.monthlyGoal) : "—"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Telefone</span>
@@ -138,6 +209,49 @@ export default function FuncionarioDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={goalOpen} onOpenChange={setGoalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Meta mensal</DialogTitle>
+            <DialogDescription>
+              Defina o valor da meta de faturamento ou desempenho mensal para este colaborador. Deixe em branco para
+              remover a meta.
+            </DialogDescription>
+          </DialogHeader>
+          {employee.monthlyGoal != null ? (
+            <p className="text-sm text-muted-foreground">
+              Valor atual: <span className="font-medium text-foreground">{currency(employee.monthlyGoal)}</span>
+            </p>
+          ) : null}
+          <div className="grid gap-2">
+            <Label htmlFor="monthly-goal-input">Nova meta (R$)</Label>
+            <InputGroup className="h-9 rounded-2xl">
+              <InputGroupAddon>
+                <InputGroupText>R$</InputGroupText>
+              </InputGroupAddon>
+              <InputGroupInput
+                id="monthly-goal-input"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="0,00"
+                value={goalInput}
+                onChange={(e) => setGoalInput(formatMoneyMaskInput(e.target.value))}
+                disabled={goalSaving}
+              />
+            </InputGroup>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setGoalOpen(false)} disabled={goalSaving}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={() => void handleSaveGoal()} disabled={goalSaving}>
+              {goalSaving ? "Salvando..." : "Salvar meta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

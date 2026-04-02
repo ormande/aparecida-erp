@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeftRight,
   BadgeDollarSign,
+  BarChart2,
   Boxes,
   CarFront,
   ClipboardList,
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/hooks/use-auth";
 import { ESTOQUE_ATIVO } from "@/lib/config";
+import { isFirstSevenDaysOfMonth } from "@/lib/report-dates";
 import { cn } from "@/lib/utils";
 
 import type { LucideIcon } from "lucide-react";
@@ -71,6 +73,7 @@ const baseItems: NavItem[] = [
     ],
   },
   ...(ESTOQUE_ATIVO ? [{ href: "/estoque", label: "Estoque", icon: Boxes } satisfies NavItem] : []),
+  { href: "/relatorios", label: "Relatórios", icon: BarChart2 },
   { href: "/auditoria", label: "Auditoria", icon: ClipboardList },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
@@ -80,10 +83,38 @@ type SidebarProps = {
   onNavigate?: () => void;
 };
 
+function currentYearMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function AppSidebar({ onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout, user } = useAuth();
+  const [relatoriosDotHidden, setRelatoriosDotHidden] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const ym = currentYearMonthKey();
+    setRelatoriosDotHidden(window.localStorage.getItem(`relatorios-visited-${ym}`) === "true");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (pathname === "/relatorios" || pathname.startsWith("/relatorios/")) {
+      const ym = currentYearMonthKey();
+      window.localStorage.setItem(`relatorios-visited-${ym}`, "true");
+      setRelatoriosDotHidden(true);
+    }
+  }, [pathname]);
+
+  const showRelatoriosDot =
+    relatoriosDotHidden === false && isFirstSevenDaysOfMonth();
 
   const items = useMemo((): NavItem[] => {
     const level = user?.accessLevel;
@@ -93,6 +124,9 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
     return baseItems
       .filter((item) => {
         if (item.href === "/financeiro" && isFuncionario) {
+          return false;
+        }
+        if (item.href === "/relatorios" && isFuncionario) {
           return false;
         }
         if (item.href === "/auditoria" && hideAuditAndSettings) {
@@ -161,7 +195,15 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
                   )}
                 >
                   {Icon ? <Icon className="h-4 w-4" /> : null}
-                  <span>{item.label}</span>
+                  <span className="flex flex-1 items-center gap-2">
+                    <span>{item.label}</span>
+                    {item.href === "/relatorios" && showRelatoriosDot ? (
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full bg-[var(--color-gold)]"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </span>
                 </Link>
 
                 {item.children?.length ? (

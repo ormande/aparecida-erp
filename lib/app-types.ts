@@ -42,6 +42,7 @@ export type Employee = {
   telefone: string;
   nivelAcesso: EmployeeAccessLevel;
   situacao: ClientSituation;
+  monthlyGoal: number | null;
 };
 
 export type Receivable = {

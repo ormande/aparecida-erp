@@ -123,6 +123,7 @@ model User {
   passwordHash    String?
   accessLevel     UserAccessLevel
   status          RecordStatus     @default(ATIVO)
+  monthlyGoal     Decimal?         @db.Decimal(10, 2)
   lastLoginAt     DateTime?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt

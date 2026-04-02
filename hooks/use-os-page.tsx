@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, FileDown, Pencil, Trash2 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -8,8 +8,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useAuth } from "@/hooks/use-auth";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useCustomers } from "@/hooks/use-customers";
+import { usePdfDownload } from "@/hooks/use-pdf-download";
 import { useServiceOrders } from "@/hooks/use-service-orders";
 import { useServices } from "@/hooks/use-services";
 import { useUnits } from "@/hooks/use-units";
@@ -99,6 +101,8 @@ export function useOsPage() {
   const { units } = useUnits();
   const { customers } = useCustomers();
   const { services } = useServices();
+  const { user } = useAuth();
+  const { download: downloadPdf } = usePdfDownload();
 
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [customerFilter, setCustomerFilter] = useState(queryClientId ?? "");
@@ -131,6 +135,7 @@ export function useOsPage() {
     notes: "",
   });
   const [editableServices, setEditableServices] = useState<OsEditableServiceLine[]>([]);
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
 
   useEffect(() => {
     if (unitId) setSelectedUnitId((current) => current || unitId);
@@ -178,8 +183,10 @@ export function useOsPage() {
     return orders.filter((order) => {
       if (order.number.startsWith("FEC-")) return false;
       if (serviceFilter && !order.servicesLabel.toLowerCase().includes(serviceFilter.toLowerCase())) return false;
-      if (minValue && order.total < parseCurrencyInput(minValue)) return false;
-      if (maxValue && order.total > parseCurrencyInput(maxValue)) return false;
+      const min = parseCurrencyInput(minValue);
+      if (min > 0 && order.total < min) return false;
+      const max = parseCurrencyInput(maxValue);
+      if (max > 0 && order.total > max) return false;
       if (datePreset === "today") {
         const openedAt = new Date(`${order.openedAt}T00:00:00`);
         if (openedAt.toDateString() !== today.toDateString()) return false;
@@ -417,6 +424,30 @@ export function useOsPage() {
     void toast.success("OS de fechamento gerada com sucesso!");
   }, [closureDueDate, closurePaymentTerm, closureRow, setOrders]);
 
+  const handleOsPdfDownload = useCallback(
+    async (orderId: string, orderNumber: string) => {
+      setDownloadingPdfId(orderId);
+      try {
+        const [order, companyRes] = await Promise.all([
+          fetchOrder(orderId),
+          fetch("/api/company/public").then((r) => r.json() as Promise<{ company?: { name?: string } }>),
+        ]);
+        const companyName = companyRes.company?.name ?? "";
+        const { OsPdf } = await import("@/components/pdf/os-pdf");
+        const { createElement } = await import("react");
+        await downloadPdf(
+          createElement(OsPdf, { order, companyName, unitName: order.unitName ?? "" }),
+          `OS-${orderNumber}`,
+        );
+      } catch {
+        toast.error("Não foi possível gerar o PDF.");
+      } finally {
+        setDownloadingPdfId(null);
+      }
+    },
+    [fetchOrder, downloadPdf],
+  );
+
   const groupedTableColumns = useMemo(
     () => [
       { key: "customer", header: "Cliente", render: (row: ClosureRow) => row.customerName },
@@ -495,6 +526,15 @@ export function useOsPage() {
             >
               {row.receivableStatus === "PAGO" ? "Reabrir" : "Baixar"}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={downloadingPdfId === row.id}
+              onClick={() => void handleOsPdfDownload(row.id, row.number)}
+            >
+              <FileDown className="mr-1 h-4 w-4" />
+              {downloadingPdfId === row.id ? "..." : "PDF"}
+            </Button>
             <ConfirmModal
               trigger={
                 <Button variant="outline" size="sm">
@@ -513,7 +553,7 @@ export function useOsPage() {
         ),
       },
     ],
-    [executeDelete, fetchOrder, handleStatusChange, openEditDialog, setStatusOrder],
+    [downloadingPdfId, executeDelete, fetchOrder, handleOsPdfDownload, handleStatusChange, openEditDialog, setStatusOrder],
   );
 
   const clearFilters = useCallback(() => {
@@ -531,6 +571,7 @@ export function useOsPage() {
   }, []);
 
   return {
+    user,
     queryClientId,
     vehicleId,
     currentUnit,

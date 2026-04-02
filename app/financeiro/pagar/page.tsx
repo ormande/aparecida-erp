@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
@@ -256,7 +257,7 @@ export default function FinanceiroPagarPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="dueDate">Vencimento</Label>
-                    <Input id="dueDate" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                    <DatePicker value={dueDate} onChange={setDueDate} />
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
