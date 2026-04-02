@@ -7,6 +7,7 @@ import { VehicleForm } from "@/components/vehicles/vehicle-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,13 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NovaOsController } from "@/hooks/use-nova-os";
+
+const PAYMENT_METHOD_OPTIONS = [
+  { value: "Pix", label: "Pix" },
+  { value: "Dinheiro", label: "Dinheiro" },
+  { value: "Débito", label: "Débito" },
+  { value: "Crédito", label: "Crédito" },
+] as const;
 
 export function OsNovaMainForm({ os }: { os: NovaOsController }) {
   return (
@@ -118,8 +126,13 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
             <Input id="mileage" value={os.mileage} onChange={(e) => os.setMileage(e.target.value)} placeholder="Ex: 68420" />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="payment">Forma de pagamento</Label>
-            <Input id="payment" value={os.paymentMethod} onChange={(e) => os.setPaymentMethod(e.target.value)} />
+            <Label>Forma de pagamento</Label>
+            <SearchableSelect
+              value={os.paymentMethod}
+              onChange={os.setPaymentMethod}
+              placeholder="Selecione a forma de pagamento"
+              options={[...PAYMENT_METHOD_OPTIONS]}
+            />
           </div>
         </div>
 
@@ -148,7 +161,7 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-xl">Serviços</h2>
               <p className="text-sm text-muted-foreground">Use o catálogo cadastrado ou descreva o serviço manualmente.</p>
@@ -157,6 +170,27 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
               <Plus className="mr-2 h-4 w-4" />
               Adicionar serviço
             </Button>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:flex-wrap sm:items-center">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={os.sameEmployeeForAll}
+                onCheckedChange={(checked) => os.setSameEmployeeForAll(checked === true)}
+              />
+              Mesmo funcionário para todos os serviços
+            </label>
+            {os.sameEmployeeForAll ? (
+              <div className="min-w-[220px] flex-1 sm:max-w-sm">
+                <SearchableSelect
+                  value={os.globalEmployeeId}
+                  onChange={os.setGlobalEmployeeId}
+                  placeholder="Funcionário para todos"
+                  options={os.employeeOptions}
+                  disabled={!os.employeeOptions.length}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="space-y-4">
@@ -168,6 +202,8 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                 catalogServices={os.catalogServices}
                 serviceOptions={os.serviceOptions}
                 servicesHydrated={os.servicesHydrated}
+                employeeOptions={os.employeeOptions}
+                sameEmployeeForAll={os.sameEmployeeForAll}
                 canRemove={os.services.length > 1}
                 onChange={os.onServiceChange}
                 onRemove={os.removeService}

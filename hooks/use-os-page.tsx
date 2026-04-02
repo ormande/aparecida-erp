@@ -39,7 +39,14 @@ export type OrderDetails = {
   notes: string;
   mileage: number | null;
   isStandalone: boolean;
-  services: Array<{ id: string; serviceId?: string | null; description: string; laborPrice: number }>;
+  services: Array<{
+    id: string;
+    serviceId?: string | null;
+    description: string;
+    laborPrice: number;
+    executedByUserId?: string | null;
+    executedByName?: string | null;
+  }>;
   receivableStatus: ReceivableStatus;
   receivableAmount?: number;
 };
@@ -73,6 +80,7 @@ export type OsEditableServiceLine = {
   description: string;
   laborPrice: number;
   laborPriceInput: string;
+  executedByUserId: string;
 };
 
 const STATUS_FILTER_OPTIONS = [
@@ -110,6 +118,7 @@ export function useOsPage() {
   const [editOrder, setEditOrder] = useState<OrderDetails | null>(null);
   const [viewOrder, setViewOrder] = useState<OrderDetails | null>(null);
   const [settleOrder, setSettleOrder] = useState<{ id: string; number: string } | null>(null);
+  const [statusOrder, setStatusOrder] = useState<{ id: string; number: string; status: string } | null>(null);
   const [editableData, setEditableData] = useState<OsEditableData>({
     unitId: "",
     clientId: "",
@@ -219,7 +228,13 @@ export function useOsPage() {
     [],
   );
   const filteredOrdersSearchKeys = useMemo<Array<(row: (typeof filteredOrders)[number]) => string>>(
-    () => [(row) => row.number, (row) => row.clientName, (row) => row.plate, (row) => row.servicesLabel],
+    () => [
+      (row) => row.number,
+      (row) => row.clientName,
+      (row) => row.plate,
+      (row) => row.servicesLabel,
+      (row) => row.executedByName ?? "",
+    ],
     [],
   );
 
@@ -251,6 +266,7 @@ export function useOsPage() {
         description: service.description,
         laborPrice: service.laborPrice,
         laborPriceInput: formatCurrencyInput(String(Math.round(service.laborPrice * 100))),
+        executedByUserId: service.executedByUserId ?? "",
       })),
     );
   }, [fetchOrder]);
@@ -275,6 +291,7 @@ export function useOsPage() {
           serviceId: service.serviceId || null,
           description: service.description,
           laborPrice: service.laborPrice,
+          executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
         })),
       }),
     });
@@ -283,8 +300,18 @@ export function useOsPage() {
       toast.error(data.message ?? "Nao foi possivel salvar a OS.");
       return;
     }
-    setOrders((current) =>
-      current.map((item) =>
+    setOrders((current) => {
+      let executedByName: string | null = null;
+      for (const s of data.order.services as Array<{
+        executedByUserId?: string | null;
+        executedByName?: string | null;
+      }>) {
+        if (s.executedByUserId && s.executedByName) {
+          executedByName = s.executedByName;
+          break;
+        }
+      }
+      return current.map((item) =>
         item.id === editOrder.id
           ? {
               ...item,
@@ -294,16 +321,39 @@ export function useOsPage() {
               unitName: data.order.unitName,
               plate: data.order.plate,
               servicesLabel: data.order.services.map((service: { description: string }) => service.description).join(", "),
+              executedByName: executedByName ?? item.executedByName ?? null,
               total: data.order.total,
               dueDate: data.order.dueDate,
               paymentTerm: data.order.paymentTerm,
             }
           : item,
-      ),
-    );
+      );
+    });
     setEditOrder(null);
     void toast.success("OS atualizada com sucesso!");
   }, [editOrder, editableData, editableServices, setOrders]);
+
+  const handleStatusUpdate = useCallback(
+    async (id: string, newStatus: string): Promise<void> => {
+      const response = await fetch(`/api/service-orders/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        const message = data.message ?? "Nao foi possivel alterar o status da OS.";
+        toast.error(message);
+        throw new Error(message);
+      }
+      setOrders((current) =>
+        current.map((item) => (item.id === id ? { ...item, status: data.order.status as OrderStatus } : item)),
+      );
+      setStatusOrder(null);
+      void toast.success("Status atualizado com sucesso!");
+    },
+    [setOrders],
+  );
 
   const handleStatusChange = useCallback(
     async (id: string, mode: "settle" | "reopen"): Promise<void> => {
@@ -393,8 +443,28 @@ export function useOsPage() {
       { key: "unit", header: "Unidade", render: (row: (typeof filteredOrders)[number]) => row.unitName ?? "Geral" },
       { key: "client", header: "Cliente", render: (row: (typeof filteredOrders)[number]) => row.clientName },
       { key: "plate", header: "Placa", render: (row: (typeof filteredOrders)[number]) => row.plate },
+      {
+        key: "employee",
+        header: "Funcionário",
+        render: (row: (typeof filteredOrders)[number]) => row.executedByName ?? "-",
+      },
       { key: "services", header: "Servicos", render: (row: (typeof filteredOrders)[number]) => row.servicesLabel || "-" },
-      { key: "status", header: "Status", render: (row: (typeof filteredOrders)[number]) => <StatusBadge status={row.status} /> },
+      {
+        key: "status",
+        header: "Status",
+        render: (row: (typeof filteredOrders)[number]) =>
+          row.number.startsWith("FEC-") ? (
+            <StatusBadge status={row.status} />
+          ) : (
+            <button
+              type="button"
+              className="cursor-pointer rounded-full border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              onClick={() => setStatusOrder({ id: row.id, number: row.number, status: row.status })}
+            >
+              <StatusBadge status={row.status} />
+            </button>
+          ),
+      },
       { key: "total", header: "Valor total", render: (row: (typeof filteredOrders)[number]) => currency(row.total) },
       { key: "date", header: "Abertura", render: (row: (typeof filteredOrders)[number]) => date(row.openedAt) },
       {
@@ -443,7 +513,7 @@ export function useOsPage() {
         ),
       },
     ],
-    [executeDelete, fetchOrder, handleStatusChange, openEditDialog],
+    [executeDelete, fetchOrder, handleStatusChange, openEditDialog, setStatusOrder],
   );
 
   const clearFilters = useCallback(() => {
@@ -502,6 +572,8 @@ export function useOsPage() {
     setViewOrder,
     settleOrder,
     setSettleOrder,
+    statusOrder,
+    setStatusOrder,
     editableData,
     setEditableData,
     editableServices,
@@ -524,6 +596,7 @@ export function useOsPage() {
     openEditDialog,
     handleSaveEdit,
     handleStatusChange,
+    handleStatusUpdate,
     executeDelete,
     handleCreateClosure,
     clearFilters,

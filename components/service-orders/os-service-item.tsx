@@ -18,6 +18,8 @@ export function OsServiceItem({
   catalogServices,
   serviceOptions,
   servicesHydrated,
+  employeeOptions,
+  sameEmployeeForAll,
   canRemove,
   onChange,
   onRemove,
@@ -27,6 +29,8 @@ export function OsServiceItem({
   catalogServices: AppService[];
   serviceOptions: ServiceOption[];
   servicesHydrated: boolean;
+  employeeOptions: ServiceOption[];
+  sameEmployeeForAll: boolean;
   canRemove: boolean;
   onChange: (id: string, patch: Partial<ServiceDraft>) => void;
   onRemove: (id: string) => void;
@@ -60,6 +64,16 @@ export function OsServiceItem({
             value={service.description}
             onChange={(e) => onChange(service.id, { description: e.target.value })}
             placeholder={`Serviço ${index + 1}`}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label>Funcionário executante</Label>
+          <SearchableSelect
+            value={service.executedByUserId}
+            onChange={(value) => onChange(service.id, { executedByUserId: value })}
+            placeholder="Selecione o funcionário"
+            options={employeeOptions}
+            disabled={sameEmployeeForAll || !employeeOptions.length}
           />
         </div>
       </div>

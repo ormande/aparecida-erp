@@ -53,7 +53,7 @@ export default function DashboardPage() {
   const previousPagar = previousPayables.filter((item) => item.status !== "Pago").reduce((sum, item) => sum + item.value, 0);
 
   const latestOrders = orders.slice(0, 5);
-  const warningsReceber = receivables.filter((item) => item.dueDate === today).slice(0, 3);
+  const warningsReceber = receivables.filter((item) => item.dueDate === today && item.status !== "Pago").slice(0, 3);
   const oldPendingOs = orders.filter((item) => item.status === "Em andamento" || item.status === "Aguardando peça").slice(0, 2);
 
   const revenueMap = new Map<string, number>();

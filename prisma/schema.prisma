@@ -135,6 +135,7 @@ model User {
   createdServices ServiceCatalog[] @relation("ServiceCreatedBy")
   updatedServices ServiceCatalog[] @relation("ServiceUpdatedBy")
   auditLogs       AuditLog[]
+  executedItems   ServiceOrderItem[] @relation("ServiceOrderItemExecutedBy")
 
   @@unique([companyId, email])
 }
@@ -275,10 +276,12 @@ model ServiceOrderItem {
   laborPrice            Decimal              @db.Decimal(10, 2)
   lineTotal             Decimal              @db.Decimal(10, 2)
   previousOrderStatus   ServiceOrderStatus?
+  executedByUserId      String?
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
   serviceOrder          ServiceOrder         @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
   service               ServiceCatalog?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  executedBy            User?                @relation("ServiceOrderItemExecutedBy", fields: [executedByUserId], references: [id], onDelete: SetNull)
 }
 
 model AccountReceivable {

@@ -6,6 +6,7 @@ import { FilePlus2, Plus } from "lucide-react";
 import { OsClosureDialog } from "@/components/service-orders/os-closure-dialog";
 import { OsEditDialog } from "@/components/service-orders/os-edit-dialog";
 import { OsSettleDialog } from "@/components/service-orders/os-settle-dialog";
+import { OsStatusModal } from "@/components/service-orders/os-status-modal";
 import { OsViewDialog } from "@/components/service-orders/os-view-dialog";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -88,6 +89,11 @@ export default function OrdensDeServicoPage() {
       <OsViewDialog order={p.viewOrder} onClose={() => p.setViewOrder(null)} />
       <OsEditDialog order={p.editOrder} editableData={p.editableData} setEditableData={p.setEditableData} editableServices={p.editableServices} setEditableServices={p.setEditableServices} customerOptions={p.customerOptions} unitOptions={p.unitOptions} vehicleOptions={p.vehicleOptions} onClose={() => p.setEditOrder(null)} onSave={() => void p.handleSaveEdit()} />
       <OsSettleDialog order={p.settleOrder} onClose={() => p.setSettleOrder(null)} onConfirm={async (id) => { await p.handleStatusChange(id, "settle"); }} />
+      <OsStatusModal
+        order={p.statusOrder}
+        onClose={() => p.setStatusOrder(null)}
+        onConfirm={p.handleStatusUpdate}
+      />
       <OsClosureDialog row={p.closureRow} onClose={() => p.setClosureRow(null)} onConfirm={p.handleCreateClosure} paymentTerm={p.closurePaymentTerm} setPaymentTerm={p.setClosurePaymentTerm} dueDate={p.closureDueDate} setDueDate={p.setClosureDueDate} />
     </div>
   );

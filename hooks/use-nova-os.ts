@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import type { VehicleFormValues } from "@/components/vehicles/vehicle-form";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useCustomers } from "@/hooks/use-customers";
+import { useEmployees } from "@/hooks/use-employees";
 import { useServices } from "@/hooks/use-services";
 import { useUnits } from "@/hooks/use-units";
 import { useVehicles } from "@/hooks/use-vehicles";
@@ -19,6 +20,7 @@ export type ServiceDraft = {
   description: string;
   laborPrice: number;
   laborPriceInput: string;
+  executedByUserId: string;
 };
 
 export function createDraft(index: number): ServiceDraft {
@@ -28,6 +30,7 @@ export function createDraft(index: number): ServiceDraft {
     description: "",
     laborPrice: 0,
     laborPriceInput: formatCurrencyInput("0"),
+    executedByUserId: "",
   };
 }
 
@@ -38,6 +41,7 @@ export function useNovaOs() {
   const { units } = useUnits();
   const { customers, hydrated: customersHydrated } = useCustomers();
   const { services: catalogServices, hydrated: servicesHydrated } = useServices();
+  const { employees, hydrated: employeesHydrated } = useEmployees();
   const [selectedUnitId, setSelectedUnitId] = useState("");
 
   const [isStandalone, setIsStandalone] = useState(false);
@@ -51,6 +55,8 @@ export function useNovaOs() {
   const [notes, setNotes] = useState("");
   const [services, setServices] = useState<ServiceDraft[]>([createDraft(1)]);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
+  const [sameEmployeeForAll, setSameEmployeeForAll] = useState(false);
+  const [globalEmployeeId, setGlobalEmployeeId] = useState("");
   const { vehicles, hydrated: vehiclesHydrated, setVehicles } = useVehicles(clientId || undefined);
 
   useEffect(() => {
@@ -67,6 +73,24 @@ export function useNovaOs() {
       setIsStandalone(false);
     }
   }, [searchParams, unitId]);
+
+  useEffect(() => {
+    if (!sameEmployeeForAll || !globalEmployeeId) {
+      return;
+    }
+    setServices((current) => current.map((item) => ({ ...item, executedByUserId: globalEmployeeId })));
+  }, [sameEmployeeForAll, globalEmployeeId]);
+
+  const employeeOptions = useMemo(
+    () =>
+      employees
+        .filter((emp) => emp.situacao === "Ativo")
+        .map((emp) => ({
+          value: emp.id,
+          label: emp.nomeCompleto,
+        })),
+    [employees],
+  );
 
   const vehicleOptions = useMemo(
     () =>
@@ -105,7 +129,7 @@ export function useNovaOs() {
   const selectedClient = customers.find((client) => client.id === clientId);
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId);
   const total = services.reduce((sum, service) => sum + Number(service.laborPrice || 0), 0);
-  const isLoading = unitLoading || !customersHydrated || !servicesHydrated || !vehiclesHydrated;
+  const isLoading = unitLoading || !customersHydrated || !servicesHydrated || !vehiclesHydrated || !employeesHydrated;
   const unitOptions = units.map((unit) => ({ value: unit.id, label: unit.name }));
 
   const summaryUnitName =
@@ -126,7 +150,13 @@ export function useNovaOs() {
   }
 
   function addService() {
-    setServices((current) => [...current, createDraft(current.length + 1)]);
+    setServices((current) => {
+      const draft = createDraft(current.length + 1);
+      if (sameEmployeeForAll && globalEmployeeId) {
+        draft.executedByUserId = globalEmployeeId;
+      }
+      return [...current, draft];
+    });
   }
 
   function enterStandaloneMode() {
@@ -183,6 +213,7 @@ export function useNovaOs() {
         serviceId: service.serviceId || undefined,
         description: service.description.trim(),
         laborPrice: Number(service.laborPrice || 0),
+        executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
       }))
       .filter((service) => service.description.length > 0);
 
@@ -227,6 +258,9 @@ export function useNovaOs() {
     catalogServices,
     servicesHydrated,
     vehiclesHydrated,
+    employees,
+    employeesHydrated,
+    employeeOptions,
     selectedUnitId,
     setSelectedUnitId,
     isStandalone,
@@ -260,6 +294,10 @@ export function useNovaOs() {
     summaryUnitName,
     summaryClientName,
     summaryVehiclePlate,
+    sameEmployeeForAll,
+    setSameEmployeeForAll,
+    globalEmployeeId,
+    setGlobalEmployeeId,
     onServiceChange,
     removeService,
     addService,

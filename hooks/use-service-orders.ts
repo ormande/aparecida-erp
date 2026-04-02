@@ -31,6 +31,7 @@ type ServiceOrderRow = {
   paymentMethod?: string;
   isStandalone?: boolean;
   receivableStatus?: "PAGO" | "PENDENTE" | "VENCIDO" | null;
+  executedByName?: string | null;
 };
 
 type UseServiceOrdersParams = {

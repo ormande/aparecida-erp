@@ -21,6 +21,7 @@ const orderSchema = z.object({
         serviceId: z.string().optional().nullable(),
         description: z.string().min(1).max(500),
         laborPrice: z.coerce.number().min(0),
+        executedByUserId: z.string().optional().nullable(),
       }),
     )
     .min(1),

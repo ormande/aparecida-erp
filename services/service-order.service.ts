@@ -9,6 +9,7 @@ type OrderServiceItemPayload = {
   serviceId?: string | null;
   description: string;
   laborPrice: number;
+  executedByUserId?: string | null;
 };
 
 type CreateOrderPayload = {
@@ -211,6 +212,12 @@ async function getOrder(companyId: string, unitId: string, id: string) {
           laborPrice: true,
           lineTotal: true,
           previousOrderStatus: true,
+          executedByUserId: true,
+          executedBy: {
+            select: {
+              name: true,
+            },
+          },
         },
       },
       receivables: {
@@ -256,6 +263,8 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
       serviceId: item.serviceId,
       description: item.description,
       laborPrice: Number(item.laborPrice),
+      executedByUserId: item.executedByUserId,
+      executedByName: item.executedBy?.name ?? null,
     })),
     receivableStatus: order.receivables[0]?.status ?? null,
     receivableAmount: order.receivables[0] ? Number(order.receivables[0].amount) : 0,
@@ -377,7 +386,15 @@ export const serviceOrderService = {
             },
           },
           items: {
-            select: { description: true },
+            select: {
+              description: true,
+              executedByUserId: true,
+              executedBy: {
+                select: {
+                  name: true,
+                },
+              },
+            },
           },
           receivables: {
             select: { status: true },
@@ -387,7 +404,15 @@ export const serviceOrderService = {
     ]);
 
     return {
-      data: orders.map((order) => ({
+      data: orders.map((order) => {
+        let executedByName: string | null = null;
+        for (const line of order.items) {
+          if (line.executedByUserId && line.executedBy?.name) {
+            executedByName = line.executedBy.name;
+            break;
+          }
+        }
+        return {
         id: order.id,
         number: order.number,
         clientId: order.customerId,
@@ -397,6 +422,7 @@ export const serviceOrderService = {
         unitId: order.unitId,
         unitName: order.unit.name,
         servicesLabel: order.items.map((service) => service.description).join(", "),
+        executedByName,
         status: mapServiceOrderStatus(order.status),
         total: Number(order.totalAmount),
         openedAt: order.openedAt.toISOString().slice(0, 10),
@@ -405,7 +431,8 @@ export const serviceOrderService = {
         paymentMethod: order.paymentMethod ?? "",
         isStandalone: order.isStandalone,
         receivableStatus: order.receivables[0]?.status ?? null,
-      })),
+        };
+      }),
       meta: {
         total,
         page,
@@ -465,6 +492,7 @@ export const serviceOrderService = {
               description: service.description,
               laborPrice: service.laborPrice,
               lineTotal: service.laborPrice,
+              executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
             })),
           },
         },
@@ -480,7 +508,8 @@ export const serviceOrderService = {
           description: orderRow.number,
           amount: totalAmount,
           dueDate,
-          status: "PENDENTE",
+          status: paymentTerm === "A_VISTA" ? "PAGO" : "PENDENTE",
+          paidAt: paymentTerm === "A_VISTA" ? new Date() : null,
           installmentGroupId: null,
           installmentNumber: null,
           installmentCount: null,
@@ -515,6 +544,50 @@ export const serviceOrderService = {
     });
 
     return { orderId: order.id, number: order.number };
+  },
+
+  async updateStatus(id: string, statusLabel: string, context: ServiceOrderContext) {
+    const mapped = mapStatusFilter(statusLabel);
+    if (!mapped) {
+      throw new ServiceError("Status inválido.", 400);
+    }
+
+    const existing = await getOrder(context.companyId, context.unitId, id);
+    if (!existing) {
+      throw new ServiceError("Ordem de serviço não encontrada.", 404);
+    }
+
+    const beforeStatusLabel = mapServiceOrderStatus(existing.status);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.serviceOrder.update({
+        where: { id: existing.id },
+        data: {
+          status: mapped,
+          updatedByUserId: context.userId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          companyId: context.companyId,
+          unitId: existing.unitId,
+          userId: context.userId,
+          entityType: "service_order",
+          entityId: existing.id,
+          action: "STATUS_CHANGE",
+          beforeData: { status: beforeStatusLabel },
+          afterData: { status: statusLabel },
+        },
+      });
+    });
+
+    return {
+      order: {
+        id: existing.id,
+        status: mapServiceOrderStatus(mapped),
+      },
+    };
   },
 
   async update(id: string, payload: UpdateOrderPayload, context: ServiceOrderContext) {
@@ -571,6 +644,7 @@ export const serviceOrderService = {
                 description: service.description,
                 laborPrice: service.laborPrice,
                 lineTotal: service.laborPrice,
+                executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
               })),
             },
           },
@@ -603,6 +677,12 @@ export const serviceOrderService = {
                 laborPrice: true,
                 lineTotal: true,
                 previousOrderStatus: true,
+                executedByUserId: true,
+                executedBy: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
             receivables: {
@@ -640,8 +720,6 @@ export const serviceOrderService = {
     }
 
     const targetStatus = payload.mode === "settle" ? "PAGO" : "PENDENTE";
-    const orderStatus =
-      payload.mode === "settle" ? "CONCLUIDA" : existing.status === "CONCLUIDA" ? "ABERTA" : existing.status;
     const closureOutstandingAmount = existing.items.reduce((sum, item) => sum + Number(item.lineTotal), 0);
     const appliedDiscount =
       existing.number.startsWith("FEC-") && payload.mode === "settle"
@@ -665,6 +743,9 @@ export const serviceOrderService = {
       });
 
       if (existing.number.startsWith("FEC-")) {
+        const orderStatus =
+          payload.mode === "settle" ? "CONCLUIDA" : existing.status === "CONCLUIDA" ? "ABERTA" : existing.status;
+
         const sourceNumbers = getReferencedOrderNumbers(existing.items.map((item) => item.description));
         const reopenableSourceNumbers = getReferencedOrderNumbers(
           existing.items
@@ -753,15 +834,64 @@ export const serviceOrderService = {
             }
           }
         }
+
+        return tx.serviceOrder.update({
+          where: { id: existing.id },
+          data: {
+            status: orderStatus,
+            updatedByUserId: context.userId,
+            closedAt: payload.mode === "settle" ? new Date() : null,
+          },
+          include: {
+            unit: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            customer: {
+              select: {
+                type: true,
+                fullName: true,
+                tradeName: true,
+              },
+            },
+            vehicle: {
+              select: {
+                plate: true,
+                brand: true,
+                model: true,
+              },
+            },
+            items: {
+              select: {
+                id: true,
+                serviceId: true,
+                description: true,
+                laborPrice: true,
+                lineTotal: true,
+                previousOrderStatus: true,
+                executedByUserId: true,
+                executedBy: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+            receivables: {
+              select: {
+                id: true,
+                status: true,
+                amount: true,
+              },
+            },
+          },
+        });
       }
 
-      const order = await tx.serviceOrder.update({
+      const order = await tx.serviceOrder.findFirst({
         where: { id: existing.id },
-        data: {
-          status: orderStatus,
-          updatedByUserId: context.userId,
-          closedAt: payload.mode === "settle" ? new Date() : null,
-        },
         include: {
           unit: {
             select: {
@@ -791,6 +921,12 @@ export const serviceOrderService = {
               laborPrice: true,
               lineTotal: true,
               previousOrderStatus: true,
+              executedByUserId: true,
+              executedBy: {
+                select: {
+                  name: true,
+                },
+              },
             },
           },
           receivables: {
@@ -802,6 +938,10 @@ export const serviceOrderService = {
           },
         },
       });
+
+      if (!order) {
+        throw new ServiceError("Ordem de serviço não encontrada.", 404);
+      }
 
       return order;
     });
