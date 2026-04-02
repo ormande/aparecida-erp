@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 function formatDateInput(d: Date) {
   const y = d.getFullYear();
@@ -7,7 +7,7 @@ function formatDateInput(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-test("página a receber carrega os cards de totais", async ({ page }) => {
+test("página a receber carrega os cards de totais", async ({ page }: { page: Page }) => {
   await page.goto("/financeiro/receber");
   await expect(page.getByRole("heading", { name: "Contas a Receber" })).toBeVisible();
   await expect(page.getByText("Total pendente")).toBeVisible();
@@ -15,13 +15,13 @@ test("página a receber carrega os cards de totais", async ({ page }) => {
   await expect(page.getByText("Total recebido no mês")).toBeVisible();
 });
 
-test('botão "Novo recebível" abre o dialog', async ({ page }) => {
+test('botão "Novo recebível" abre o dialog', async ({ page }: { page: Page }) => {
   await page.goto("/financeiro/receber");
   await page.getByRole("button", { name: "Novo recebível" }).click();
   await expect(page.getByRole("dialog", { name: "Novo recebível avulso" })).toBeVisible();
 });
 
-test("criação de recebível avulso exibe toast de sucesso", async ({ page }) => {
+test("criação de recebível avulso exibe toast de sucesso", async ({ page }: { page: Page }) => {
   await page.goto("/financeiro/receber");
   await page.getByRole("button", { name: "Novo recebível" }).click();
   const dialog = page.getByRole("dialog", { name: "Novo recebível avulso" });

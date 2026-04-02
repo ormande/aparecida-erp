@@ -1,19 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-test("página de clientes carrega a tabela", async ({ page }) => {
+test("página de clientes carrega a tabela", async ({ page }: { page: Page }) => {
   await page.goto("/clientes");
   await expect(page.getByRole("heading", { name: "Clientes" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Nome" })).toBeVisible();
 });
 
-test('botão "Novo cliente" abre formulário', async ({ page }) => {
+test('botão "Novo cliente" abre formulário', async ({ page }: { page: Page }) => {
   await page.goto("/clientes");
   await page.getByRole("button", { name: "Novo cliente" }).click();
   await expect(page.getByRole("dialog", { name: "Novo cliente" })).toBeVisible();
   await expect(page.getByText("Os dados agora são persistidos no banco de dados do sistema.")).toBeVisible();
 });
 
-test("criação de cliente PF com nome e CPF válidos aparece na listagem", async ({ page }) => {
+test("criação de cliente PF com nome e CPF válidos aparece na listagem", async ({ page }: { page: Page }) => {
   const nome = `Cliente E2E ${Date.now()}`;
   await page.goto("/clientes");
   await page.getByRole("button", { name: "Novo cliente" }).click();

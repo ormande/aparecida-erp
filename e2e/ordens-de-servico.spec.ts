@@ -1,6 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-async function ensureUnidadeSelecionada(page, expectedUrl: RegExp) {
+async function ensureUnidadeSelecionada(page: Page, expectedUrl: RegExp) {
   if (!page.url().includes("/selecionar-unidade")) {
     // Pode haver redirect assíncrono para seleção de unidade (quando existem múltiplas unidades e activeUnitId está vazio).
     await page.waitForURL(/\/selecionar-unidade(\?|$)/, { timeout: 2000 }).catch(() => {});
@@ -14,14 +14,14 @@ async function ensureUnidadeSelecionada(page, expectedUrl: RegExp) {
   }
 }
 
-test("listagem de OS carrega", async ({ page }) => {
+test("listagem de OS carrega", async ({ page }: { page: Page }) => {
   await page.goto("/ordens-de-servico");
   await ensureUnidadeSelecionada(page, /\/ordens-de-servico(\?|$)/);
   await expect(page.getByRole("heading", { name: "Ordens de Servico" })).toBeVisible();
   await expect(page.getByPlaceholder("Buscar por numero, cliente ou placa")).toBeVisible();
 });
 
-test('botão "Nova OS" navega para /ordens-de-servico/nova', async ({ page }) => {
+test('botão "Nova OS" navega para /ordens-de-servico/nova', async ({ page }: { page: Page }) => {
   await page.goto("/ordens-de-servico");
   await ensureUnidadeSelecionada(page, /\/ordens-de-servico(\?|$)/);
   await page.getByRole("link", { name: /Nova OS/i }).click();
@@ -30,7 +30,7 @@ test('botão "Nova OS" navega para /ordens-de-servico/nova', async ({ page }) =>
   await expect(page.getByRole("heading", { name: "Nova Ordem de Serviço" })).toBeVisible();
 });
 
-test("criação de OS avulsa com serviço manual e Pix conclui com toast e volta à listagem", async ({ page }) => {
+test("criação de OS avulsa com serviço manual e Pix conclui com toast e volta à listagem", async ({ page }: { page: Page }) => {
   await page.goto("/ordens-de-servico/nova?standalone=1");
   await ensureUnidadeSelecionada(page, /\/ordens-de-servico\/nova(\?|$)/);
   if (!page.url().includes("standalone=1")) {

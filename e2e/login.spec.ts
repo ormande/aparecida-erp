@@ -1,8 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test("login com credenciais corretas redireciona para o dashboard", async ({ page }) => {
+test("login com credenciais corretas redireciona para o dashboard", async ({ page }: { page: Page }) => {
   const email = (process.env.TEST_OWNER_EMAIL || "teste@aparecida-test.local").toLowerCase();
   await page.goto("/");
   await page.getByLabel("E-mail").fill(email);
@@ -17,7 +17,7 @@ test("login com credenciais corretas redireciona para o dashboard", async ({ pag
   await expect(page).toHaveURL(/\/(dashboard|selecionar-unidade)(\?|$)/);
 });
 
-test("login com senha errada retorna erro de credenciais", async ({ page }) => {
+test("login com senha errada retorna erro de credenciais", async ({ page }: { page: Page }) => {
   const email = (process.env.TEST_OWNER_EMAIL || "teste@aparecida-test.local").toLowerCase();
 
   const csrfResp = await page.request.get("/api/auth/csrf");
