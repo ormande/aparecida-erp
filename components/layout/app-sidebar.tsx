@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo } from "react";
 import {
+  ArrowLeftRight,
   BadgeDollarSign,
   Boxes,
   CarFront,
@@ -127,6 +128,11 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
     router.replace("/login");
   }
 
+  function handleTrocarUnidade() {
+    onNavigate?.();
+    router.push("/selecionar-unidade");
+  }
+
   return (
     <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-20 items-center justify-center border-b border-sidebar-border px-5">
@@ -191,6 +197,16 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
       </ScrollArea>
 
       <div className="space-y-3 border-t border-sidebar-border px-5 py-4">
+        {user && user.units.length > 1 ? (
+          <Button
+            variant="outline"
+            className="w-full justify-center border-white/12 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+            onClick={handleTrocarUnidade}
+          >
+            <ArrowLeftRight className="mr-2 h-4 w-4" />
+            Trocar unidade
+          </Button>
+        ) : null}
         <Button
           variant="outline"
           className="w-full justify-center border-white/12 bg-white/5 text-white hover:bg-white/10 hover:text-white"
