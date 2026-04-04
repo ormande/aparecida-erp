@@ -185,7 +185,7 @@ export const receivableService = {
         const item = await tx.accountReceivable.create({
           data: {
             companyId: context.companyId,
-            unitId: context.unitId,
+            unitId: context.unitId || null,
             customerId: payload.customerId,
             description:
               payload.installments > 1

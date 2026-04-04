@@ -87,6 +87,13 @@ function shouldAudit(model: string) {
   return !IGNORED_MODELS.has(model);
 }
 
+function resolveUnitId(...candidates: (string | null | undefined)[]): string | null {
+  for (const c of candidates) {
+    if (c) return c;
+  }
+  return null;
+}
+
 export function getAuditPrisma(context: AuditContext) {
   return prisma.$extends({
     name: "audit-extension",
@@ -102,7 +109,7 @@ export function getAuditPrisma(context: AuditContext) {
           await prisma.auditLog.create({
             data: {
               companyId: context.companyId,
-              unitId: (result as { unitId?: string | null })?.unitId ?? context.activeUnitId ?? null,
+              unitId: resolveUnitId((result as { unitId?: string | null })?.unitId, context.activeUnitId),
               userId: context.userId,
               entityType: toEntityType(model),
               entityId: String((result as { id?: string | number })?.id ?? ""),
@@ -125,7 +132,7 @@ export function getAuditPrisma(context: AuditContext) {
           await prisma.auditLog.create({
             data: {
               companyId: context.companyId,
-              unitId: (result as { unitId?: string | null })?.unitId ?? context.activeUnitId ?? null,
+              unitId: resolveUnitId((result as { unitId?: string | null })?.unitId, context.activeUnitId),
               userId: context.userId,
               entityType: toEntityType(model),
               entityId: String((result as { id?: string | number })?.id ?? ""),
@@ -149,11 +156,11 @@ export function getAuditPrisma(context: AuditContext) {
           await prisma.auditLog.create({
             data: {
               companyId: context.companyId,
-              unitId:
-                (beforeData as { unitId?: string | null } | null)?.unitId ??
-                (result as { unitId?: string | null })?.unitId ??
-                context.activeUnitId ??
-                null,
+              unitId: resolveUnitId(
+                (beforeData as { unitId?: string | null } | null)?.unitId,
+                (result as { unitId?: string | null })?.unitId,
+                context.activeUnitId,
+              ),
               userId: context.userId,
               entityType: toEntityType(model),
               entityId: String(

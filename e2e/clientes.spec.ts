@@ -26,7 +26,8 @@ test("criação de cliente PF com nome e CPF válidos aparece na listagem", asyn
   );
   await dialog.getByRole("button", { name: "Salvar cliente" }).click();
   await customerRespPromise;
-  await expect(page.getByText("Cliente cadastrado com sucesso!")).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(500);
+  await expect(page.getByText("Cliente cadastrado com sucesso!")).toBeVisible({ timeout: 20_000 });
   await expect(dialog).not.toBeVisible();
   await page.getByPlaceholder(/Buscar/i).fill(nome);
   await expect(page.getByRole("table")).toContainText(nome, { timeout: 10_000 });

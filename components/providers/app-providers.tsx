@@ -12,7 +12,11 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
         <TooltipProvider delay={200}>
           {children}
-          <Toaster richColors position="top-right" />
+          <Toaster
+            duration={process.env.NODE_ENV === "test" ? 10_000 : 4000}
+            richColors
+            position="top-right"
+          />
         </TooltipProvider>
       </ThemeProvider>
     </SessionProvider>

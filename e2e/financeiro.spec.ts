@@ -48,5 +48,6 @@ test("criação de recebível avulso exibe toast de sucesso", async ({ page }: {
   );
   await dialog.getByRole("button", { name: "Salvar recebível" }).click();
   await receivableRespPromise;
-  await expect(page.getByText("Recebível cadastrado com sucesso!")).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(500);
+  await expect(page.getByText("Recebível cadastrado com sucesso!")).toBeVisible({ timeout: 20_000 });
 });

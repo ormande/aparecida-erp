@@ -1,0 +1,51 @@
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336139588,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336139591,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152265,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152261,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152272,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152273,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152277,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152277,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152287,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152290,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152290,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152294,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152325,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336152329,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app/clientes/page.tsx:80","message":"POST /api/customers response","data":{"ok":false,"status":500,"body":{"error":"Internal server error"}},"timestamp":1775336160828,"hypothesisId":"H1"}
+{"sessionId":"5af152","location":"hooks/use-receivables-page.tsx:136","message":"POST /api/receivables response","data":{"ok":false,"status":500,"body":{"error":"Internal server error"}},"timestamp":1775336162465,"hypothesisId":"H2"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336303365,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336303369,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312403,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312409,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312427,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312431,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312446,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312451,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312451,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312457,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312457,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312462,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312481,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336312484,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app/clientes/page.tsx:80","message":"POST /api/customers response","data":{"ok":false,"status":500,"body":{"error":"Internal server error"}},"timestamp":1775336321350,"hypothesisId":"H1"}
+{"sessionId":"5af152","location":"hooks/use-receivables-page.tsx:136","message":"POST /api/receivables response","data":{"ok":false,"status":500,"body":{"error":"Internal server error"}},"timestamp":1775336322950,"hypothesisId":"H2"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336485720,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336485723,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495084,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495079,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495101,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495101,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495105,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495105,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495108,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495114,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495114,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495124,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495152,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app-providers.tsx:10","message":"AppProviders render","data":{"NODE_ENV":"development","toasterDuration":4000},"timestamp":1775336495156,"hypothesisId":"H5"}
+{"sessionId":"5af152","location":"app/clientes/page.tsx:80","message":"POST /api/customers response","data":{"ok":true,"status":201,"body":{"customer":{"id":"cmnktijp20003mcs0ylc7cw87","tipo":"pf","situacao":"Ativo","celular":"(11) 98765-4321","whatsapp":"(11) 98765-4321","email":"","observacoes":"","veiculosCount":0,"nomeCompleto":"Cliente E2E 1775336488421","cpf":"529.982.247-25"}}},"timestamp":1775336503361,"hypothesisId":"H1"}
+{"sessionId":"5af152","location":"app/clientes/page.tsx:85","message":"before refresh()","data":{},"timestamp":1775336503361,"hypothesisId":"H3"}
+{"sessionId":"5af152","location":"app/clientes/page.tsx:88","message":"after refresh(), firing toast.success","data":{},"timestamp":1775336504302,"hypothesisId":"H3"}
+{"sessionId":"5af152","location":"hooks/use-receivables-page.tsx:136","message":"POST /api/receivables response","data":{"ok":true,"status":201,"body":{"receivables":[{"id":"cmnktilt90007mcs0or0xci3u","description":"Recebível avulso E2E","clientId":"cmnhz7xpf0014mc3oqyjrq4tv","value":199.9,"dueDate":"2026-05-04","status":"Pendente","originType":"MANUAL"}]}},"timestamp":1775336505374,"hypothesisId":"H2"}
+{"sessionId":"5af152","location":"hooks/use-receivables-page.tsx:149","message":"firing toast.success for receivable","data":{},"timestamp":1775336505374,"hypothesisId":"H2"}

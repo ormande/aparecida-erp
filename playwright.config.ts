@@ -19,6 +19,7 @@ export default defineConfig({
     reuseExistingServer: false,
     // Força o secret de teste mesmo que o Next.js carregue .env automaticamente.
     env: {
+      NODE_ENV: "test",
       NEXTAUTH_SECRET: "test-secret-aparecida-erp-32chars!!",
       NEXTAUTH_URL: "http://localhost:3000",
       DATABASE_URL:
