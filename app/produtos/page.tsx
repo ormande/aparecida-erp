@@ -23,6 +23,12 @@ type Product = {
   isActive: boolean;
 };
 
+/** Shape of each item in GET /api/products `products` array (decimals as numbers or strings). */
+type ProductApiRow = Omit<Product, "costPrice" | "salePrice"> & {
+  costPrice: number | string;
+  salePrice: number | string;
+};
+
 export default function ProdutosPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [hydrated, setHydrated] = useState(false);
@@ -40,7 +46,7 @@ export default function ProdutosPage() {
       .then((data) => {
         if (!active) return;
         setProducts(
-          (data.products ?? []).map((p: any) => ({
+          ((data.products ?? []) as ProductApiRow[]).map((p) => ({
             ...p,
             costPrice: Number(p.costPrice),
             salePrice: Number(p.salePrice),
@@ -140,6 +146,7 @@ export default function ProdutosPage() {
         <DataTable
           data={products}
           pageSize={10}
+          isLoading={!hydrated}
           searchPlaceholder="Buscar por nome, marca ou código"
           searchKeys={searchKeys}
           columns={[

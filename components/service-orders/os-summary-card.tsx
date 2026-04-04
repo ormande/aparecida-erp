@@ -50,7 +50,7 @@ export function OsSummaryCard({
           ) : null}
           <div className="flex justify-between font-semibold border-t pt-2">
             <span>Total</span>
-            <span>{currency(laborTotal + productsTotal)}</span>
+            <span>{currency(total)}</span>
           </div>
         </div>
         <div className="space-y-2 text-sm text-muted-foreground">

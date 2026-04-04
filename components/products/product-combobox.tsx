@@ -10,6 +10,13 @@ type ProductOption = {
   salePrice: number;
 };
 
+type ProductApiRow = {
+  id: string;
+  name: string;
+  unit: string;
+  salePrice: number | string;
+};
+
 type ProductComboboxProps = {
   value: string;
   onChange: (product: ProductOption) => void;
@@ -25,7 +32,7 @@ export function ProductCombobox({ value, onChange, placeholder = "Selecione um p
       .then((res) => res.json())
       .then((data) => {
         if (!active) return;
-        const items = (data.products ?? []).map((p: any) => ({
+        const items = ((data.products ?? []) as ProductApiRow[]).map((p) => ({
           id: p.id,
           name: p.name,
           unit: p.unit,
