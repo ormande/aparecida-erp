@@ -1,10 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-function formatDateInput(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
 }
 
 test("página a receber carrega os cards de totais", async ({ page }: { page: Page }) => {
@@ -31,7 +28,21 @@ test("criação de recebível avulso exibe toast de sucesso", async ({ page }: {
   await dialog.getByLabel("Valor").fill("199.9");
   const vencimento = new Date();
   vencimento.setDate(vencimento.getDate() + 30);
-  await dialog.getByLabel("Vencimento").fill(formatDateInput(vencimento));
+  await dialog.getByRole("button", { name: /Selecione uma data/i }).click();
+  await expect(page.getByRole("grid")).toBeVisible();
+  const monthSelect = page.getByLabel("Choose the Month");
+  const yearSelect = page.getByLabel("Choose the Year");
+  if ((await monthSelect.count()) > 0 && (await yearSelect.count()) > 0) {
+    await monthSelect.selectOption({ value: String(vencimento.getMonth()) });
+    await yearSelect.selectOption({ value: String(vencimento.getFullYear()) });
+  }
+  const dataDay = `${pad2(vencimento.getDate())}/${pad2(vencimento.getMonth() + 1)}/${vencimento.getFullYear()}`;
+  await page
+    .getByRole("gridcell")
+    .filter({ has: page.locator(`button[data-day="${dataDay}"]`) })
+    .first()
+    .click();
+  await expect(page.getByRole("grid")).toBeHidden();
   const receivableRespPromise = page.waitForResponse(
     (resp) => resp.url().includes("/api/receivables") && resp.request().method() === "POST",
   );
