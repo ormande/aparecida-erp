@@ -27,6 +27,8 @@ export default function NovaOsPage() {
         <OsNovaMainForm os={os} />
         <OsSummaryCard
           total={os.total}
+          laborTotal={os.laborTotal}
+          productsTotal={os.productsTotal}
           unitName={os.summaryUnitName}
           clientName={os.summaryClientName}
           vehiclePlate={os.summaryVehiclePlate}
@@ -35,6 +37,7 @@ export default function NovaOsPage() {
           isLoading={os.isLoading}
           disabled={!os.selectedUnitId}
           onSubmit={os.handleSubmit}
+          onSubmitAndContinue={os.handleSubmitAndContinue}
         />
       </div>
     </div>

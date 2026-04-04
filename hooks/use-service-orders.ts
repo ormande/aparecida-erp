@@ -24,6 +24,7 @@ type ServiceOrderRow = {
   plate: string;
   servicesLabel: string;
   status: "Aberta" | "Em andamento" | "Aguardando peça" | "Concluída" | "Cancelada";
+  paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
   total: number;
   openedAt: string;
   dueDate?: string | null;
@@ -31,6 +32,8 @@ type ServiceOrderRow = {
   paymentMethod?: string;
   isStandalone?: boolean;
   receivableStatus?: "PAGO" | "PENDENTE" | "VENCIDO" | null;
+  receivableCount?: number;
+  receivableAmount?: number;
   executedByName?: string | null;
 };
 

@@ -64,6 +64,27 @@ const styles = StyleSheet.create({
   colDescHeader: { flex: 3, fontSize: 9, fontWeight: "bold", color: "#666666" },
   colEmployeeHeader: { flex: 2, fontSize: 9, fontWeight: "bold", color: "#666666" },
   colValueHeader: { flex: 1, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "right" },
+  colQty: { width: 40, fontSize: 9, textAlign: "center" },
+  colUnit: { width: 30, fontSize: 9, textAlign: "center" },
+  colQtyHeader: { width: 40, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "center" },
+  colUnitHeader: { width: 30, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "center" },
+  subtotalRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginTop: 4,
+    paddingRight: 8,
+  },
+  subtotalLabel: {
+    fontSize: 9,
+    color: "#475569",
+    marginRight: 12,
+  },
+  subtotalValue: {
+    fontSize: 9,
+    color: "#475569",
+    fontWeight: "bold",
+  },
   totalRow: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -189,6 +210,43 @@ export function OsPdf({ order, companyName, unitName }: OsPdfProps) {
               <Text style={styles.colValue}>{formatCurrency(svc.laborPrice)}</Text>
             </View>
           ))}
+        </View>
+
+        {order.products && order.products.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Produtos utilizados</Text>
+            <View style={styles.tableHeader}>
+              <Text style={styles.colQtyHeader}>Qtd</Text>
+              <Text style={styles.colDescHeader}>Descrição</Text>
+              <Text style={styles.colUnitHeader}>Un.</Text>
+              <Text style={styles.colValueHeader}>Vlr unit.</Text>
+              <Text style={styles.colValueHeader}>Total</Text>
+            </View>
+            {order.products.map((p, i) => (
+              <View key={i} style={styles.tableRow}>
+                <Text style={styles.colQty}>{String(p.quantity)}</Text>
+                <Text style={styles.colDesc}>{p.description}</Text>
+                <Text style={styles.colUnit}>{p.unit}</Text>
+                <Text style={styles.colValue}>{formatCurrency(p.unitPrice)}</Text>
+                <Text style={styles.colValue}>{formatCurrency(p.totalPrice)}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        <View style={styles.section}>
+          {order.laborSubtotal != null ? (
+            <View style={styles.subtotalRow}>
+              <Text style={styles.subtotalLabel}>Subtotal mão de obra</Text>
+              <Text style={styles.subtotalValue}>{formatCurrency(order.laborSubtotal)}</Text>
+            </View>
+          ) : null}
+          {order.productsSubtotal != null && order.productsSubtotal > 0 ? (
+            <View style={styles.subtotalRow}>
+              <Text style={styles.subtotalLabel}>Subtotal produtos</Text>
+              <Text style={styles.subtotalValue}>{formatCurrency(order.productsSubtotal)}</Text>
+            </View>
+          ) : null}
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalValue}>{formatCurrency(order.total)}</Text>

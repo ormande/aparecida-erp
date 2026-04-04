@@ -10,11 +10,11 @@ test("login com credenciais corretas redireciona para o dashboard", async ({ pag
   const entrarBtn = page.getByRole("button", { name: /Entrar no sistema/i });
   await expect(entrarBtn).toBeEnabled();
   await entrarBtn.click();
-  await page.waitForURL(/\/(dashboard|selecionar-unidade)(\?|$)/, {
+  await page.waitForURL(/\/dashboard(\?|$)/, {
     timeout: 60_000,
     waitUntil: "domcontentloaded",
   });
-  await expect(page).toHaveURL(/\/(dashboard|selecionar-unidade)(\?|$)/);
+  await expect(page).toHaveURL(/\/dashboard(\?|$)/);
 });
 
 test("login com senha errada retorna erro de credenciais", async ({ page }: { page: Page }) => {

@@ -1,11 +1,10 @@
 "use client";
 
 import { LogOut, Menu } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,8 +22,6 @@ import { useAuth } from "@/hooks/use-auth";
 export function AppHeader() {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
-  const showWorkspaceSwitcher = pathname === "/dashboard";
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:left-[240px]">
@@ -42,9 +39,7 @@ export function AppHeader() {
           </SheetContent>
         </Sheet>
 
-        <div className="min-w-0 flex-1">
-          {showWorkspaceSwitcher ? <WorkspaceSwitcher /> : null}
-        </div>
+        <div className="min-w-0 flex-1" />
 
         <ThemeToggle />
 

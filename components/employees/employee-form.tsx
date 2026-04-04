@@ -17,6 +17,8 @@ import type { ClientSituation, Employee, EmployeeAccessLevel } from "@/lib/app-t
 export type EmployeeFormValues = {
   nomeCompleto: string;
   email: string;
+  senha: string;
+  confirmarSenha: string;
   telefone: string;
   nivelAcesso: EmployeeAccessLevel;
   situacao: ClientSituation;
@@ -36,6 +38,8 @@ function getInitialValues(employee?: Employee): EmployeeFormValues {
   return {
     nomeCompleto: employee?.nomeCompleto ?? "",
     email: employee?.email ?? "",
+    senha: "",
+    confirmarSenha: "",
     telefone: employee?.telefone ?? "",
     nivelAcesso: employee?.nivelAcesso ?? "Funcionário",
     situacao: employee?.situacao ?? "Ativo",
@@ -82,6 +86,15 @@ export function EmployeeForm({
       nextErrors.email = "Informe o e-mail.";
     }
 
+    if (!employee) {
+      if (!values.senha || values.senha.length < 6) {
+        nextErrors.senha = "A senha deve ter pelo menos 6 caracteres.";
+      }
+      if (values.senha !== values.confirmarSenha) {
+        nextErrors.confirmarSenha = "As senhas não coincidem.";
+      }
+    }
+
     if (!values.nivelAcesso) {
       nextErrors.nivelAcesso = "Selecione o nível de acesso.";
     }
@@ -125,6 +138,33 @@ export function EmployeeForm({
           />
         </div>
       </div>
+
+      {!employee ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="senha">Senha *</Label>
+            <Input
+              id="senha"
+              type="password"
+              value={values.senha}
+              onChange={(event) => updateField("senha", event.target.value)}
+              autoComplete="new-password"
+            />
+            {errors.senha ? <p className="text-xs text-destructive">{errors.senha}</p> : null}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="confirmarSenha">Confirmar senha *</Label>
+            <Input
+              id="confirmarSenha"
+              type="password"
+              value={values.confirmarSenha}
+              onChange={(event) => updateField("confirmarSenha", event.target.value)}
+              autoComplete="new-password"
+            />
+            {errors.confirmarSenha ? <p className="text-xs text-destructive">{errors.confirmarSenha}</p> : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="grid gap-2">

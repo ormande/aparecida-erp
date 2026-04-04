@@ -30,9 +30,19 @@ export async function GET(request: Request) {
       }),
     ]);
 
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const deletedLogs = await prisma.auditLog.deleteMany({
+      where: {
+        createdAt: { lt: sevenDaysAgo },
+      },
+    });
+
     return NextResponse.json({
       receivablesUpdated: receivables.count,
       payablesUpdated: payables.count,
+      auditLogsDeleted: deletedLogs.count,
     });
   } catch {
     return NextResponse.json({ message: "Falha ao marcar recebíveis e pagáveis como vencidos." }, { status: 500 });

@@ -16,7 +16,7 @@ const querySchema = z
 
 export async function GET(request: NextRequest) {
   const auth = await getRequiredSessionContext({
-    allowedRoles: ["PROPRIETARIO", "GESTOR"],
+    allowedRoles: ["PROPRIETARIO", "GESTOR", "FUNCIONARIO"],
   });
   if (!auth.ok) {
     return auth.response;
@@ -38,6 +38,12 @@ export async function GET(request: NextRequest) {
   }
 
   const { employeeId, startDate, endDate, unitId } = query;
+
+  if (auth.context.session.user?.accessLevel === "FUNCIONARIO") {
+    if (!employeeId || employeeId !== auth.context.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
   const start = parseReportDayStart(startDate);
   const end = parseReportDayEnd(endDate);
   const { companyId } = auth.context;
@@ -65,6 +71,7 @@ export async function GET(request: NextRequest) {
       laborPrice: true,
       description: true,
       executedByUserId: true,
+      commissionRate: true,
       serviceOrder: {
         select: { number: true, openedAt: true },
       },
@@ -78,6 +85,7 @@ export async function GET(request: NextRequest) {
     monthlyGoal: number | null;
     totalServices: number;
     totalValue: number;
+    totalCommission: number;
     services: Array<{ orderNumber: string; date: string; description: string; value: number }>;
   };
 
@@ -112,6 +120,7 @@ export async function GET(request: NextRequest) {
       monthlyGoal: u.monthlyGoal === null ? null : Number(u.monthlyGoal),
       totalServices: 0,
       totalValue: 0,
+      totalCommission: 0,
       services: [],
     });
   }
@@ -134,13 +143,16 @@ export async function GET(request: NextRequest) {
         monthlyGoal: u.monthlyGoal === null ? null : Number(u.monthlyGoal),
         totalServices: 0,
         totalValue: 0,
+        totalCommission: 0,
         services: [],
       };
       byUser.set(uid, agg);
     }
     const val = Number(item.laborPrice);
+    const commission = (val * (item.commissionRate ?? 12)) / 100;
     agg.totalServices += 1;
     agg.totalValue += val;
+    agg.totalCommission += commission;
     agg.services.push({
       orderNumber: item.serviceOrder.number,
       date: formatReportLocalDate(new Date(item.serviceOrder.openedAt)),

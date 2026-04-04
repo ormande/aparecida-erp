@@ -6,6 +6,8 @@ import { currency } from "@/lib/formatters";
 
 export function OsSummaryCard({
   total,
+  laborTotal,
+  productsTotal,
   unitName,
   clientName,
   vehiclePlate,
@@ -14,8 +16,11 @@ export function OsSummaryCard({
   isLoading,
   disabled,
   onSubmit,
+  onSubmitAndContinue,
 }: {
   total: number;
+  laborTotal: number;
+  productsTotal: number;
   unitName: string;
   clientName: string;
   vehiclePlate: string;
@@ -24,6 +29,7 @@ export function OsSummaryCard({
   isLoading: boolean;
   disabled: boolean;
   onSubmit: () => void;
+  onSubmitAndContinue: () => void;
 }) {
   return (
     <Card className="surface-card sticky top-24 h-fit border-none">
@@ -31,9 +37,21 @@ export function OsSummaryCard({
         <CardTitle>Resumo da OS</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="rounded-2xl bg-muted/40 p-4">
-          <p className="text-sm text-muted-foreground">Valor total calculado</p>
-          <p className="mt-2 text-3xl font-semibold">{currency(total)}</p>
+        <div className="rounded-2xl bg-muted/40 p-4 space-y-2">
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Mão de obra</span>
+            <span>{currency(laborTotal)}</span>
+          </div>
+          {productsTotal > 0 ? (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Produtos</span>
+              <span>{currency(productsTotal)}</span>
+            </div>
+          ) : null}
+          <div className="flex justify-between font-semibold border-t pt-2">
+            <span>Total</span>
+            <span>{currency(laborTotal + productsTotal)}</span>
+          </div>
         </div>
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>Unidade: {unitName}</p>
@@ -44,6 +62,14 @@ export function OsSummaryCard({
         </div>
         <Button className="w-full" onClick={onSubmit} disabled={disabled || isLoading}>
           Abrir OS
+        </Button>
+        <Button
+          className="w-full"
+          variant="outline"
+          onClick={onSubmitAndContinue}
+          disabled={disabled || isLoading}
+        >
+          Salvar e continuar
         </Button>
       </CardContent>
     </Card>

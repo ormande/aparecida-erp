@@ -30,7 +30,7 @@ export function NsaLogo({
           style={{ width: size + 8, height: size + 8 }}
         >
           <Image
-            src="/brand/logo.png"
+            src="/brand/logo.png?v=2"
             alt="Logo da Borracharia Nossa Senhora Aparecida"
             width={size}
             height={size}

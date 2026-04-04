@@ -146,7 +146,7 @@ export const customerService = {
           },
         },
         serviceOrders: {
-          where: { unitId: context.unitId },
+          where: context.unitId ? { unitId: context.unitId } : {},
           orderBy: { openedAt: "desc" },
           take: 5,
           select: {

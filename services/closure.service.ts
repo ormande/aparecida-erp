@@ -69,7 +69,7 @@ export const closureService = {
     const sourceOrders = await prisma.serviceOrder.findMany({
       where: {
         companyId: context.companyId,
-        unitId: context.unitId,
+        ...(context.unitId ? { unitId: context.unitId } : {}),
         customerId: payload.customerId,
         openedAt: {
           gte: start,
@@ -100,6 +100,8 @@ export const closureService = {
     if (!sourceOrders.length) {
       throw new ServiceError("Nenhuma OS encontrada para gerar fechamento.", 400);
     }
+
+    const closureUnitId = sourceOrders[0].unitId;
 
     const customerRow = sourceOrders[0].customer;
     const customerName =
@@ -138,7 +140,7 @@ export const closureService = {
       const order = await tx.serviceOrder.create({
         data: {
           companyId: context.companyId,
-          unitId: context.unitId,
+          unitId: closureUnitId,
           customerId: payload.customerId,
           number: closureNumber,
           dueDate,
@@ -165,7 +167,7 @@ export const closureService = {
         await tx.accountReceivable.create({
           data: {
             companyId: context.companyId,
-            unitId: context.unitId,
+            unitId: null,
             customerId: payload.customerId,
             serviceOrderId: order.id,
             originType: "SERVICE_ORDER",
@@ -187,10 +189,11 @@ export const closureService = {
         clientId: payload.customerId,
         clientName: customerName,
         plate: "-",
-        unitId: context.unitId,
+        unitId: closureUnitId,
         unitName: undefined,
         servicesLabel: `Fechamento mensal (${sourceOrders.length} OS)`,
         status: "Aberta",
+        paymentStatus: closureOrder.paymentStatus,
         total: totalSpent,
         openedAt: closureOrder.openedAt.toISOString().slice(0, 10),
         dueDate: closureOrder.dueDate?.toISOString().slice(0, 10) ?? null,

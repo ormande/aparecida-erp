@@ -28,28 +28,11 @@ setup("autenticar e gravar sessão", async ({ page }) => {
   expect(loginResp.ok(), "Login callback deve retornar 200").toBeTruthy();
 
   const sessionResp = await page.request.get("/api/auth/session");
-  const sessionJson = (await sessionResp.json()) as any;
+  const sessionJson = (await sessionResp.json()) as { user?: { email?: string } };
   expect(sessionJson?.user?.email, "Sessão deve conter email do usuário").toBeTruthy();
 
-  const units: Array<{ id: string; name: string }> = sessionJson?.user?.units ?? [];
-  let activeUnitId: string | null =
-    sessionJson?.activeUnitId ?? sessionJson?.user?.activeUnitId ?? null;
-
-  if (!activeUnitId && units.length > 0) {
-    const target = units.find((u) => u.name === "Unidade Principal") ?? units[0];
-    await page.request.post("/api/auth/session", {
-      headers: { "Content-Type": "application/json" },
-      data: JSON.stringify({ csrfToken, data: { activeUnitId: target.id } }),
-    });
-    const verifyResp = await page.request.get("/api/auth/session");
-    const verifyJson = (await verifyResp.json()) as any;
-    activeUnitId = verifyJson?.activeUnitId ?? verifyJson?.user?.activeUnitId ?? null;
-  }
-
-  expect(activeUnitId, "activeUnitId deve estar definido na sessão").toBeTruthy();
-
   await page.goto("/dashboard");
-  await page.waitForURL(/\/(dashboard|selecionar-unidade)/, {
+  await page.waitForURL(/\/dashboard/, {
     timeout: 30_000,
     waitUntil: "domcontentloaded",
   });

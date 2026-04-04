@@ -7,11 +7,13 @@ import { ServiceError } from "@/services/service-error";
 import { serviceOrderService } from "@/services/service-order.service";
 
 const orderSchema = z.object({
+  unitId: z.string().min(1, "Selecione uma unidade."),
   customerId: z.string().optional().nullable(),
   customerNameSnapshot: z.string().max(100).optional().default(""),
   vehicleId: z.string().optional().nullable(),
   mileage: z.coerce.number().optional().nullable(),
   dueDate: z.string().optional().nullable(),
+  openedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).optional().nullable(),
   paymentMethod: z.string().max(100).optional().default(""),
   notes: z.string().max(2000).optional().default(""),
@@ -22,9 +24,22 @@ const orderSchema = z.object({
         description: z.string().min(1).max(500),
         laborPrice: z.coerce.number().min(0),
         executedByUserId: z.string().optional().nullable(),
+        commissionRate: z.coerce.number().int().min(1).max(100).optional().default(12),
       }),
     )
     .min(1),
+  products: z
+    .array(
+      z.object({
+        productId: z.string().optional().nullable(),
+        description: z.string().min(1).max(500),
+        unit: z.enum(["UN", "PAR", "KIT", "L", "ML", "KG", "G", "CX"]).optional().default("UN"),
+        quantity: z.coerce.number().min(0.001),
+        unitPrice: z.coerce.number().min(0),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 function handleServiceError(error: unknown) {

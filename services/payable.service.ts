@@ -110,7 +110,7 @@ export const payableService = {
     const payables = await prisma.accountPayable.findMany({
       where: {
         companyId: context.companyId,
-        unitId: context.unitId,
+        ...(context.unitId ? { unitId: context.unitId } : {}),
         status:
           filters.status === "Pago"
             ? "PAGO"
@@ -198,7 +198,7 @@ export const payableService = {
       where: {
         id,
         companyId: context.companyId,
-        unitId: context.unitId,
+        ...(context.unitId ? { unitId: context.unitId } : {}),
       },
     });
 

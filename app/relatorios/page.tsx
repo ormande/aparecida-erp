@@ -2,9 +2,10 @@
 
 import { createElement, useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { FileDown, Users } from "lucide-react";
+import { ClipboardList, FileDown, Users } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { useEmployees } from "@/hooks/use-employees";
 import { usePdfDownload } from "@/hooks/use-pdf-download";
@@ -33,6 +35,7 @@ export type EmployeeReportRow = {
   monthlyGoal: number | null;
   totalServices: number;
   totalValue: number;
+  totalCommission: number;
   services: Array<{ orderNumber: string; date: string; description: string; value: number }>;
 };
 
@@ -44,6 +47,31 @@ export type CompanyReport = {
   ordersConcluded: number;
   byUnit: Array<{ unitName: string; revenue: number; ordersOpened: number; ordersConcluded: number }>;
   revenueByDay: Array<{ date: string; value: number }>;
+};
+
+export type UnsettledOrderRow = {
+  id: string;
+  number: string;
+  type: "NORMAL" | "FECHAMENTO";
+  clientName: string;
+  unitName: string;
+  openedAt: string;
+  totalAmount: number;
+  receivableAmount: number;
+  receivableStatus: "PENDENTE" | "VENCIDO" | null;
+  dueDate: string | null;
+  reason:
+    | "RECEBIVEL_PENDENTE"
+    | "RECEBIVEL_VENCIDO"
+    | "FECHAMENTO_ABERTO"
+    | "FECHAMENTO_PARCIAL";
+};
+
+export type UnsettledSummary = {
+  total: number;
+  totalAmount: number;
+  totalVencido: number;
+  totalFechamento: number;
 };
 
 const EMPTY_EMPLOYEE_SERVICES: EmployeeReportRow["services"] = [];
@@ -64,7 +92,7 @@ export default function RelatoriosPage() {
   const { download: downloadPdf, isGenerating: isPdfGenerating } = usePdfDownload();
   const [downloadingEmpId, setDownloadingEmpId] = useState<string | null>(null);
 
-  const [mainTab, setMainTab] = useState<"employees" | "company">("employees");
+  const [mainTab, setMainTab] = useState<"employees" | "company" | "unsettled">("employees");
 
   const [empPeriodMode, setEmpPeriodMode] = useState<"month" | "custom">("month");
   const [empStart, setEmpStart] = useState(() => defaultMonthToTodayRange().startDate);
@@ -81,6 +109,11 @@ export default function RelatoriosPage() {
   const [coData, setCoData] = useState<CompanyReport | null>(null);
   const [coLoading, setCoLoading] = useState(false);
   const [detailRow, setDetailRow] = useState<EmployeeReportRow | null>(null);
+
+  const [unsettledRows, setUnsettledRows] = useState<UnsettledOrderRow[]>([]);
+  const [unsettledSummary, setUnsettledSummary] = useState<UnsettledSummary | null>(null);
+  const [unsettledLoading, setUnsettledLoading] = useState(false);
+  const [unsettledUnitId, setUnsettledUnitId] = useState("");
 
   const employeeOptions = useMemo(() => {
     const opts = [{ value: "", label: "Todos os funcionários" }];
@@ -160,6 +193,32 @@ export default function RelatoriosPage() {
     }
   }, [coStart, coEnd, coUnitId]);
 
+  const fetchUnsettledOrders = useCallback(async () => {
+    setUnsettledLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (unsettledUnitId) {
+        qs.set("unitId", unsettledUnitId);
+      }
+      const res = await fetch(`/api/reports/unsettled-orders?${qs}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? "Não foi possível carregar.");
+        setUnsettledRows([]);
+        setUnsettledSummary(null);
+        return;
+      }
+      setUnsettledRows(data.orders ?? []);
+      setUnsettledSummary(data.summary ?? null);
+    } catch {
+      toast.error("Não foi possível carregar.");
+      setUnsettledRows([]);
+      setUnsettledSummary(null);
+    } finally {
+      setUnsettledLoading(false);
+    }
+  }, [unsettledUnitId]);
+
   useEffect(() => {
     if (mainTab === "employees") {
       void fetchEmployeesReport();
@@ -171,6 +230,12 @@ export default function RelatoriosPage() {
       void fetchCompanyReport();
     }
   }, [mainTab, fetchCompanyReport]);
+
+  useEffect(() => {
+    if (mainTab === "unsettled") {
+      void fetchUnsettledOrders();
+    }
+  }, [mainTab, fetchUnsettledOrders]);
 
   async function getCompanyName(): Promise<string> {
     try {
@@ -269,6 +334,14 @@ export default function RelatoriosPage() {
         <Button size="sm" variant={mainTab === "company" ? "default" : "outline"} onClick={() => setMainTab("company")}>
           Empresa
         </Button>
+        <Button
+          size="sm"
+          variant={mainTab === "unsettled" ? "default" : "outline"}
+          onClick={() => setMainTab("unsettled")}
+        >
+          <ClipboardList className="mr-2 h-4 w-4" />
+          Não baixadas
+        </Button>
       </div>
 
       {mainTab === "employees" ? (
@@ -356,6 +429,11 @@ export default function RelatoriosPage() {
                 { key: "services", header: "Serviços executados", render: (row) => String(row.totalServices) },
                 { key: "value", header: "Valor gerado", render: (row) => currency(row.totalValue) },
                 {
+                  key: "totalCommission",
+                  header: "Comissão",
+                  render: (row) => currency(row.totalCommission),
+                },
+                {
                   key: "pct",
                   header: "% da meta",
                   render: (row) =>
@@ -388,7 +466,7 @@ export default function RelatoriosPage() {
             />
           </div>
         </div>
-      ) : (
+      ) : mainTab === "company" ? (
         <div className="space-y-6">
           <Card className="surface-card border-none">
             <CardHeader>
@@ -569,6 +647,115 @@ export default function RelatoriosPage() {
           ) : (
             <p className="text-sm text-muted-foreground">{coLoading ? "Carregando..." : "Sem dados."}</p>
           )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          <Card className="surface-card border-none">
+            <CardHeader>
+              <CardTitle>Filtros</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-2">
+                  <span className="text-sm font-medium">Unidade</span>
+                  <SearchableSelect
+                    value={unsettledUnitId}
+                    onChange={setUnsettledUnitId}
+                    placeholder="Selecione"
+                    options={unitOptions}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={() => void fetchUnsettledOrders()}>
+                  Atualizar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {(
+              [
+                ["OS não baixadas", String(unsettledSummary?.total ?? 0)],
+                ["Valor em aberto", currency(unsettledSummary?.totalAmount ?? 0)],
+                ["Vencidas", String(unsettledSummary?.totalVencido ?? 0)],
+                ["Fechamentos abertos", String(unsettledSummary?.totalFechamento ?? 0)],
+              ] as const
+            ).map(([title, val]) => (
+              <Card key={title} className="surface-card border-none">
+                <CardContent className="p-6">
+                  <p className="text-sm text-muted-foreground">{title}</p>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight">{val}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </section>
+
+          <div className="surface-card p-6">
+            <DataTable
+              data={unsettledRows}
+              pageSize={10}
+              isLoading={unsettledLoading}
+              searchPlaceholder="Buscar por número ou cliente"
+              searchKeys={[(row) => `${row.number} ${row.clientName}`]}
+              emptyTitle="Nenhuma OS não baixada"
+              emptyDescription="Todas as OS foram quitadas ou não há registros."
+              columns={[
+                {
+                  key: "number",
+                  header: "Número",
+                  render: (row) => (
+                    <span className="inline-flex items-center gap-2 font-medium">
+                      {row.number}
+                      {row.type === "FECHAMENTO" ? (
+                        <Badge variant="secondary" className="font-normal">
+                          Fechamento
+                        </Badge>
+                      ) : null}
+                    </span>
+                  ),
+                },
+                { key: "client", header: "Cliente", render: (row) => row.clientName },
+                { key: "unit", header: "Unidade", render: (row) => row.unitName },
+                { key: "opened", header: "Abertura", render: (row) => date(row.openedAt) },
+                {
+                  key: "due",
+                  header: "Vencimento",
+                  render: (row) => (row.dueDate ? date(row.dueDate) : "—"),
+                },
+                {
+                  key: "openAmount",
+                  header: "Valor em aberto",
+                  render: (row) => currency(row.receivableAmount),
+                },
+                {
+                  key: "recvStatus",
+                  header: "Status",
+                  render: (row) => (
+                    <StatusBadge
+                      status={row.receivableStatus === "VENCIDO" ? "Vencido" : "Pendente"}
+                    />
+                  ),
+                },
+                {
+                  key: "reason",
+                  header: "Motivo",
+                  render: (row) => (
+                    <span className="text-sm text-muted-foreground">
+                      {row.reason === "RECEBIVEL_VENCIDO"
+                        ? "Vencido"
+                        : row.reason === "FECHAMENTO_ABERTO"
+                          ? "Fechamento aberto"
+                          : row.reason === "FECHAMENTO_PARCIAL"
+                            ? "Fechamento parcial"
+                            : "Pendente"}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          </div>
         </div>
       )}
 

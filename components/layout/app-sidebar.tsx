@@ -4,10 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeftRight,
   BadgeDollarSign,
   BarChart2,
   Boxes,
+  Car,
   CarFront,
   ClipboardList,
   Gauge,
@@ -46,6 +46,8 @@ const baseItems: NavItem[] = [
     icon: Users,
     children: [
       { href: "/clientes", label: "Clientes", icon: Users },
+      { href: "/produtos", label: "Produtos", icon: Package },
+      { href: "/veiculos", label: "Veículos", icon: Car },
       { href: "/fornecedores", label: "Fornecedores", icon: Truck },
       { href: "/funcionarios", label: "Funcionários", icon: HardHat },
       { href: "/servicos", label: "Serviços", icon: Wrench },
@@ -114,7 +116,9 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
   }, [pathname]);
 
   const showRelatoriosDot =
-    relatoriosDotHidden === false && isFirstSevenDaysOfMonth();
+    relatoriosDotHidden === false &&
+    isFirstSevenDaysOfMonth() &&
+    user?.accessLevel === "PROPRIETARIO";
 
   const items = useMemo((): NavItem[] => {
     const level = user?.accessLevel;
@@ -162,15 +166,10 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
     router.replace("/login");
   }
 
-  function handleTrocarUnidade() {
-    onNavigate?.();
-    router.push("/selecionar-unidade");
-  }
-
   return (
     <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="flex h-20 items-center justify-center border-b border-sidebar-border px-5">
-        <NsaLogo compact className="justify-center" />
+        <NsaLogo compact />
       </div>
 
       <ScrollArea className="min-h-0 flex-1 px-3 py-5">
@@ -239,16 +238,6 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
       </ScrollArea>
 
       <div className="space-y-3 border-t border-sidebar-border px-5 py-4">
-        {user && user.units.length > 1 ? (
-          <Button
-            variant="outline"
-            className="w-full justify-center border-white/12 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-            onClick={handleTrocarUnidade}
-          >
-            <ArrowLeftRight className="mr-2 h-4 w-4" />
-            Trocar unidade
-          </Button>
-        ) : null}
         <Button
           variant="outline"
           className="w-full justify-center border-white/12 bg-white/5 text-white hover:bg-white/10 hover:text-white"

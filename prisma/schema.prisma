@@ -40,6 +40,12 @@ enum ServiceOrderStatus {
   CANCELADA
 }
 
+enum PaymentStatus {
+  PENDENTE
+  PAGO_PARCIAL
+  PAGO
+}
+
 enum PaymentTerm {
   A_VISTA
   A_PRAZO
@@ -62,6 +68,17 @@ enum PayableCategory {
   AGUA_LUZ
   FUNCIONARIOS
   OUTROS
+}
+
+enum ProductUnit {
+  UN
+  PAR
+  KIT
+  L
+  ML
+  KG
+  G
+  CX
 }
 
 enum AuditAction {
@@ -92,6 +109,8 @@ model Company {
   payables      AccountPayable[]
   auditLogs     AuditLog[]
   Vehicle       Vehicle[]
+  products         Product[]
+  orderProducts    ServiceOrderProduct[]
 }
 
 model Unit {
@@ -232,6 +251,28 @@ model Vehicle {
   @@unique([companyId, plate])
 }
 
+model Product {
+  id           String                @id @default(cuid())
+  companyId    String
+  name         String
+  description  String?
+  brand        String?
+  category     String?
+  unit         ProductUnit           @default(UN)
+  internalCode String?
+  costPrice    Decimal               @db.Decimal(10, 2)
+  salePrice    Decimal               @db.Decimal(10, 2)
+  isActive     Boolean               @default(true)
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  company      Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  orderProducts ServiceOrderProduct[]
+
+  @@index([companyId, isActive])
+  @@index([companyId, name])
+}
+
 model ServiceOrder {
   id                   String              @id @default(cuid())
   companyId            String
@@ -241,6 +282,7 @@ model ServiceOrder {
   vehicleId            String?
   number               String
   status               ServiceOrderStatus  @default(ABERTA)
+  paymentStatus        PaymentStatus       @default(PENDENTE)
   openedAt             DateTime            @default(now())
   closedAt             DateTime?
   mileage              Int?
@@ -250,6 +292,8 @@ model ServiceOrder {
   notes                String?
   isStandalone         Boolean             @default(false)
   totalAmount          Decimal             @default(0) @db.Decimal(10, 2)
+  laborSubtotal        Decimal             @default(0) @db.Decimal(10, 2)
+  productsSubtotal     Decimal             @default(0) @db.Decimal(10, 2)
   createdByUserId      String?
   updatedByUserId      String?
   createdAt            DateTime            @default(now())
@@ -261,6 +305,7 @@ model ServiceOrder {
   createdBy            User?               @relation("ServiceOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   updatedBy            User?               @relation("ServiceOrderUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   items                ServiceOrderItem[]
+  products             ServiceOrderProduct[]
   receivables          AccountReceivable[]
 
   @@unique([companyId, number])
@@ -275,6 +320,7 @@ model ServiceOrderItem {
   description           String
   quantity              Int                  @default(1)
   laborPrice            Decimal              @db.Decimal(10, 2)
+  commissionRate        Int                  @default(12)
   lineTotal             Decimal              @db.Decimal(10, 2)
   previousOrderStatus   ServiceOrderStatus?
   executedByUserId      String?
@@ -283,6 +329,27 @@ model ServiceOrderItem {
   serviceOrder          ServiceOrder         @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
   service               ServiceCatalog?      @relation(fields: [serviceId], references: [id], onDelete: SetNull)
   executedBy            User?                @relation("ServiceOrderItemExecutedBy", fields: [executedByUserId], references: [id], onDelete: SetNull)
+}
+
+model ServiceOrderProduct {
+  id             String       @id @default(cuid())
+  companyId      String
+  serviceOrderId String
+  productId      String?
+  description    String
+  unit           ProductUnit  @default(UN)
+  quantity       Decimal      @db.Decimal(10, 3)
+  unitPrice      Decimal      @db.Decimal(10, 2)
+  totalPrice     Decimal      @db.Decimal(10, 2)
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  serviceOrder   ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  product        Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, serviceOrderId])
+  @@index([serviceOrderId])
 }
 
 model AccountReceivable {

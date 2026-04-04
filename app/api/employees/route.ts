@@ -8,6 +8,7 @@ import { ServiceError } from "@/services/service-error";
 const employeeSchema = z.object({
   nomeCompleto: z.string().min(2).max(150),
   email: z.string().email(),
+  senha: z.string().min(6).max(128),
   telefone: z.string().max(20).optional().default(""),
   nivelAcesso: z.enum(["Proprietário", "Gestor", "Funcionário"]),
   situacao: z.enum(["Ativo", "Inativo"]),

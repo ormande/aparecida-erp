@@ -233,6 +233,10 @@ export function EmployeesSummaryPdf({ employees, companyName, startDate, endDate
                   <Text style={styles.cardValue}>{formatCurrency(employee.totalValue)}</Text>
                 </View>
                 <View style={styles.card}>
+                  <Text style={styles.cardLabel}>Comissão</Text>
+                  <Text style={styles.cardValue}>{formatCurrency(employee.totalCommission)}</Text>
+                </View>
+                <View style={styles.card}>
                   <Text style={styles.cardLabel}>Meta mensal</Text>
                   <Text style={styles.cardValue}>
                     {employee.monthlyGoal != null ? formatCurrency(employee.monthlyGoal) : "—"}

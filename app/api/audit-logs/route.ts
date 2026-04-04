@@ -62,7 +62,8 @@ function buildSummary(log: {
   }
 
   if (log.action === "STATUS_CHANGE") {
-    return `Alterou o status da ${entity} ${target}.`;
+    const label = target !== entity ? `${entity} ${target}` : entity;
+    return `Alterou o status da ${label}.`;
   }
 
   return `${translateAction(log.action)} ${entity} ${target}.`;

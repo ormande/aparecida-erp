@@ -1,3 +1,5 @@
+import { hash } from "bcryptjs";
+
 import { mapUserToEmployee } from "@/lib/db-mappers";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
@@ -9,6 +11,7 @@ type EmployeePayload = {
   telefone?: string;
   nivelAcesso: "Proprietário" | "Gestor" | "Funcionário";
   situacao: "Ativo" | "Inativo";
+  senha: string;
 };
 
 type EmployeeContext = {
@@ -107,6 +110,7 @@ export const employeeService = {
         name: payload.nomeCompleto,
         email,
         phone: payload.telefone || null,
+        passwordHash: await hash(payload.senha, 10),
         accessLevel: mapAccessLevel(payload.nivelAcesso),
         status: mapStatus(payload.situacao),
         units: {
@@ -129,7 +133,7 @@ export const employeeService = {
     return { employee: mapUserToEmployee(user) };
   },
 
-  async update(id: string, payload: EmployeePayload, context: EmployeeContext) {
+  async update(id: string, payload: Omit<EmployeePayload, "senha">, context: EmployeeContext) {
     const email = payload.email.trim().toLowerCase();
 
     const existing = await prisma.user.findFirst({

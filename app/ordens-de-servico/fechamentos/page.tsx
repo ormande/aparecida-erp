@@ -5,6 +5,7 @@ import { createElement, useCallback, useEffect, useMemo, useState } from "react"
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -35,6 +36,7 @@ type OrderPreview = {
   services: Array<{ id: string; description: string; laborPrice: number }>;
   total: number;
   receivableAmount?: number;
+  paymentStatus?: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
 };
 
 export default function FechamentosPage() {
@@ -48,8 +50,11 @@ export default function FechamentosPage() {
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [settleOrder, setSettleOrder] = useState<OrderPreview | null>(null);
   const [discountInput, setDiscountInput] = useState("");
+  const [isPartial, setIsPartial] = useState(false);
+  const [partialAmountInput, setPartialAmountInput] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState("");
   const [minValue, setMinValue] = useState("");
   const [maxValue, setMaxValue] = useState("");
   const [datePreset, setDatePreset] = useState<"all" | "today" | "yesterday" | "custom">("all");
@@ -73,6 +78,7 @@ export default function FechamentosPage() {
     return orders
       .filter((order) => order.number.startsWith("FEC-"))
       .filter((order) => {
+        if (paymentFilter && order.paymentStatus !== paymentFilter) return false;
         if (statusFilter && order.status !== statusFilter) return false;
         if (minValue && order.total < parseCurrencyInput(minValue)) return false;
         if (maxValue && order.total > parseCurrencyInput(maxValue)) return false;
@@ -90,7 +96,7 @@ export default function FechamentosPage() {
         }
         return true;
       });
-  }, [customFrom, customTo, datePreset, maxValue, minValue, orders, statusFilter]);
+  }, [customFrom, customTo, datePreset, maxValue, minValue, orders, paymentFilter, statusFilter]);
 
   const searchKeys = useMemo<Array<(row: (typeof rows)[number]) => string>>(
     () => [(row) => row.number, (row) => row.clientName],
@@ -106,13 +112,31 @@ export default function FechamentosPage() {
     const response = await fetch(`/api/service-orders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, discountAmount: mode === "settle" ? parseCurrencyInput(discountInput) : 0 }),
+      body: JSON.stringify({
+        mode,
+        discountAmount: mode === "settle" && !isPartial ? parseCurrencyInput(discountInput) : 0,
+        partialAmount: mode === "settle" && isPartial ? parseCurrencyInput(partialAmountInput) : 0,
+      }),
     });
     const data = await response.json();
     if (!response.ok) return toast.error(data.message ?? "Não foi possível alterar o status.");
-    setOrders((current) => current.map((item) => (item.id === id ? { ...item, status: data.order.status, receivableStatus: data.order.receivableStatus } : item)));
+    setOrders((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: data.order.status,
+              receivableStatus: data.order.receivableStatus,
+              paymentStatus: data.order.paymentStatus,
+              receivableAmount: data.order.receivableAmount,
+            }
+          : item,
+      ),
+    );
     setSettleOrder(null);
     setDiscountInput("");
+    setIsPartial(false);
+    setPartialAmountInput("");
     toast.success(mode === "settle" ? "Fechamento baixado com sucesso!" : "Fechamento reaberto com sucesso!");
   }
 
@@ -154,6 +178,7 @@ export default function FechamentosPage() {
               vehicleId: null,
               unitId: "",
               status: "Aberta" as const,
+              paymentStatus: order.paymentStatus ?? "PENDENTE",
               mileage: null,
               isStandalone: false,
               receivableStatus: null,
@@ -177,6 +202,8 @@ export default function FechamentosPage() {
     const data = await response.json();
     if (!response.ok) return toast.error(data.message ?? "Não foi possível carregar o fechamento.");
     setDiscountInput("");
+    setIsPartial(false);
+    setPartialAmountInput("");
     setSettleOrder(data.order);
   }
 
@@ -186,7 +213,7 @@ export default function FechamentosPage() {
         title="OS de Fechamento"
         subtitle="Fechamentos mensais gerados a partir das ordens de serviço do cliente."
         actions={
-          <Button variant="outline" onClick={() => { setCustomerFilter(""); setStatusFilter(""); setMinValue(""); setMaxValue(""); setDatePreset("all"); setCustomFrom(""); setCustomTo(""); }}>
+          <Button variant="outline" onClick={() => { setCustomerFilter(""); setStatusFilter(""); setPaymentFilter(""); setMinValue(""); setMaxValue(""); setDatePreset("all"); setCustomFrom(""); setCustomTo(""); }}>
             Excluir filtros
           </Button>
         }
@@ -198,9 +225,29 @@ export default function FechamentosPage() {
           {units.map((unit) => <Button key={unit.id} size="sm" variant={selectedUnitId === unit.id ? "default" : "outline"} onClick={() => setSelectedUnitId(unit.id)}>{unit.name}</Button>)}
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-4">
+        <div className="grid gap-3 lg:grid-cols-5">
           <SearchableSelect value={customerFilter} onChange={setCustomerFilter} placeholder="Filtrar por cliente" options={customerOptions} />
-          <SearchableSelect value={statusFilter} onChange={setStatusFilter} placeholder="Filtrar por status" options={[{ value: "Aberta", label: "Aberta" }, { value: "Concluída", label: "Concluída" }, { value: "Cancelada", label: "Cancelada" }]} />
+          <SearchableSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            placeholder="Filtrar por status"
+            options={[
+              { value: "Aberta", label: "Aberta" },
+              { value: "Em andamento", label: "Em andamento" },
+              { value: "Concluída", label: "Concluída" },
+              { value: "Cancelada", label: "Cancelada" },
+            ]}
+          />
+          <SearchableSelect
+            value={paymentFilter}
+            onChange={setPaymentFilter}
+            placeholder="Filtrar por pagamento"
+            options={[
+              { value: "PENDENTE", label: "Pendente" },
+              { value: "PAGO_PARCIAL", label: "Pago parcialmente" },
+              { value: "PAGO", label: "Pago" },
+            ]}
+          />
           <Input value={minValue} onChange={(event) => setMinValue(formatCurrencyInput(event.target.value))} placeholder="Valor mínimo" />
           <Input value={maxValue} onChange={(event) => setMaxValue(formatCurrencyInput(event.target.value))} placeholder="Valor máximo" />
         </div>
@@ -232,8 +279,30 @@ export default function FechamentosPage() {
             { key: "number", header: "Número", render: (row) => <span className="font-medium">{row.number}</span> },
             { key: "unit", header: "Unidade", render: (row) => row.unitName ?? "Geral" },
             { key: "client", header: "Cliente", render: (row) => row.clientName },
-            { key: "status", header: "Status", render: (row) => <StatusBadge status={row.status} /> },
+            {
+              key: "paymentStatus",
+              header: "Pagamento",
+              render: (row) => {
+                const label =
+                  row.paymentStatus === "PAGO"
+                    ? "Pago"
+                    : row.paymentStatus === "PAGO_PARCIAL"
+                      ? "Pago parcialmente"
+                      : "Pendente";
+                return <StatusBadge status={label} />;
+              },
+            },
             { key: "total", header: "Valor total", render: (row) => currency(row.total) },
+            {
+              key: "receivableAmount",
+              header: "Valor devido",
+              render: (row) =>
+                row.paymentStatus === "PAGO" ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  currency(row.receivableAmount ?? 0)
+                ),
+            },
             { key: "date", header: "Data", render: (row) => date(row.openedAt) },
             {
               key: "actions",
@@ -243,8 +312,16 @@ export default function FechamentosPage() {
                   <Button variant="outline" size="sm" onClick={() => openOrderPreview(row.id)}>
                     Ver
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => row.receivableStatus === "PAGO" ? handleStatusChange(row.id, "reopen") : openSettleDialog(row.id)}>
-                    {row.receivableStatus === "PAGO" ? "Reabrir" : "Baixar"}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      row.paymentStatus === "PAGO"
+                        ? handleStatusChange(row.id, "reopen")
+                        : openSettleDialog(row.id)
+                    }
+                  >
+                    {row.paymentStatus === "PAGO" ? "Reabrir" : "Baixar"}
                   </Button>
                   {user?.accessLevel === "PROPRIETARIO" ? (
                     <Button
@@ -313,7 +390,17 @@ export default function FechamentosPage() {
           ) : null}
         </DialogContent>
       </Dialog>
-      <Dialog open={Boolean(settleOrder)} onOpenChange={(open) => !open && setSettleOrder(null)}>
+      <Dialog
+        open={Boolean(settleOrder)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSettleOrder(null);
+            setDiscountInput("");
+            setIsPartial(false);
+            setPartialAmountInput("");
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{settleOrder?.number}</DialogTitle>
@@ -327,9 +414,15 @@ export default function FechamentosPage() {
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border bg-muted/20 p-4">
-                  <p className="text-sm font-medium text-muted-foreground">Valor devido</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {isPartial ? "Saldo restante" : "Valor devido"}
+                  </p>
                   <p className="mt-2 text-3xl font-semibold">
-                    {currency(Math.max((settleOrder.receivableAmount ?? 0) - parseCurrencyInput(discountInput), 0))}
+                    {currency(
+                      isPartial
+                        ? Math.max((settleOrder.receivableAmount ?? 0) - parseCurrencyInput(partialAmountInput), 0)
+                        : Math.max((settleOrder.receivableAmount ?? 0) - parseCurrencyInput(discountInput), 0),
+                    )}
                   </p>
                 </div>
                 <div className="rounded-2xl border bg-muted/20 p-4">
@@ -348,10 +441,36 @@ export default function FechamentosPage() {
                   ))}
                 </div>
               </div>
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Desconto</label>
-                <Input value={discountInput} onChange={(event) => setDiscountInput(formatCurrencyInput(event.target.value))} placeholder="R$ 0,00" />
+              {!isPartial ? (
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Desconto</label>
+                  <Input value={discountInput} onChange={(event) => setDiscountInput(formatCurrencyInput(event.target.value))} placeholder="R$ 0,00" />
+                </div>
+              ) : null}
+              <div className="border-t" />
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={isPartial}
+                  onCheckedChange={(checked) => {
+                    setIsPartial(Boolean(checked));
+                    setPartialAmountInput("");
+                  }}
+                />
+                <label className="text-sm font-medium">Registrar pagamento parcial</label>
               </div>
+              {isPartial ? (
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium">Valor pago agora</label>
+                  <Input
+                    value={partialAmountInput}
+                    onChange={(e) => setPartialAmountInput(formatCurrencyInput(e.target.value))}
+                    placeholder="R$ 0,00"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    O saldo restante será lançado automaticamente como pendência no contas a receber.
+                  </p>
+                </div>
+              ) : null}
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setSettleOrder(null)}>Cancelar</Button>
                 <Button onClick={() => handleStatusChange(settleOrder.id, "settle")}>Confirmar baixa</Button>

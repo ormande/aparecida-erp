@@ -60,12 +60,14 @@ const styles = StyleSheet.create({
   },
   colOs: { flex: 1, fontSize: 9 },
   colDate: { flex: 1, fontSize: 9 },
-  colDesc: { flex: 3, fontSize: 9 },
+  colDesc: { flex: 2, fontSize: 9 },
   colValue: { flex: 1, fontSize: 9, textAlign: "right" },
+  colComm: { flex: 1, fontSize: 9, textAlign: "right" },
   colOsHeader: { flex: 1, fontSize: 9, fontWeight: "bold", color: "#666666" },
   colDateHeader: { flex: 1, fontSize: 9, fontWeight: "bold", color: "#666666" },
-  colDescHeader: { flex: 3, fontSize: 9, fontWeight: "bold", color: "#666666" },
+  colDescHeader: { flex: 2, fontSize: 9, fontWeight: "bold", color: "#666666" },
   colValueHeader: { flex: 1, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "right" },
+  colCommHeader: { flex: 1, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "right" },
   cardsRow: {
     flexDirection: "row",
     gap: 8,
@@ -182,6 +184,7 @@ export function EmployeeReportPdf({ employee, companyName, startDate, endDate }:
             <Text style={styles.colDateHeader}>Data</Text>
             <Text style={styles.colDescHeader}>Descrição</Text>
             <Text style={styles.colValueHeader}>Valor</Text>
+            <Text style={styles.colCommHeader}>Comissão</Text>
           </View>
           {employee.services.map((svc, i) => (
             <View key={`${svc.orderNumber}-${i}`} style={styles.tableRow}>
@@ -189,6 +192,7 @@ export function EmployeeReportPdf({ employee, companyName, startDate, endDate }:
               <Text style={styles.colDate}>{formatDate(svc.date)}</Text>
               <Text style={styles.colDesc}>{svc.description}</Text>
               <Text style={styles.colValue}>{formatCurrency(svc.value)}</Text>
+              <Text style={styles.colComm}>{formatCurrency(svc.value * 0.12)}</Text>
             </View>
           ))}
         </View>
@@ -201,6 +205,10 @@ export function EmployeeReportPdf({ employee, companyName, startDate, endDate }:
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Valor total gerado</Text>
             <Text style={styles.cardValue}>{formatCurrency(employee.totalValue)}</Text>
+          </View>
+          <View style={styles.card}>
+            <Text style={styles.cardLabel}>Comissão total</Text>
+            <Text style={styles.cardValue}>{formatCurrency(employee.totalCommission)}</Text>
           </View>
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Meta mensal</Text>

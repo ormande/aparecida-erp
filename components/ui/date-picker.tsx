@@ -80,6 +80,7 @@ export function DatePicker({
       />
       <PopoverContent
         id={contentId}
+        initialFocus={false}
         className={cn(
           "w-auto max-w-[min(100vw-2rem,var(--available-width,100vw))] overflow-hidden rounded-2xl border border-border/50 bg-popover p-0 text-popover-foreground shadow-lg",
           "ring-1 ring-border/15 dark:ring-border/30 outline-none !gap-0",
@@ -117,7 +118,7 @@ export function DatePicker({
                 fromDate={fromDate}
                 toDate={toDate}
                 defaultMonth={selected}
-                initialFocus
+                autoFocus={false}
               />
             </motion.div>
           ) : null}

@@ -29,6 +29,19 @@ export function SearchableSelect({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      const scrollY = window.scrollY;
+      setOpen(true);
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: scrollY, behavior: "instant" });
+      });
+    } else {
+      setOpen(false);
+    }
+  }
+
   const listId = useId();
 
   const selected = useMemo(
@@ -37,7 +50,7 @@ export function SearchableSelect({
   );
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
           <button
@@ -68,6 +81,7 @@ export function SearchableSelect({
       />
       <PopoverContent
         id={listId}
+        initialFocus={false}
         className={cn(
           "w-(--anchor-width) max-w-[min(100vw-2rem,var(--available-width,100vw))] overflow-hidden rounded-2xl border border-border/50 bg-popover p-0 text-popover-foreground shadow-lg",
           "ring-1 ring-border/15 dark:ring-border/30 outline-none !gap-0",

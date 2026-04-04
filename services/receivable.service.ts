@@ -82,10 +82,45 @@ export const receivableService = {
       periodDueDateRange = { gte: start, lt: end };
     }
 
+    const closureOrders = await prisma.serviceOrder.findMany({
+      where: {
+        companyId: context.companyId,
+        number: { startsWith: "FEC-" },
+      },
+      select: {
+        items: {
+          select: { description: true },
+        },
+      },
+    });
+
+    const referencedNumbers = new Set<string>();
+    for (const closure of closureOrders) {
+      for (const item of closure.items) {
+        const matches = Array.from(item.description.matchAll(/OS-\d{4}-\d{4}/g));
+        for (const match of matches) {
+          referencedNumbers.add(match[0]);
+        }
+      }
+    }
+
+    const excludedOrderIds =
+      referencedNumbers.size > 0
+        ? (
+            await prisma.serviceOrder.findMany({
+              where: {
+                companyId: context.companyId,
+                number: { in: Array.from(referencedNumbers) },
+              },
+              select: { id: true },
+            })
+          ).map((o) => o.id)
+        : [];
+
     const receivables = await prisma.accountReceivable.findMany({
       where: {
         companyId: context.companyId,
-        unitId: context.unitId,
+        ...(context.unitId ? { unitId: context.unitId } : {}),
         status:
           filters.status === "Pago"
             ? "PAGO"
@@ -95,6 +130,16 @@ export const receivableService = {
                 ? "PENDENTE"
                 : undefined,
         ...(periodDueDateRange ? { dueDate: periodDueDateRange } : {}),
+        ...(excludedOrderIds.length > 0
+          ? {
+              NOT: {
+                AND: [
+                  { originType: "SERVICE_ORDER" },
+                  { serviceOrderId: { in: excludedOrderIds } },
+                ],
+              },
+            }
+          : {}),
       },
       include: {
         customer: {
@@ -171,7 +216,7 @@ export const receivableService = {
       where: {
         id,
         companyId: context.companyId,
-        unitId: context.unitId,
+        ...(context.unitId ? { unitId: context.unitId } : {}),
       },
     });
 

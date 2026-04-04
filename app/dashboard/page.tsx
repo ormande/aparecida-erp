@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Activity, AlertTriangle, CircleDollarSign, ClipboardList, Wallet, X } from "lucide-react";
+import { Activity, AlertTriangle, CircleDollarSign, ClipboardList, Percent, Wallet, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useAuth } from "@/hooks/use-auth";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useDebounce } from "@/hooks/use-debounce";
 import { usePayables } from "@/hooks/use-payables";
@@ -34,7 +35,22 @@ function getTodayLocalIso() {
   return `${year}-${month}-${day}`;
 }
 
+function getMonthStartLocalIso() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
+type EmployeeReportRow = {
+  totalValue: number;
+  totalCommission: number;
+  monthlyGoal: number | null;
+};
+
 export default function DashboardPage() {
+  const { user, isLoading: authLoading } = useAuth();
+  const isFuncionario = user?.accessLevel === "FUNCIONARIO";
   const { unitId, currentUnit, isLoading: unitLoading } = useCurrentUnit();
   const debouncedUnitId = useDebounce(unitId, 300);
   const period = getMonthPrefixLocal();
@@ -48,6 +64,94 @@ export default function DashboardPage() {
   const { receivables: previousReceivables } = useReceivables({ unitId: debouncedUnitId, period: previousPeriod });
   const { payables: previousPayables } = usePayables({ unitId: debouncedUnitId, period: previousPeriod });
 
+  const showReportBanner = isFirstSevenDaysOfMonth();
+  const previousMonthDate = new Date();
+  previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
+  const previousMonthRaw = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(previousMonthDate);
+  const previousMonthLabel = previousMonthRaw.charAt(0).toUpperCase() + previousMonthRaw.slice(1);
+
+  const dismissStorageKey = `report-badge-dismissed-${previousPeriod}`;
+  const [reportBadgeDismissed, setReportBadgeDismissed] = useState<boolean | null>(null);
+
+  const [employeeRow, setEmployeeRow] = useState<EmployeeReportRow | null>(null);
+  const [employeeReportHydrated, setEmployeeReportHydrated] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    setReportBadgeDismissed(window.localStorage.getItem(dismissStorageKey) === "true");
+  }, [dismissStorageKey]);
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    if (!isFuncionario) {
+      setEmployeeRow(null);
+      setEmployeeReportHydrated(true);
+      return;
+    }
+    if (!user?.id) {
+      setEmployeeRow(null);
+      setEmployeeReportHydrated(true);
+      return;
+    }
+
+    let active = true;
+    setEmployeeReportHydrated(false);
+    const params = new URLSearchParams({
+      startDate: getMonthStartLocalIso(),
+      endDate: getTodayLocalIso(),
+      employeeId: user.id,
+    });
+    if (debouncedUnitId) {
+      params.set("unitId", debouncedUnitId);
+    }
+
+    fetch(`/api/reports/employees?${params.toString()}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error ?? "Falha ao carregar desempenho.");
+        }
+        return data;
+      })
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        const row = data.employees?.[0] as EmployeeReportRow | undefined;
+        setEmployeeRow(
+          row
+            ? {
+                totalValue: Number(row.totalValue ?? 0),
+                totalCommission: Number(row.totalCommission ?? 0),
+                monthlyGoal: row.monthlyGoal == null ? null : Number(row.monthlyGoal),
+              }
+            : {
+                totalValue: 0,
+                totalCommission: 0,
+                monthlyGoal: null,
+              },
+        );
+      })
+      .catch(() => {
+        if (active) {
+          setEmployeeRow({ totalValue: 0, totalCommission: 0, monthlyGoal: null });
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setEmployeeReportHydrated(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [authLoading, isFuncionario, user?.id, debouncedUnitId]);
+
   const today = getTodayLocalIso();
   const openedToday = orders.filter((order) => order.openedAt === today && order.status !== "Cancelada").length;
   const receitaMes = receivables.filter((item) => item.status === "Pago").reduce((sum, item) => sum + item.value, 0);
@@ -57,7 +161,9 @@ export default function DashboardPage() {
   const previousReceitaMes = previousReceivables.filter((item) => item.status === "Pago").reduce((sum, item) => sum + item.value, 0);
   const previousPagar = previousPayables.filter((item) => item.status !== "Pago").reduce((sum, item) => sum + item.value, 0);
 
-  const latestOrders = orders.slice(0, 5);
+  const latestOrders = orders
+    .filter((order) => !order.number.startsWith("FEC-"))
+    .slice(0, 5);
   const warningsReceber = receivables.filter((item) => item.dueDate === today && item.status !== "Pago").slice(0, 3);
   const oldPendingOs = orders.filter((item) => item.status === "Em andamento" || item.status === "Aguardando peça").slice(0, 2);
 
@@ -83,26 +189,22 @@ export default function DashboardPage() {
   }));
 
   const hasHistory = previousReceivables.length > 0 || previousPayables.length > 0;
-  const hydrated = !unitLoading && ordersHydrated && receivablesHydrated && payablesHydrated;
+  const financeHydrated = receivablesHydrated && payablesHydrated;
+  const hydrated =
+    !unitLoading &&
+    ordersHydrated &&
+    employeeReportHydrated &&
+    (!isFuncionario ? financeHydrated : true);
 
-  const showReportBanner = isFirstSevenDaysOfMonth();
-  const previousMonthDate = new Date();
-  previousMonthDate.setMonth(previousMonthDate.getMonth() - 1);
-  const previousMonthRaw = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(previousMonthDate);
-  const previousMonthLabel = previousMonthRaw.charAt(0).toUpperCase() + previousMonthRaw.slice(1);
-
-  const dismissStorageKey = `report-badge-dismissed-${previousPeriod}`;
-  const [reportBadgeDismissed, setReportBadgeDismissed] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    setReportBadgeDismissed(window.localStorage.getItem(dismissStorageKey) === "true");
-  }, [dismissStorageKey]);
+  const metaPercentLabel =
+    employeeRow == null ||
+    employeeRow.monthlyGoal == null ||
+    employeeRow.monthlyGoal <= 0
+      ? "Sem meta definida"
+      : `${((employeeRow.totalValue / employeeRow.monthlyGoal) * 100).toFixed(1)}%`;
 
   const showReportBadge =
-    showReportBanner && reportBadgeDismissed === false;
+    !isFuncionario && showReportBanner && reportBadgeDismissed === false;
 
   function dismissReportBadge() {
     window.localStorage.setItem(dismissStorageKey, "true");
@@ -148,17 +250,52 @@ export default function DashboardPage() {
       <PageHeader
         title="Dashboard"
         subtitle={
-          currentUnit
-            ? `Visão rápida da unidade ${currentUnit.name}, com foco em OS e saúde financeira.`
-            : "Visão rápida da operação da unidade selecionada."
+          isFuncionario
+            ? currentUnit
+              ? `Seu desempenho na unidade ${currentUnit.name}.`
+              : "Seu desempenho na operação."
+            : currentUnit
+              ? `Visão rápida da unidade ${currentUnit.name}, com foco em OS e saúde financeira.`
+              : "Visão rápida da operação da unidade selecionada."
         }
       />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="OS abertas hoje" value={String(openedToday)} icon={ClipboardList} trend={hasHistory ? "up" : "none"} />
-        <StatCard title="Receita do mês" value={currency(receitaMes)} icon={CircleDollarSign} trend={hasHistory ? (receitaMes >= previousReceitaMes ? "up" : "down") : "none"} />
-        <StatCard title="Contas a receber" value={currency(totalReceber)} icon={Wallet} trend={hasHistory ? "neutral" : "none"} />
-        <StatCard title="Contas a pagar" value={currency(totalPagar)} icon={AlertTriangle} trend={hasHistory ? (totalPagar > previousPagar ? "down" : "neutral") : "none"} />
+        {isFuncionario ? (
+          <>
+            <StatCard
+              title="Valor gerado"
+              value={currency(employeeRow?.totalValue ?? 0)}
+              icon={CircleDollarSign}
+              trend="none"
+            />
+            <StatCard title="% da meta" value={metaPercentLabel} icon={Percent} trend="none" />
+            <StatCard
+              title="Comissão do mês"
+              value={currency(employeeRow?.totalCommission ?? 0)}
+              icon={Wallet}
+              trend="none"
+            />
+            <StatCard title="OS abertas hoje" value={String(openedToday)} icon={ClipboardList} trend="none" />
+          </>
+        ) : (
+          <>
+            <StatCard title="OS abertas hoje" value={String(openedToday)} icon={ClipboardList} trend={hasHistory ? "up" : "none"} />
+            <StatCard
+              title="Receita do mês"
+              value={currency(receitaMes)}
+              icon={CircleDollarSign}
+              trend={hasHistory ? (receitaMes >= previousReceitaMes ? "up" : "down") : "none"}
+            />
+            <StatCard title="Contas a receber" value={currency(totalReceber)} icon={Wallet} trend={hasHistory ? "neutral" : "none"} />
+            <StatCard
+              title="Contas a pagar"
+              value={currency(totalPagar)}
+              icon={AlertTriangle}
+              trend={hasHistory ? (totalPagar > previousPagar ? "down" : "neutral") : "none"}
+            />
+          </>
+        )}
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_360px]">
@@ -204,46 +341,50 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="surface-card border-none">
-            <CardHeader>
-              <CardTitle>Receita dos últimos 7 dias</CardTitle>
-            </CardHeader>
-            <CardContent className="h-[320px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dashboardRevenue}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis dataKey="day" axisLine={false} tickLine={false} />
-                  <YAxis axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(value) => currency(Number(value ?? 0))} />
-                  <Bar dataKey="revenue" name="Receita" radius={[10, 10, 0, 0]} fill="var(--color-gold)" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+          {!isFuncionario ? (
+            <Card className="surface-card border-none">
+              <CardHeader>
+                <CardTitle>Receita dos últimos 7 dias</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[320px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dashboardRevenue}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.2} />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                    <YAxis axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(value) => currency(Number(value ?? 0))} />
+                    <Bar dataKey="revenue" name="Receita" radius={[10, 10, 0, 0]} fill="var(--color-gold)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
         <div className="space-y-6">
-          <Card className="surface-card border-none">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-[var(--color-gold-dark)]" />
-                Contas vencendo hoje
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {warningsReceber.length ? (
-                warningsReceber.map((item) => (
-                  <div key={item.id} className="rounded-2xl border bg-muted/40 p-4">
-                    <p className="font-medium">{item.description}</p>
-                    <p className="text-sm text-muted-foreground">{item.clientName}</p>
-                    <p className="mt-2 text-sm font-semibold">{currency(item.value)}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">Nenhuma conta vencendo hoje nesta unidade.</p>
-              )}
-            </CardContent>
-          </Card>
+          {!isFuncionario ? (
+            <Card className="surface-card border-none">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-[var(--color-gold-dark)]" />
+                  Contas vencendo hoje
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {warningsReceber.length ? (
+                  warningsReceber.map((item) => (
+                    <div key={item.id} className="rounded-2xl border bg-muted/40 p-4">
+                      <p className="font-medium">{item.description}</p>
+                      <p className="text-sm text-muted-foreground">{item.clientName}</p>
+                      <p className="mt-2 text-sm font-semibold">{currency(item.value)}</p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">Nenhuma conta vencendo hoje nesta unidade.</p>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card className="surface-card border-none">
             <CardHeader>
@@ -261,7 +402,7 @@ export default function DashboardPage() {
                       <StatusBadge status={item.status} />
                     </div>
                     <p className="mt-3 text-sm text-muted-foreground">
-                      Aberta em {date(item.openedAt)} para o veículo {item.plate}.
+                      Aberta em {date(item.openedAt)}.
                     </p>
                   </div>
                 ))

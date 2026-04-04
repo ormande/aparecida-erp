@@ -108,7 +108,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.companyId = user.companyId;
@@ -117,24 +117,6 @@ export const authOptions: NextAuthOptions = {
         token.phone = user.phone;
         token.units = user.units;
 
-        if (user.units.length === 1) {
-          token.activeUnitId = user.units[0].id;
-        } else {
-          delete token.activeUnitId;
-        }
-
-      }
-
-      if (trigger === "update" && session && typeof session === "object") {
-        const payload = session as Record<string, unknown>;
-        if ("activeUnitId" in payload) {
-          const next = payload.activeUnitId;
-          if (next === "" || next === null) {
-            token.activeUnitId = "";
-          } else if (typeof next === "string" && token.units?.some((u) => u.id === next)) {
-            token.activeUnitId = next;
-          }
-        }
       }
 
       return token;
@@ -147,10 +129,7 @@ export const authOptions: NextAuthOptions = {
         session.user.status = token.status;
         session.user.phone = token.phone;
         session.user.units = token.units ?? [];
-        session.user.activeUnitId = token.activeUnitId;
       }
-
-      session.activeUnitId = token.activeUnitId;
 
       return session;
     },
@@ -158,8 +137,8 @@ export const authOptions: NextAuthOptions = {
 };
 
 /**
- * Sessão autenticada com unidade ativa obrigatória (não aceita visão geral vazia em rotas de negócio).
- * Retorna NextResponse pronto quando faltar autenticação ou unidade ativa.
+ * Sessão autenticada. `context.activeUnitId` permanece como string vazia; unidade é escolhida por rota (ex.: nova OS) ou filtro local.
+ * Retorna NextResponse quando faltar autenticação ou role.
  */
 export async function getRequiredSessionContext(
   options?: GetRequiredSessionContextOptions,
@@ -172,15 +151,6 @@ export async function getRequiredSessionContext(
     return {
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
-    };
-  }
-
-  const activeUnitId = session.user.activeUnitId ?? session.activeUnitId;
-
-  if (activeUnitId === undefined || activeUnitId === null || activeUnitId === "") {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Unauthorized or no active unit" }, { status: 403 }),
     };
   }
 
@@ -197,7 +167,7 @@ export async function getRequiredSessionContext(
       session,
       userId: session.user.id,
       companyId: session.user.companyId,
-      activeUnitId,
+      activeUnitId: "",
     },
   };
 }

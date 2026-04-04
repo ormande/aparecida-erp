@@ -2,9 +2,9 @@
 
 import { Plus } from "lucide-react";
 
+import { OsProductsSection } from "@/components/service-orders/os-products-section";
 import { OsServiceItem } from "@/components/service-orders/os-service-item";
 import { VehicleForm } from "@/components/vehicles/vehicle-form";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,7 +21,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { NovaOsController } from "@/hooks/use-nova-os";
 
 const PAYMENT_METHOD_OPTIONS = [
@@ -121,6 +120,39 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
           </div>
         </div>
 
+        <div className="grid gap-2">
+          <Label>Data de lançamento</Label>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={os.openedAtPreset === "today" ? "default" : "outline"}
+              onClick={() => os.setOpenedAtPreset("today")}
+            >
+              Hoje
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={os.openedAtPreset === "yesterday" ? "default" : "outline"}
+              onClick={() => os.setOpenedAtPreset("yesterday")}
+            >
+              Ontem
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={os.openedAtPreset === "other" ? "default" : "outline"}
+              onClick={() => os.setOpenedAtPreset("other")}
+            >
+              Outra data
+            </Button>
+          </div>
+          {os.openedAtPreset === "other" ? (
+            <DatePicker value={os.openedAtCustom} onChange={os.setOpenedAtCustom} />
+          ) : null}
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
             <Label htmlFor="mileage">Quilometragem atual</Label>
@@ -211,24 +243,12 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-dashed bg-muted/30 p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-xl">Peças</h2>
-            <Badge variant="secondary">Em breve - módulo de estoque</Badge>
-          </div>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <div className="mt-4 rounded-2xl border bg-muted p-4 text-sm text-muted-foreground">
-                  O lançamento de peças será habilitado quando o módulo de estoque estiver ativo.
-                </div>
-              }
-            />
-            <TooltipContent>
-              <p>Ative o módulo em Configurações para começar a usar o controle de estoque.</p>
-            </TooltipContent>
-          </Tooltip>
-        </div>
+        <OsProductsSection
+          products={os.products}
+          onProductChange={os.onProductChange}
+          removeProduct={os.removeProduct}
+          addProduct={os.addProduct}
+        />
 
         <div className="grid gap-2">
           <Label htmlFor="notes">Observações / laudo técnico</Label>

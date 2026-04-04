@@ -51,7 +51,7 @@ export function LoginScreen() {
     toast.success("Login realizado com sucesso.");
 
     const nextUrl = searchParams.get("next") || "/dashboard";
-    router.push(`/selecionar-unidade?next=${encodeURIComponent(nextUrl)}`);
+    router.push(nextUrl);
   }
 
   return (

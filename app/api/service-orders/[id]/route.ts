@@ -8,6 +8,7 @@ import { serviceOrderService } from "@/services/service-order.service";
 const updateOrderSchema = z.object({
   mode: z.enum(["edit", "settle", "reopen"]),
   discountAmount: z.coerce.number().min(0).optional().default(0),
+  partialAmount: z.coerce.number().min(0).optional().default(0),
   customerId: z.string().optional().nullable(),
   customerNameSnapshot: z.string().max(100).optional().default(""),
   vehicleId: z.string().optional().nullable(),
@@ -23,9 +24,22 @@ const updateOrderSchema = z.object({
         description: z.string().min(1).max(500),
         laborPrice: z.coerce.number().min(0),
         executedByUserId: z.string().optional().nullable(),
+        commissionRate: z.coerce.number().int().min(1).max(100).optional().default(12),
       }),
     )
     .optional(),
+  products: z
+    .array(
+      z.object({
+        productId: z.string().optional().nullable(),
+        description: z.string().min(1).max(500),
+        unit: z.enum(["UN", "PAR", "KIT", "L", "ML", "KG", "G", "CX"]).optional().default("UN"),
+        quantity: z.coerce.number().min(0.001),
+        unitPrice: z.coerce.number().min(0),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 function handleServiceError(error: unknown) {

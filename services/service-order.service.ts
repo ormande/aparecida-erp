@@ -3,30 +3,43 @@ import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { normalizeSearch } from "@/lib/search-helpers";
 import { ServiceError } from "@/services/service-error";
-import { Prisma, type ServiceOrderStatus } from "@prisma/client";
+import { Prisma, type PaymentStatus, type ProductUnit, type ServiceOrderStatus } from "@prisma/client";
 
 type OrderServiceItemPayload = {
   serviceId?: string | null;
   description: string;
   laborPrice: number;
   executedByUserId?: string | null;
+  commissionRate?: number;
+};
+
+type OrderProductPayload = {
+  productId?: string | null;
+  description: string;
+  unit?: string;
+  quantity: number;
+  unitPrice: number;
 };
 
 type CreateOrderPayload = {
+  unitId: string;
   customerId?: string | null;
   customerNameSnapshot?: string;
   vehicleId?: string | null;
   mileage?: number | null;
   dueDate?: string | null;
+  openedAt?: string;
   paymentTerm?: "A_VISTA" | "A_PRAZO" | null;
   paymentMethod?: string;
   notes?: string;
   services: OrderServiceItemPayload[];
+  products?: OrderProductPayload[];
 };
 
 type UpdateOrderPayload = {
   mode: "edit" | "settle" | "reopen";
   discountAmount?: number;
+  partialAmount?: number;
   customerId?: string | null;
   customerNameSnapshot?: string;
   vehicleId?: string | null;
@@ -36,6 +49,7 @@ type UpdateOrderPayload = {
   paymentMethod?: string;
   notes?: string;
   services?: OrderServiceItemPayload[];
+  products?: OrderProductPayload[];
 };
 
 type ServiceOrderContext = {
@@ -98,6 +112,7 @@ function serviceOrderAfterDataForAudit(order: {
   vehicleId: string | null;
   number: string;
   status: string;
+  paymentStatus: string;
   openedAt: Date;
   closedAt: Date | null;
   mileage: number | null;
@@ -121,6 +136,7 @@ function serviceOrderAfterDataForAudit(order: {
     vehicleId: order.vehicleId,
     number: order.number,
     status: order.status,
+    paymentStatus: order.paymentStatus,
     openedAt: order.openedAt.toISOString(),
     closedAt: order.closedAt?.toISOString() ?? null,
     mileage: order.mileage,
@@ -188,7 +204,7 @@ function getCustomerDisplayName(order: {
 
 async function getOrder(companyId: string, unitId: string, id: string) {
   return prisma.serviceOrder.findFirst({
-    where: { id, companyId, unitId },
+    where: { id, companyId, ...(unitId ? { unitId } : {}) },
     include: {
       customer: {
         select: {
@@ -220,11 +236,26 @@ async function getOrder(companyId: string, unitId: string, id: string) {
           },
         },
       },
+      products: {
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          productId: true,
+          description: true,
+          unit: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          sortOrder: true,
+        },
+      },
       receivables: {
+        orderBy: { createdAt: "asc" },
         select: {
           id: true,
           status: true,
           amount: true,
+          dueDate: true,
         },
       },
       unit: {
@@ -250,6 +281,7 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
     plate: order.vehicle?.plate ?? "-",
     vehicleLabel: order.vehicle ? `${order.vehicle.plate} â€¢ ${order.vehicle.brand} ${order.vehicle.model}` : "-",
     status: mapServiceOrderStatus(order.status),
+    paymentStatus: order.paymentStatus,
     total: Number(order.totalAmount),
     openedAt: order.openedAt.toISOString().slice(0, 10),
     dueDate: order.dueDate?.toISOString().slice(0, 10) ?? "",
@@ -258,6 +290,8 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
     notes: order.notes ?? "",
     mileage: order.mileage ?? null,
     isStandalone: order.isStandalone,
+    laborSubtotal: Number(order.laborSubtotal),
+    productsSubtotal: Number(order.productsSubtotal),
     services: order.items.map((item) => ({
       id: item.id,
       serviceId: item.serviceId,
@@ -266,8 +300,23 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
       executedByUserId: item.executedByUserId,
       executedByName: item.executedBy?.name ?? null,
     })),
-    receivableStatus: order.receivables[0]?.status ?? null,
-    receivableAmount: order.receivables[0] ? Number(order.receivables[0].amount) : 0,
+    products: order.products.map((p) => ({
+      id: p.id,
+      productId: p.productId,
+      description: p.description,
+      unit: p.unit,
+      quantity: Number(p.quantity),
+      unitPrice: Number(p.unitPrice),
+      totalPrice: Number(p.totalPrice),
+      sortOrder: p.sortOrder,
+    })),
+    receivableStatus:
+      order.receivables.find((r) => r.status === "PENDENTE")?.status
+        ?? order.receivables[0]?.status
+        ?? null,
+    receivableAmount: order.receivables
+      .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
+      .reduce((sum, r) => sum + Number(r.amount), 0),
   };
 }
 
@@ -322,6 +371,19 @@ async function ensureVehicleExists(vehicleId: string, companyId: string, custome
   if (customerId && vehicle.customerId !== customerId) {
     throw new ServiceError("Veículo não encontrado.", 404);
   }
+}
+
+function calcOrderTotals(
+  services: Array<{ laborPrice: number }>,
+  products: Array<{ quantity: number; unitPrice: number }>,
+) {
+  const laborSubtotal = services.reduce((sum, item) => sum + Number(item.laborPrice), 0);
+  const productsSubtotal = products.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+  return {
+    laborSubtotal,
+    productsSubtotal,
+    totalAmount: laborSubtotal + productsSubtotal,
+  };
 }
 
 export const serviceOrderService = {
@@ -397,7 +459,7 @@ export const serviceOrderService = {
             },
           },
           receivables: {
-            select: { status: true },
+            select: { status: true, amount: true },
           },
         },
       }),
@@ -430,7 +492,15 @@ export const serviceOrderService = {
         paymentTerm: order.paymentTerm,
         paymentMethod: order.paymentMethod ?? "",
         isStandalone: order.isStandalone,
-        receivableStatus: order.receivables[0]?.status ?? null,
+        receivableStatus:
+          order.receivables.find((r) => r.status === "PENDENTE")?.status
+            ?? order.receivables[0]?.status
+            ?? null,
+        receivableCount: order.receivables.length,
+        paymentStatus: order.paymentStatus,
+        receivableAmount: order.receivables
+          .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
+          .reduce((sum, r) => sum + Number(r.amount), 0),
         };
       }),
       meta: {
@@ -461,10 +531,19 @@ export const serviceOrderService = {
       await ensureVehicleExists(payload.vehicleId, context.companyId, payload.customerId);
     }
 
-    const totalAmount = payload.services.reduce((sum, item) => sum + Number(item.laborPrice), 0);
+    const productsList = payload.products ?? [];
+    const { laborSubtotal, productsSubtotal, totalAmount } = calcOrderTotals(
+      payload.services,
+      productsList,
+    );
     const paymentTerm = payload.paymentTerm ?? "A_VISTA";
+    const openedAtDate = payload.openedAt
+      ? new Date(`${payload.openedAt}T00:00:00`)
+      : new Date();
     const dueDate =
-      paymentTerm === "A_PRAZO" && payload.dueDate ? new Date(`${payload.dueDate}T00:00:00`) : new Date();
+      paymentTerm === "A_PRAZO" && payload.dueDate
+        ? new Date(`${payload.dueDate}T00:00:00`)
+        : openedAtDate;
 
     const { order, receivable } = await prisma.$transaction(async (tx) => {
       const number = await getNextOrderNumber(tx, context.companyId);
@@ -472,11 +551,12 @@ export const serviceOrderService = {
       const orderRow = await tx.serviceOrder.create({
         data: {
           companyId: context.companyId,
-          unitId: context.unitId,
+          unitId: payload.unitId,
           customerId: payload.customerId || null,
           customerNameSnapshot: payload.customerId ? null : payload.customerNameSnapshot || "Cliente avulso",
           vehicleId: payload.vehicleId || null,
           number,
+          openedAt: payload.openedAt ? new Date(`${payload.openedAt}T00:00:00`) : new Date(),
           mileage: payload.mileage ?? null,
           dueDate,
           paymentTerm,
@@ -484,6 +564,9 @@ export const serviceOrderService = {
           notes: payload.notes || null,
           isStandalone: !payload.customerId,
           totalAmount,
+          laborSubtotal,
+          productsSubtotal,
+          paymentStatus: paymentTerm === "A_VISTA" ? "PAGO" : "PENDENTE",
           createdByUserId: context.userId,
           updatedByUserId: context.userId,
           items: {
@@ -493,15 +576,32 @@ export const serviceOrderService = {
               laborPrice: service.laborPrice,
               lineTotal: service.laborPrice,
               executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
+              commissionRate: service.commissionRate ?? 12,
             })),
           },
         },
       });
 
+      if (productsList.length > 0) {
+        await tx.serviceOrderProduct.createMany({
+          data: productsList.map((p, index) => ({
+            companyId: context.companyId,
+            serviceOrderId: orderRow.id,
+            productId: p.productId || null,
+            description: p.description,
+            unit: (p.unit as ProductUnit) ?? "UN",
+            quantity: p.quantity,
+            unitPrice: p.unitPrice,
+            totalPrice: p.quantity * p.unitPrice,
+            sortOrder: index,
+          })),
+        });
+      }
+
       const receivableRow = await tx.accountReceivable.create({
         data: {
           companyId: context.companyId,
-          unitId: context.unitId,
+          unitId: payload.unitId,
           customerId: payload.customerId || null,
           serviceOrderId: orderRow.id,
           originType: "SERVICE_ORDER",
@@ -509,7 +609,7 @@ export const serviceOrderService = {
           amount: totalAmount,
           dueDate,
           status: paymentTerm === "A_VISTA" ? "PAGO" : "PENDENTE",
-          paidAt: paymentTerm === "A_VISTA" ? new Date() : null,
+          paidAt: paymentTerm === "A_VISTA" ? openedAtDate : null,
           installmentGroupId: null,
           installmentNumber: null,
           installmentCount: null,
@@ -586,6 +686,7 @@ export const serviceOrderService = {
       order: {
         id: existing.id,
         status: mapServiceOrderStatus(mapped),
+        paymentStatus: existing.paymentStatus,
       },
     };
   },
@@ -613,7 +714,11 @@ export const serviceOrderService = {
       }
 
       const services = payload.services ?? [];
-      const totalAmount = services.reduce((sum, item) => sum + Number(item.laborPrice), 0);
+      const productsList = payload.products ?? [];
+      const { laborSubtotal, productsSubtotal, totalAmount } = calcOrderTotals(
+        services,
+        productsList,
+      );
       const paymentTerm = payload.paymentTerm ?? existing.paymentTerm ?? "A_VISTA";
       const dueDate =
         paymentTerm === "A_PRAZO" && payload.dueDate ? new Date(`${payload.dueDate}T00:00:00`) : new Date();
@@ -623,11 +728,15 @@ export const serviceOrderService = {
           where: { serviceOrderId: existing.id },
         });
 
+        await tx.serviceOrderProduct.deleteMany({
+          where: { serviceOrderId: existing.id },
+        });
+
         const order = await tx.serviceOrder.update({
           where: { id: existing.id },
           data: {
             customerId: payload.customerId || null,
-            unitId: context.unitId,
+            unitId: existing.unitId,
             customerNameSnapshot: payload.customerId ? null : payload.customerNameSnapshot || "Cliente avulso",
             vehicleId: payload.vehicleId || null,
             mileage: payload.mileage ?? null,
@@ -637,6 +746,8 @@ export const serviceOrderService = {
             notes: payload.notes || null,
             isStandalone: !payload.customerId,
             totalAmount,
+            laborSubtotal,
+            productsSubtotal,
             updatedByUserId: context.userId,
             items: {
               create: services.map((service) => ({
@@ -645,6 +756,7 @@ export const serviceOrderService = {
                 laborPrice: service.laborPrice,
                 lineTotal: service.laborPrice,
                 executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
+                commissionRate: service.commissionRate ?? 12,
               })),
             },
           },
@@ -685,15 +797,46 @@ export const serviceOrderService = {
                 },
               },
             },
+            products: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                productId: true,
+                description: true,
+                unit: true,
+                quantity: true,
+                unitPrice: true,
+                totalPrice: true,
+                sortOrder: true,
+              },
+            },
             receivables: {
+              orderBy: { createdAt: "asc" },
               select: {
                 id: true,
                 status: true,
                 amount: true,
+                dueDate: true,
               },
             },
           },
         });
+
+        if (productsList.length > 0) {
+          await tx.serviceOrderProduct.createMany({
+            data: productsList.map((p, index) => ({
+              companyId: context.companyId,
+              serviceOrderId: existing.id,
+              productId: p.productId || null,
+              description: p.description,
+              unit: (p.unit as ProductUnit) ?? "UN",
+              quantity: p.quantity,
+              unitPrice: p.unitPrice,
+              totalPrice: p.quantity * p.unitPrice,
+              sortOrder: index,
+            })),
+          });
+        }
 
         await tx.accountReceivable.updateMany({
           where: {
@@ -702,7 +845,7 @@ export const serviceOrderService = {
           },
           data: {
             customerId: payload.customerId || null,
-            unitId: context.unitId,
+            unitId: existing.unitId,
             amount: totalAmount,
             dueDate,
           },
@@ -721,11 +864,34 @@ export const serviceOrderService = {
 
     const targetStatus = payload.mode === "settle" ? "PAGO" : "PENDENTE";
     const closureOutstandingAmount = existing.items.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+    const isPartialPayment =
+      existing.number.startsWith("FEC-") &&
+      payload.mode === "settle" &&
+      (payload.partialAmount ?? 0) > 0 &&
+      (payload.partialAmount ?? 0) < closureOutstandingAmount;
+
     const appliedDiscount =
-      existing.number.startsWith("FEC-") && payload.mode === "settle"
+      existing.number.startsWith("FEC-") && payload.mode === "settle" && !isPartialPayment
         ? Math.min(payload.discountAmount ?? 0, closureOutstandingAmount)
         : 0;
-    const closureSettledAmount = Math.max(closureOutstandingAmount - appliedDiscount, 0);
+
+    const closureSettledAmount = isPartialPayment
+      ? payload.partialAmount!
+      : Math.max(closureOutstandingAmount - appliedDiscount, 0);
+
+    const remainingAmount = isPartialPayment ? closureOutstandingAmount - closureSettledAmount : 0;
+
+    const fecOrderStatus =
+      payload.mode === "reopen"
+        ? "ABERTA"
+        : existing.status;
+
+    const newPaymentStatus: PaymentStatus =
+      payload.mode === "settle"
+        ? isPartialPayment
+          ? "PAGO_PARCIAL"
+          : "PAGO"
+        : "PENDENTE";
 
     const updated = await db.$transaction(async (tx) => {
       await tx.accountReceivable.update({
@@ -742,10 +908,26 @@ export const serviceOrderService = {
         },
       });
 
-      if (existing.number.startsWith("FEC-")) {
-        const orderStatus =
-          payload.mode === "settle" ? "CONCLUIDA" : existing.status === "CONCLUIDA" ? "ABERTA" : existing.status;
+      if (isPartialPayment && remainingAmount > 0) {
+        await tx.accountReceivable.create({
+          data: {
+            companyId: context.companyId,
+            unitId: existing.unitId || null,
+            customerId: existing.customerId || null,
+            serviceOrderId: existing.id,
+            originType: "SERVICE_ORDER",
+            description: `Pendência de ${existing.number}`,
+            amount: remainingAmount,
+            dueDate: existing.dueDate ?? new Date(),
+            status: "PENDENTE",
+            installmentGroupId: null,
+            installmentNumber: null,
+            installmentCount: null,
+          },
+        });
+      }
 
+      if (existing.number.startsWith("FEC-")) {
         const sourceNumbers = getReferencedOrderNumbers(existing.items.map((item) => item.description));
         const reopenableSourceNumbers = getReferencedOrderNumbers(
           existing.items
@@ -758,7 +940,7 @@ export const serviceOrderService = {
           const sourceOrders = await tx.serviceOrder.findMany({
             where: {
               companyId: context.companyId,
-              unitId: context.unitId,
+              ...(context.unitId ? { unitId: context.unitId } : {}),
               number: { in: effectiveSourceNumbers },
             },
             select: {
@@ -826,7 +1008,7 @@ export const serviceOrderService = {
                   },
                 },
                 data: {
-                  status: orderStatus,
+                  status: "CONCLUIDA",
                   closedAt: payload.mode === "settle" ? new Date() : null,
                   updatedByUserId: context.userId,
                 },
@@ -838,9 +1020,10 @@ export const serviceOrderService = {
         return tx.serviceOrder.update({
           where: { id: existing.id },
           data: {
-            status: orderStatus,
+            status: fecOrderStatus,
+            paymentStatus: newPaymentStatus,
             updatedByUserId: context.userId,
-            closedAt: payload.mode === "settle" ? new Date() : null,
+            closedAt: payload.mode === "settle" && !isPartialPayment ? new Date() : null,
           },
           include: {
             unit: {
@@ -879,16 +1062,39 @@ export const serviceOrderService = {
                 },
               },
             },
+            products: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                productId: true,
+                description: true,
+                unit: true,
+                quantity: true,
+                unitPrice: true,
+                totalPrice: true,
+                sortOrder: true,
+              },
+            },
             receivables: {
+              orderBy: { createdAt: "asc" },
               select: {
                 id: true,
                 status: true,
                 amount: true,
+                dueDate: true,
               },
             },
           },
         });
       }
+
+      await tx.serviceOrder.update({
+        where: { id: existing.id },
+        data: {
+          paymentStatus: newPaymentStatus,
+          updatedByUserId: context.userId,
+        },
+      });
 
       const order = await tx.serviceOrder.findFirst({
         where: { id: existing.id },
@@ -929,11 +1135,26 @@ export const serviceOrderService = {
               },
             },
           },
+          products: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              productId: true,
+              description: true,
+              unit: true,
+              quantity: true,
+              unitPrice: true,
+              totalPrice: true,
+              sortOrder: true,
+            },
+          },
           receivables: {
+            orderBy: { createdAt: "asc" },
             select: {
               id: true,
               status: true,
               amount: true,
+              dueDate: true,
             },
           },
         },
@@ -944,7 +1165,7 @@ export const serviceOrderService = {
       }
 
       return order;
-    });
+    }, { timeout: 30000 });
 
     return { order: mapOrder(updated) };
   },

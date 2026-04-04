@@ -33,6 +33,7 @@ export type OrderDetails = {
   vehicleId: string | null;
   vehicleLabel: string;
   status: OrderStatus;
+  paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
   total: number;
   openedAt: string;
   dueDate: string;
@@ -41,6 +42,8 @@ export type OrderDetails = {
   notes: string;
   mileage: number | null;
   isStandalone: boolean;
+  laborSubtotal?: number;
+  productsSubtotal?: number;
   services: Array<{
     id: string;
     serviceId?: string | null;
@@ -48,6 +51,16 @@ export type OrderDetails = {
     laborPrice: number;
     executedByUserId?: string | null;
     executedByName?: string | null;
+  }>;
+  products?: Array<{
+    id: string;
+    productId?: string | null;
+    description: string;
+    unit: string;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    sortOrder: number;
   }>;
   receivableStatus: ReceivableStatus;
   receivableAmount?: number;
@@ -332,6 +345,7 @@ export function useOsPage() {
               total: data.order.total,
               dueDate: data.order.dueDate,
               paymentTerm: data.order.paymentTerm,
+              paymentStatus: data.order.paymentStatus,
             }
           : item,
       );
@@ -354,7 +368,11 @@ export function useOsPage() {
         throw new Error(message);
       }
       setOrders((current) =>
-        current.map((item) => (item.id === id ? { ...item, status: data.order.status as OrderStatus } : item)),
+        current.map((item) =>
+          item.id === id
+            ? { ...item, status: data.order.status as OrderStatus, paymentStatus: data.order.paymentStatus }
+            : item,
+        ),
       );
       setStatusOrder(null);
       void toast.success("Status atualizado com sucesso!");
@@ -376,7 +394,14 @@ export function useOsPage() {
       }
       setOrders((current) =>
         current.map((item) =>
-          item.id === id ? { ...item, status: data.order.status, receivableStatus: data.order.receivableStatus } : item,
+          item.id === id
+            ? {
+                ...item,
+                status: data.order.status,
+                receivableStatus: data.order.receivableStatus,
+                paymentStatus: data.order.paymentStatus,
+              }
+            : item,
         ),
       );
       void toast.success(mode === "settle" ? "OS baixada com sucesso!" : "OS reaberta com sucesso!");
@@ -496,6 +521,19 @@ export function useOsPage() {
             </button>
           ),
       },
+      {
+        key: "paymentStatus",
+        header: "Pagamento",
+        render: (row: (typeof filteredOrders)[number]) => {
+          const label =
+            row.paymentStatus === "PAGO"
+              ? "Pago"
+              : row.paymentStatus === "PAGO_PARCIAL"
+                ? "Pago parcialmente"
+                : "Pendente";
+          return <StatusBadge status={label} />;
+        },
+      },
       { key: "total", header: "Valor total", render: (row: (typeof filteredOrders)[number]) => currency(row.total) },
       { key: "date", header: "Abertura", render: (row: (typeof filteredOrders)[number]) => date(row.openedAt) },
       {
@@ -521,10 +559,12 @@ export function useOsPage() {
               variant="outline"
               size="sm"
               onClick={() =>
-                row.receivableStatus === "PAGO" ? void handleStatusChange(row.id, "reopen") : setSettleOrder({ id: row.id, number: row.number })
+                row.paymentStatus === "PAGO"
+                  ? void handleStatusChange(row.id, "reopen")
+                  : setSettleOrder({ id: row.id, number: row.number })
               }
             >
-              {row.receivableStatus === "PAGO" ? "Reabrir" : "Baixar"}
+              {row.paymentStatus === "PAGO" ? "Reabrir" : "Baixar"}
             </Button>
             <Button
               variant="outline"
