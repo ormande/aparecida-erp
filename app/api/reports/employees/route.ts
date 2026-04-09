@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Comissão só sobre serviços (mão de obra / ServiceOrderItem.laborPrice).
+  // Produtos lançados na OS (ServiceOrderProduct) não têm commissionRate e não entram aqui.
   const items = await prisma.serviceOrderItem.findMany({
     where: {
       executedByUserId: employeeId ? employeeId : { not: null },

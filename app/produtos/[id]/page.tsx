@@ -35,9 +35,8 @@ export default function EditarProdutoPage() {
           category: p.category ?? "",
           unit: p.unit,
           internalCode: p.internalCode ?? "",
-          costPrice: Number(p.costPrice),
+          costPrice: p.costPrice != null && p.costPrice !== "" ? Number(p.costPrice) : null,
           salePrice: Number(p.salePrice),
-          isActive: p.isActive,
           notes: p.notes ?? "",
         });
       })

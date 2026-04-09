@@ -260,7 +260,7 @@ model Product {
   category     String?
   unit         ProductUnit           @default(UN)
   internalCode String?
-  costPrice    Decimal               @db.Decimal(10, 2)
+  costPrice    Decimal?              @db.Decimal(10, 2)
   salePrice    Decimal               @db.Decimal(10, 2)
   isActive     Boolean               @default(true)
   notes        String?

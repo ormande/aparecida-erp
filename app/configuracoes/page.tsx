@@ -43,6 +43,11 @@ export default function ConfiguracoesPage() {
   const [unitDrafts, setUnitDrafts] = useState<Record<string, { name: string; address: string; phone: string }>>({});
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
   const [exportingBackup, setExportingBackup] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const { user } = useAuth();
 
@@ -225,6 +230,37 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  async function handleChangePassword() {
+    if (newPassword.length < 6) {
+      toast.error("A nova senha deve ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("A nova senha e a confirmação não coincidem.");
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const response = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.message ?? "Não foi possível alterar a senha.");
+        return;
+      }
+      toast.success("Senha alterada com sucesso!");
+      setPasswordModalOpen(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } finally {
+      setChangingPassword(false);
+    }
+  }
+
   const userCards = useMemo(
     () =>
       employees.map((user) => (
@@ -377,6 +413,73 @@ export default function ConfiguracoesPage() {
                 <p className="text-sm text-muted-foreground">Login com e-mail e senha do próprio sistema</p>
               </div>
               <Badge>Ativo</Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="surface-card border-none">
+          <CardHeader>
+            <CardTitle>Segurança</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between rounded-2xl border bg-muted/30 p-4">
+              <div>
+                <p className="font-medium">Senha de acesso</p>
+                <p className="text-sm text-muted-foreground">Altere sua senha de login</p>
+              </div>
+              <Dialog
+                open={passwordModalOpen}
+                onOpenChange={(open) => {
+                  setPasswordModalOpen(open);
+                  if (!open) {
+                    setCurrentPassword("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                  }
+                }}
+              >
+                <DialogTrigger render={<Button variant="outline" size="sm">Alterar senha</Button>} />
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Alterar senha</DialogTitle>
+                    <DialogDescription>
+                      Informe sua senha atual e escolha uma nova senha com pelo menos 6 caracteres.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 py-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="currentPassword">Senha atual</Label>
+                      <Input
+                        id="currentPassword"
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="newPassword">Nova senha</Label>
+                      <Input
+                        id="newPassword"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                      />
+                    </div>
+                    <Button onClick={handleChangePassword} disabled={changingPassword}>
+                      {changingPassword ? "Alterando..." : "Confirmar alteração"}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>

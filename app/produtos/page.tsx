@@ -18,14 +18,14 @@ type Product = {
   category: string | null;
   unit: string;
   internalCode: string | null;
-  costPrice: number;
+  costPrice: number | null;
   salePrice: number;
   isActive: boolean;
 };
 
 /** Shape of each item in GET /api/products `products` array (decimals as numbers or strings). */
 type ProductApiRow = Omit<Product, "costPrice" | "salePrice"> & {
-  costPrice: number | string;
+  costPrice: number | string | null;
   salePrice: number | string;
 };
 
@@ -48,7 +48,7 @@ export default function ProdutosPage() {
         setProducts(
           ((data.products ?? []) as ProductApiRow[]).map((p) => ({
             ...p,
-            costPrice: Number(p.costPrice),
+            costPrice: p.costPrice == null || p.costPrice === "" ? null : Number(p.costPrice),
             salePrice: Number(p.salePrice),
           })),
         );
@@ -165,7 +165,11 @@ export default function ProdutosPage() {
             { key: "code", header: "Código", render: (row) => row.internalCode || "—" },
             { key: "category", header: "Categoria", render: (row) => row.category || "—" },
             { key: "unit", header: "Unidade", render: (row) => row.unit },
-            { key: "costPrice", header: "Preço de custo", render: (row) => currency(row.costPrice) },
+            {
+              key: "costPrice",
+              header: "Preço de custo",
+              render: (row) => (row.costPrice != null ? currency(row.costPrice) : "—"),
+            },
             { key: "salePrice", header: "Preço de venda", render: (row) => currency(row.salePrice) },
             {
               key: "status",

@@ -9,7 +9,7 @@ type ProductPayload = {
   category?: string;
   unit?: string;
   internalCode?: string;
-  costPrice: number;
+  costPrice?: number | null;
   salePrice: number;
   isActive?: boolean;
   notes?: string;
@@ -22,7 +22,7 @@ export type ProductPatchPayload = {
   category?: string;
   unit?: string;
   internalCode?: string;
-  costPrice?: number;
+  costPrice?: number | null;
   salePrice?: number;
   isActive?: boolean;
   notes?: string;
@@ -64,7 +64,7 @@ export const productService = {
         category: payload.category || null,
         unit: (payload.unit as any) ?? "UN",
         internalCode: payload.internalCode || null,
-        costPrice: payload.costPrice,
+        costPrice: payload.costPrice ?? null,
         salePrice: payload.salePrice,
         isActive: payload.isActive ?? true,
         notes: payload.notes || null,
@@ -86,7 +86,9 @@ export const productService = {
     if (payload.category !== undefined) data.category = payload.category || null;
     if (payload.unit !== undefined) data.unit = payload.unit as ProductUnit;
     if (payload.internalCode !== undefined) data.internalCode = payload.internalCode || null;
-    if (payload.costPrice !== undefined) data.costPrice = payload.costPrice;
+    if (payload.costPrice !== undefined) {
+      data.costPrice = payload.costPrice === null ? null : payload.costPrice;
+    }
     if (payload.salePrice !== undefined) data.salePrice = payload.salePrice;
     if (payload.isActive !== undefined) data.isActive = payload.isActive;
     if (payload.notes !== undefined) data.notes = payload.notes || null;

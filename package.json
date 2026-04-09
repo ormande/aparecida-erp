@@ -15,6 +15,7 @@
     "db:studio": "prisma studio",
     "db:reset:test": "dotenv -e .env.test -- node scripts/reset-test-db.mjs",
     "db:seed:test": "dotenv -e .env.test -- node scripts/seed-test-db.mjs",
+    "db:fresh:test": "dotenv -e .env.test -- npx prisma migrate deploy && dotenv -e .env.test -- node scripts/reset-test-db.mjs && dotenv -e .env.test -- node scripts/seed-test-db.mjs",
     "test:e2e": "dotenv -e .env.test -- npx prisma migrate deploy && dotenv -e .env.test -- playwright test",
     "test:e2e:ui": "dotenv -e .env.test -- npx prisma migrate deploy && dotenv -e .env.test -- playwright test --ui",
     "test:e2e:reset": "dotenv -e .env.test -- npx prisma migrate deploy && dotenv -e .env.test -- node scripts/reset-test-db.mjs && dotenv -e .env.test -- node scripts/seed-test-db.mjs && dotenv -e .env.test -- playwright test"

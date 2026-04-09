@@ -11,7 +11,7 @@ const patchSchema = z.object({
   category: z.string().max(100).optional(),
   unit: z.enum(["UN", "PAR", "KIT", "L", "ML", "KG", "G", "CX"]).optional(),
   internalCode: z.string().max(50).optional(),
-  costPrice: z.coerce.number().min(0).optional(),
+  costPrice: z.union([z.coerce.number().min(0), z.null()]).optional(),
   salePrice: z.coerce.number().min(0).optional(),
   isActive: z.boolean().optional(),
   notes: z.string().max(500).optional(),

@@ -1,27 +1,10 @@
 import { PrismaClient } from "@prisma/client";
+import { assertTestDatabaseDestructive } from "./assert-test-database.mjs";
 
 const prisma = new PrismaClient();
 
-function assertSafeReset() {
-  const databaseUrl = process.env.DATABASE_URL ?? "";
-  const allowReset = process.env.ALLOW_DB_RESET === "true";
-  const looksSafe =
-    databaseUrl.includes("test") ||
-    databaseUrl.includes("staging") ||
-    databaseUrl.includes("sandbox") ||
-    databaseUrl.includes("rlwy") ||
-    databaseUrl.includes("interchange") ||
-    databaseUrl.includes("homolog");
-
-  if (!allowReset || !looksSafe) {
-    throw new Error(
-      "Reset bloqueado. Use uma DATABASE_URL de teste/homologacao e rode com ALLOW_DB_RESET=true.",
-    );
-  }
-}
-
 async function main() {
-  assertSafeReset();
+  assertTestDatabaseDestructive("ALLOW_DB_RESET", "Reset do banco de teste");
 
   await prisma.$transaction([
     prisma.auditLog.deleteMany(),
@@ -30,6 +13,7 @@ async function main() {
     prisma.verificationToken.deleteMany(),
     prisma.userUnit.deleteMany(),
     prisma.serviceOrderItem.deleteMany(),
+    prisma.serviceOrderProduct.deleteMany(),
     prisma.accountReceivable.deleteMany(),
     prisma.accountPayable.deleteMany(),
     prisma.serviceOrder.deleteMany(),
@@ -37,6 +21,7 @@ async function main() {
     prisma.serviceCatalog.deleteMany(),
     prisma.customer.deleteMany(),
     prisma.supplier.deleteMany(),
+    prisma.product.deleteMany(),
     prisma.user.deleteMany(),
     prisma.unit.deleteMany(),
     prisma.company.deleteMany(),

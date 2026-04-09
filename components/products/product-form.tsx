@@ -12,9 +12,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
+import {
+  formatCurrencyInput,
+  formatMoneyMaskFromNumber,
+  formatMoneyMaskInput,
+  parseCurrencyInput,
+  parseMoneyMaskInput,
+} from "@/lib/formatters";
 
 const UNIT_OPTIONS = [
   { value: "UN", label: "Unidade (UN)" },
@@ -34,9 +39,8 @@ export type ProductFormValues = {
   category: string;
   unit: string;
   internalCode: string;
-  costPrice: number;
+  costPrice: number | null;
   salePrice: number;
-  isActive: boolean;
   notes: string;
 };
 
@@ -50,6 +54,7 @@ type ProductFormProps = {
 };
 
 function getDefaults(initial?: Partial<ProductFormValues>): ProductFormValues & { costPriceInput: string; salePriceInput: string } {
+  const cost = initial?.costPrice;
   return {
     name: initial?.name ?? "",
     description: initial?.description ?? "",
@@ -57,11 +62,11 @@ function getDefaults(initial?: Partial<ProductFormValues>): ProductFormValues & 
     category: initial?.category ?? "",
     unit: initial?.unit ?? "UN",
     internalCode: initial?.internalCode ?? "",
-    costPrice: initial?.costPrice ?? 0,
+    costPrice: cost === undefined || cost === null ? null : cost,
     salePrice: initial?.salePrice ?? 0,
-    isActive: initial?.isActive ?? true,
     notes: initial?.notes ?? "",
-    costPriceInput: formatCurrencyInput(String(Math.round((initial?.costPrice ?? 0) * 100))),
+    costPriceInput:
+      cost === undefined || cost === null ? "" : formatMoneyMaskFromNumber(cost),
     salePriceInput: formatCurrencyInput(String(Math.round((initial?.salePrice ?? 0) * 100))),
   };
 }
@@ -78,7 +83,9 @@ export function ProductForm({ initialValues, categories = [], submitLabel, onSub
   function validate(): boolean {
     const nextErrors: ProductFormErrors = {};
     if (!values.name.trim()) nextErrors.name = "Informe o nome do produto.";
-    if (values.costPrice < 0) nextErrors.costPrice = "Preço de custo inválido.";
+    if (values.costPrice !== null && values.costPrice < 0) {
+      nextErrors.costPrice = "Preço de custo inválido.";
+    }
     if (values.salePrice < 0) nextErrors.salePrice = "Preço de venda inválido.";
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -155,15 +162,16 @@ export function ProductForm({ initialValues, categories = [], submitLabel, onSub
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="grid gap-2">
-          <Label htmlFor="product-cost">Preço de custo *</Label>
+          <Label htmlFor="product-cost">Preço de custo</Label>
           <Input
             id="product-cost"
             inputMode="numeric"
+            placeholder="Opcional"
             value={values.costPriceInput}
             onChange={(e) => {
-              const formatted = formatCurrencyInput(e.target.value);
+              const formatted = formatMoneyMaskInput(e.target.value);
               updateField("costPriceInput", formatted);
-              updateField("costPrice", parseCurrencyInput(formatted));
+              updateField("costPrice", parseMoneyMaskInput(formatted));
             }}
           />
           {errors.costPrice ? <p className="text-xs text-destructive">{errors.costPrice}</p> : null}
@@ -182,15 +190,6 @@ export function ProductForm({ initialValues, categories = [], submitLabel, onSub
           />
           {errors.salePrice ? <p className="text-xs text-destructive">{errors.salePrice}</p> : null}
         </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Switch
-          id="product-active"
-          checked={values.isActive}
-          onCheckedChange={(checked) => updateField("isActive", checked === true)}
-        />
-        <Label htmlFor="product-active">Produto ativo</Label>
       </div>
 
       <div className="grid gap-2">
@@ -216,7 +215,6 @@ export function ProductForm({ initialValues, categories = [], submitLabel, onSub
             internalCode: values.internalCode,
             costPrice: values.costPrice,
             salePrice: values.salePrice,
-            isActive: values.isActive,
             notes: values.notes,
           });
         }}

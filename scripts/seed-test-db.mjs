@@ -1,25 +1,8 @@
 import { hash } from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
+import { assertTestDatabaseDestructive } from "./assert-test-database.mjs";
 
 const prisma = new PrismaClient();
-
-function assertSafeSeed() {
-  const databaseUrl = process.env.DATABASE_URL ?? "";
-  const allowSeed = process.env.ALLOW_DB_SEED === "true";
-  const looksSafe =
-    databaseUrl.includes("test") ||
-    databaseUrl.includes("staging") ||
-    databaseUrl.includes("sandbox") ||
-    databaseUrl.includes("rlwy") ||
-    databaseUrl.includes("interchange") ||
-    databaseUrl.includes("homolog");
-
-  if (!allowSeed || !looksSafe) {
-    throw new Error(
-      "Seed bloqueado. Use uma DATABASE_URL de teste/homologacao e rode com ALLOW_DB_SEED=true.",
-    );
-  }
-}
 
 function slugify(value) {
   return value
@@ -32,7 +15,7 @@ function slugify(value) {
 }
 
 async function main() {
-  assertSafeSeed();
+  assertTestDatabaseDestructive("ALLOW_DB_SEED", "Seed de teste");
 
   const users = await prisma.user.count();
   if (users > 0) {

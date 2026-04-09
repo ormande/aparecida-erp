@@ -15,6 +15,10 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Aparecida ERP",
   description: "Gestão para borracharias com foco em atendimento, OS e financeiro.",
+  icons: {
+    icon: [{ url: "/brand/logo.png", type: "image/png" }],
+    apple: [{ url: "/brand/logo.png", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({
