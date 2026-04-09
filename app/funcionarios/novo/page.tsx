@@ -36,7 +36,7 @@ export default function NovoFuncionarioPage() {
               const data = await response.json();
 
               if (!response.ok) {
-                toast.error(data.message ?? "Não foi possível cadastrar o funcionário.");
+                toast.error(data.message ?? data.error ?? "Não foi possível cadastrar o funcionário.");
                 return;
               }
 

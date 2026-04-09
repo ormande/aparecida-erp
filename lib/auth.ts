@@ -116,7 +116,7 @@ export const authOptions: NextAuthOptions = {
         token.status = user.status;
         token.phone = user.phone;
         token.units = user.units;
-
+        token.activeUnitId = user.units?.[0]?.id;
       }
 
       return token;
@@ -129,6 +129,7 @@ export const authOptions: NextAuthOptions = {
         session.user.status = token.status;
         session.user.phone = token.phone;
         session.user.units = token.units ?? [];
+        session.user.activeUnitId = token.activeUnitId ?? token.units?.[0]?.id;
       }
 
       return session;
@@ -137,8 +138,8 @@ export const authOptions: NextAuthOptions = {
 };
 
 /**
- * Sessão autenticada. `context.activeUnitId` permanece como string vazia; unidade é escolhida por rota (ex.: nova OS) ou filtro local.
- * Retorna NextResponse quando faltar autenticação ou role.
+ * Sessão autenticada. `activeUnitId` usa a primeira unidade do usuário no JWT quando existir
+ * (necessário para APIs que vinculam registro à unidade, ex.: novo funcionário, OS).
  */
 export async function getRequiredSessionContext(
   options?: GetRequiredSessionContextOptions,
@@ -161,13 +162,16 @@ export async function getRequiredSessionContext(
     };
   }
 
+  const units = session.user.units ?? [];
+  const activeUnitId = session.user.activeUnitId?.trim() || units[0]?.id || "";
+
   return {
     ok: true,
     context: {
       session,
       userId: session.user.id,
       companyId: session.user.companyId,
-      activeUnitId: "",
+      activeUnitId,
     },
   };
 }

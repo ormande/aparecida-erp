@@ -98,10 +98,33 @@ export const employeeService = {
       throw new ServiceError("Já existe um funcionário com esse e-mail.", 409);
     }
 
+    let unitId = context.unitId?.trim() ?? "";
+    if (!unitId) {
+      const membership = await prisma.userUnit.findFirst({
+        where: { userId: context.userId },
+        select: { unitId: true },
+      });
+      unitId = membership?.unitId ?? "";
+    }
+    if (!unitId) {
+      const firstUnit = await prisma.unit.findFirst({
+        where: { companyId: context.companyId },
+        select: { id: true },
+        orderBy: { createdAt: "asc" },
+      });
+      unitId = firstUnit?.id ?? "";
+    }
+    if (!unitId) {
+      throw new ServiceError(
+        "Não há unidade para vincular o colaborador. Cadastre uma unidade em Configurações.",
+        400,
+      );
+    }
+
     const db = getAuditPrisma({
       userId: context.userId,
       companyId: context.companyId,
-      activeUnitId: context.unitId,
+      activeUnitId: unitId,
     });
 
     const user = await db.user.create({
@@ -115,7 +138,7 @@ export const employeeService = {
         status: mapStatus(payload.situacao),
         units: {
           create: {
-            unitId: context.unitId,
+            unitId,
           },
         },
       },
