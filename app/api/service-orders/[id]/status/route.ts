@@ -37,7 +37,6 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   try {
     const result = await serviceOrderService.updateStatus(params.id, body.status, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
       userId: auth.context.userId,
     });
     return NextResponse.json(result);

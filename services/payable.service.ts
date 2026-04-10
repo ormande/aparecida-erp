@@ -29,7 +29,7 @@ type PayableUpdatePayload = {
 
 type PayableContext = {
   companyId: string;
-  unitId: string;
+  unitId?: string | null;
   userId: string;
 };
 
@@ -96,8 +96,8 @@ async function ensureSupplierExists(companyId: string, supplierId: string) {
 
 export const payableService = {
   async list(
-    filters: { status?: string | null; period?: string | null },
-    context: Pick<PayableContext, "companyId" | "unitId">,
+    filters: { status?: string | null; period?: string | null; unitId?: string | null },
+    context: Pick<PayableContext, "companyId">,
   ) {
     let periodDueDateRange: { gte: Date; lt: Date } | undefined;
     if (filters.period) {
@@ -110,7 +110,7 @@ export const payableService = {
     const payables = await prisma.accountPayable.findMany({
       where: {
         companyId: context.companyId,
-        ...(context.unitId ? { unitId: context.unitId } : {}),
+        ...(filters.unitId ? { unitId: filters.unitId } : {}),
         status:
           filters.status === "Pago"
             ? "PAGO"
@@ -153,7 +153,7 @@ export const payableService = {
     const db = getAuditPrisma({
       userId: context.userId,
       companyId: context.companyId,
-      activeUnitId: context.unitId,
+      activeUnitId: context.unitId ?? undefined,
     });
 
     const installmentGroupId = payload.installments > 1 ? randomUUID() : null;
@@ -226,7 +226,7 @@ export const payableService = {
     const db = getAuditPrisma({
       userId: context.userId,
       companyId: context.companyId,
-      activeUnitId: context.unitId,
+      activeUnitId: context.unitId ?? undefined,
     });
 
     const updated = await db.accountPayable.update({

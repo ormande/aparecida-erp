@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -v 'await\\\\|prisma\\\\.$transaction')",
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma:*)"
+    ]
+  }
+}

@@ -16,7 +16,7 @@ type EmployeePayload = {
 
 type EmployeeContext = {
   companyId: string;
-  unitId: string;
+  unitId?: string;
   userId: string;
 };
 

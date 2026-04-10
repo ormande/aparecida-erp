@@ -1,4 +1,5 @@
 import { mapCustomerToClient, mapServiceOrderStatus } from "@/lib/db-mappers";
+import { isValidCnpj, isValidCpf } from "@/lib/document-validators";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { normalizeSearch } from "@/lib/search-helpers";
@@ -10,7 +11,7 @@ type CustomerPayload = {
   situacao: "Ativo" | "Inativo";
   celular: string;
   whatsapp?: string;
-  email?: string;
+  email?: string | null;
   observacoes?: string;
   nomeCompleto?: string;
   cpf?: string;
@@ -22,7 +23,7 @@ type CustomerPayload = {
 
 type CustomerContext = {
   companyId: string;
-  unitId: string;
+  unitId?: string;
   userId: string;
 };
 
@@ -40,7 +41,22 @@ function mapType(type: "pf" | "pj"): "PF" | "PJ" {
   return type === "pf" ? "PF" : "PJ";
 }
 
+function validateDocument(payload: CustomerPayload) {
+  const cpf = payload.cpf?.trim();
+  const cnpj = payload.cnpj?.trim();
+
+  if (payload.tipo === "pf" && cpf && !isValidCpf(cpf)) {
+    throw new ServiceError("CPF inválido.", 400);
+  }
+
+  if (payload.tipo === "pj" && cnpj && !isValidCnpj(cnpj)) {
+    throw new ServiceError("CNPJ inválido.", 400);
+  }
+}
+
 function buildCustomerData(payload: CustomerPayload) {
+  validateDocument(payload);
+
   return {
     type: mapType(payload.tipo),
     status: mapStatus(payload.situacao),

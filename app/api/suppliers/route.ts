@@ -13,9 +13,12 @@ const supplierSchema = personSchema.merge(
     razaoSocial: z.string().max(150).optional().default(""),
     situacao: z.enum(["Ativo", "Inativo"]),
     categoria: z.enum(["Pneus", "Peças", "Insumos", "Serviços", "Outros"]),
-    celular: z.string().min(1).max(20),
+    celular: z.string().min(1).max(20).refine(
+      (val) => /^[\d\s\(\)\-\+]{8,20}$/.test(val.replace(/\s/g, "")),
+      { message: "Telefone inválido. Informe apenas números, espaços, parênteses ou hífen." }
+    ),
     whatsapp: z.string().max(20).optional().default(""),
-    email: z.string().optional().default(""),
+    email: z.string().email("E-mail inválido.").optional().nullable().default(null),
     observacoes: z.string().max(2000).optional().default(""),
   }),
 );
@@ -65,7 +68,6 @@ export async function POST(request: Request) {
   try {
     const result = await supplierService.create(payload, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
       userId: auth.context.userId,
     });
 

@@ -3,33 +3,25 @@
 import { useSession } from "next-auth/react";
 import { useMemo } from "react";
 
-import { useUnits } from "@/hooks/use-units";
-
+/**
+ * Retorna a primeira unidade do usuário como padrão para pré-seleção em formulários.
+ * O unitId definitivo de cada operação deve ser gerenciado localmente em cada form
+ * e enviado explicitamente no payload da requisição.
+ */
 export function useCurrentUnit() {
   const { data: session, status } = useSession();
-  const { units, isLoading: unitsLoading } = useUnits();
 
-  const unitId = useMemo(() => {
-    const raw = session?.activeUnitId ?? session?.user?.activeUnitId;
-    if (raw === undefined || raw === null) {
-      return "";
-    }
-    return raw;
-  }, [session]);
+  const units = useMemo(() => session?.user?.units ?? [], [session]);
 
-  const currentUnit = useMemo(() => {
-    if (unitId === "") {
-      return null;
-    }
-    return units.find((unit) => unit.id === unitId) ?? null;
-  }, [unitId, units]);
+  const defaultUnit = useMemo(() => units[0] ?? null, [units]);
 
   return useMemo(
     () => ({
-      unitId,
-      currentUnit,
-      isLoading: status === "loading" || unitsLoading,
+      unitId: defaultUnit?.id ?? "",
+      currentUnit: defaultUnit,
+      units,
+      isLoading: status === "loading",
     }),
-    [currentUnit, status, unitId, unitsLoading],
+    [defaultUnit, status, units],
   );
 }

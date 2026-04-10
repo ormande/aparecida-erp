@@ -33,13 +33,14 @@ export async function POST(request: Request) {
     );
   }
 
-  const existingUsers = await prisma.user.count();
+  const [setup, existingUsers] = await Promise.all([
+    prisma.appSetup.findUnique({ where: { id: 1 } }),
+    prisma.user.count(),
+  ]);
 
-  if (existingUsers > 0) {
+  if (setup?.isInitialized || existingUsers > 0) {
     return NextResponse.json(
-      {
-        message: "O primeiro acesso já foi configurado.",
-      },
+      { message: "O primeiro acesso já foi configurado." },
       { status: 409 },
     );
   }
@@ -99,11 +100,13 @@ export async function POST(request: Request) {
       },
     });
 
-    return {
-      company,
-      unit,
-      user,
-    };
+    await tx.appSetup.upsert({
+      where: { id: 1 },
+      update: { isInitialized: true, initializedAt: new Date() },
+      create: { id: 1, isInitialized: true, initializedAt: new Date() },
+    });
+
+    return { company, unit, user };
   });
 
   return NextResponse.json({

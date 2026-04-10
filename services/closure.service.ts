@@ -12,7 +12,7 @@ type ClosurePayload = {
 
 type ClosureContext = {
   companyId: string;
-  unitId: string;
+  unitId?: string | null;
   userId: string;
 };
 
@@ -133,7 +133,7 @@ export const closureService = {
     const db = getAuditPrisma({
       userId: context.userId,
       companyId: context.companyId,
-      activeUnitId: context.unitId,
+      activeUnitId: context.unitId ?? undefined,
     });
 
     const closureOrder = await db.$transaction(async (tx) => {

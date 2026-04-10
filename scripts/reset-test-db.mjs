@@ -25,9 +25,11 @@ async function main() {
     prisma.user.deleteMany(),
     prisma.unit.deleteMany(),
     prisma.company.deleteMany(),
+    prisma.appSetup.deleteMany(),
   ]);
 
-  console.log("Banco de teste resetado com sucesso.");
+  console.log("✓ Banco de teste resetado.");
+  console.log("  Execute db:seed:test para criar os dados de teste.");
 }
 
 main()

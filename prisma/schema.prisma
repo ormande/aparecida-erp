@@ -349,7 +349,6 @@ model ServiceOrderProduct {
   product        Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
 
   @@index([companyId, serviceOrderId])
-  @@index([serviceOrderId])
 }
 
 model AccountReceivable {
@@ -375,6 +374,7 @@ model AccountReceivable {
   serviceOrder       ServiceOrder?        @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
 
   @@index([companyId, unitId, dueDate])
+  @@index([companyId, status])
 }
 
 model AccountPayable {
@@ -398,6 +398,7 @@ model AccountPayable {
   supplier           Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
   @@index([companyId, unitId, dueDate])
+  @@index([companyId, status])
 }
 
 model AuditLog {
@@ -453,4 +454,13 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+/// Controla se o cadastro inicial (primeiro acesso) já foi realizado.
+/// Para resetar manualmente via Railway: edite isInitialized = false nesta linha.
+model AppSetup {
+  id            Int       @id @default(1)
+  isInitialized Boolean   @default(false)
+  initializedAt DateTime?
+  updatedAt     DateTime  @updatedAt
 }

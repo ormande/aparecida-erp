@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 
 import { checkRole, getRequiredSessionContext } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { ServiceError } from "@/services/service-error";
 import { serviceOrderService } from "@/services/service-order.service";
 
 const updateOrderSchema = z.object({
   mode: z.enum(["edit", "settle", "reopen"]),
   discountAmount: z.coerce.number().min(0).optional().default(0),
-  partialAmount: z.coerce.number().min(0).optional().default(0),
+  partialAmount: z.coerce.number().min(0).max(999999.99).optional().default(0),
   customerId: z.string().optional().nullable(),
   customerNameSnapshot: z.string().max(100).optional().default(""),
   vehicleId: z.string().optional().nullable(),
@@ -60,7 +61,6 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
     const result = await serviceOrderService.getById(params.id, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
     });
 
     return NextResponse.json(result);
@@ -86,10 +86,28 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  if (
+    payload.mode === "settle" &&
+    payload.partialAmount > 0
+  ) {
+    const order = await prisma.serviceOrder.findFirst({
+      where: { id: params.id, companyId: auth.context.companyId },
+      select: { items: { select: { lineTotal: true } } },
+    });
+    if (order) {
+      const outstanding = order.items.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+      if (payload.partialAmount >= outstanding) {
+        return NextResponse.json(
+          { message: "O valor parcial não pode ser igual ou maior que o total devido. Use a baixa total." },
+          { status: 400 },
+        );
+      }
+    }
+  }
+
   try {
     const result = await serviceOrderService.update(params.id, payload, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
       userId: auth.context.userId,
     });
 
@@ -112,7 +130,6 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
   try {
     const result = await serviceOrderService.remove(params.id, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
       userId: auth.context.userId,
     });
 

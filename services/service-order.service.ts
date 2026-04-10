@@ -54,7 +54,7 @@ type UpdateOrderPayload = {
 
 type ServiceOrderContext = {
   companyId: string;
-  unitId: string;
+  unitId?: string;
   userId: string;
 };
 
@@ -202,7 +202,7 @@ function getCustomerDisplayName(order: {
   return order.customerNameSnapshot ?? "Cliente avulso";
 }
 
-async function getOrder(companyId: string, unitId: string, id: string) {
+async function getOrder(companyId: string, unitId: string | undefined, id: string) {
   return prisma.serviceOrder.findFirst({
     where: { id, companyId, ...(unitId ? { unitId } : {}) },
     include: {

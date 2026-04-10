@@ -8,11 +8,20 @@ import { prisma } from "@/lib/prisma";
 
 export type AppAccessLevel = "PROPRIETARIO" | "GESTOR" | "FUNCIONARIO";
 
+export type UnitInfo = {
+  id: string;
+  name: string;
+};
+
 export type RequiredSessionContext = {
   session: Session;
   userId: string;
   companyId: string;
-  activeUnitId: string;
+  units: UnitInfo[];
+};
+
+export type GetRequiredSessionContextOptions = {
+  allowedRoles?: AppAccessLevel[];
 };
 
 export function checkRole(session: Session, allowedRoles: AppAccessLevel[]): boolean {
@@ -20,9 +29,33 @@ export function checkRole(session: Session, allowedRoles: AppAccessLevel[]): boo
   return level != null && allowedRoles.includes(level);
 }
 
-export type GetRequiredSessionContextOptions = {
-  allowedRoles?: AppAccessLevel[];
-};
+/**
+ * Valida se o usuário tem acesso à unidade informada.
+ * Retorna um NextResponse 400/403 em caso de falha, ou null se estiver ok.
+ * Use antes de qualquer operação que receba unitId do payload ou query params.
+ *
+ * @example
+ * const denied = assertUnitAccess(auth.context.units, payload.unitId);
+ * if (denied) return denied;
+ */
+export function assertUnitAccess(
+  units: UnitInfo[],
+  unitId: string | null | undefined,
+): NextResponse | null {
+  if (!unitId || unitId.trim() === "") {
+    return NextResponse.json(
+      { error: "unitId é obrigatório." },
+      { status: 400 },
+    );
+  }
+  if (!units.some((u) => u.id === unitId)) {
+    return NextResponse.json(
+      { error: "Acesso negado a esta unidade." },
+      { status: 403 },
+    );
+  }
+  return null;
+}
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -48,9 +81,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         const user = await prisma.user.findFirst({
-          where: {
-            email,
-          },
+          where: { email },
           include: {
             units: {
               include: {
@@ -72,9 +103,7 @@ export const authOptions: NextAuthOptions = {
 
         await prisma.user.update({
           where: { id: user.id },
-          data: {
-            lastLoginAt: new Date(),
-          },
+          data: { lastLoginAt: new Date() },
         });
 
         await prisma.auditLog.create({
@@ -85,9 +114,7 @@ export const authOptions: NextAuthOptions = {
             entityType: "user",
             entityId: user.id,
             action: "LOGIN",
-            afterData: {
-              email: user.email,
-            },
+            afterData: { email: user.email },
           },
         });
 
@@ -116,7 +143,6 @@ export const authOptions: NextAuthOptions = {
         token.status = user.status;
         token.phone = user.phone;
         token.units = user.units;
-        token.activeUnitId = user.units?.[0]?.id;
       }
 
       return token;
@@ -129,7 +155,6 @@ export const authOptions: NextAuthOptions = {
         session.user.status = token.status;
         session.user.phone = token.phone;
         session.user.units = token.units ?? [];
-        session.user.activeUnitId = token.activeUnitId ?? token.units?.[0]?.id;
       }
 
       return session;
@@ -138,8 +163,8 @@ export const authOptions: NextAuthOptions = {
 };
 
 /**
- * Sessão autenticada. `activeUnitId` usa a primeira unidade do usuário no JWT quando existir
- * (necessário para APIs que vinculam registro à unidade, ex.: novo funcionário, OS).
+ * Valida a sessão e retorna userId, companyId e a lista de unidades do usuário.
+ * O unitId de cada operação deve vir do payload/query e ser validado com assertUnitAccess().
  */
 export async function getRequiredSessionContext(
   options?: GetRequiredSessionContextOptions,
@@ -162,16 +187,13 @@ export async function getRequiredSessionContext(
     };
   }
 
-  const units = session.user.units ?? [];
-  const activeUnitId = session.user.activeUnitId?.trim() || units[0]?.id || "";
-
   return {
     ok: true,
     context: {
       session,
       userId: session.user.id,
       companyId: session.user.companyId,
-      activeUnitId,
+      units: session.user.units ?? [],
     },
   };
 }

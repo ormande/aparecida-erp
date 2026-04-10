@@ -43,7 +43,6 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   try {
     const result = await payableService.update(params.id, payload, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
       userId: auth.context.userId,
     });
 

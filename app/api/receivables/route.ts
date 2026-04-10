@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 
-import { getRequiredSessionContext } from "@/lib/auth";
+import { assertUnitAccess, getRequiredSessionContext } from "@/lib/auth";
 import { receivableService } from "@/services/receivable.service";
 import { ServiceError } from "@/services/service-error";
 
@@ -11,6 +11,7 @@ const receivableSchema = z.object({
   amount: z.coerce.number().min(0.01),
   dueDate: z.string().min(1),
   installments: z.coerce.number().int().min(1).max(24).default(1),
+  unitId: z.string().nullable().optional(),
 });
 
 function handleServiceError(error: unknown) {
@@ -31,15 +32,21 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
 
+  const unitId = searchParams.get("unitId") ?? undefined;
+  if (unitId) {
+    const denied = assertUnitAccess(auth.context.units, unitId);
+    if (denied) return denied;
+  }
+
   try {
     const result = await receivableService.list(
       {
         status: searchParams.get("status"),
         period: searchParams.get("period"),
+        unitId,
       },
       {
         companyId: auth.context.companyId,
-        unitId: auth.context.activeUnitId,
       },
     );
 
@@ -67,10 +74,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  if (payload.unitId) {
+    const denied = assertUnitAccess(auth.context.units, payload.unitId);
+    if (denied) return denied;
+  }
+
   try {
     const result = await receivableService.create(payload, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
+      unitId: payload.unitId ?? null,
       userId: auth.context.userId,
     });
 

@@ -77,10 +77,16 @@ async function main() {
     },
   });
 
-  console.log("Seed de teste criado com sucesso.");
-  console.log(`Empresa: ${companyName}`);
-  console.log(`Usuario: ${ownerEmail}`);
-  console.log(`Senha: ${ownerPassword}`);
+  await prisma.appSetup.upsert({
+    where: { id: 1 },
+    update: { isInitialized: true, initializedAt: new Date() },
+    create: { id: 1, isInitialized: true, initializedAt: new Date() },
+  });
+
+  console.log("✓ Seed de teste criado com sucesso.");
+  console.log(`  Empresa : ${companyName}`);
+  console.log(`  Email   : ${ownerEmail}`);
+  console.log(`  Senha   : ${ownerPassword}`);
 }
 
 main()

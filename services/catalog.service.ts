@@ -12,7 +12,7 @@ type CatalogPayload = {
 
 type CatalogContext = {
   companyId: string;
-  unitId: string;
+  unitId?: string;
   userId: string;
 };
 

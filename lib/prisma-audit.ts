@@ -106,17 +106,21 @@ export function getAuditPrisma(context: AuditContext) {
             return result;
           }
 
-          await prisma.auditLog.create({
-            data: {
-              companyId: context.companyId,
-              unitId: resolveUnitId((result as { unitId?: string | null })?.unitId, context.activeUnitId),
-              userId: context.userId,
-              entityType: toEntityType(model),
-              entityId: String((result as { id?: string | number })?.id ?? ""),
-              action: "CREATE",
-              afterData: serializeValue(result) as Prisma.InputJsonValue,
-            },
-          });
+          try {
+            await prisma.auditLog.create({
+              data: {
+                companyId: context.companyId,
+                unitId: resolveUnitId((result as { unitId?: string | null })?.unitId, context.activeUnitId),
+                userId: context.userId,
+                entityType: toEntityType(model),
+                entityId: String((result as { id?: string | number })?.id ?? ""),
+                action: "CREATE",
+                afterData: serializeValue(result) as Prisma.InputJsonValue,
+              },
+            });
+          } catch (auditError) {
+            console.error("[audit] falha ao registrar CREATE:", auditError);
+          }
 
           return result;
         },
@@ -129,18 +133,22 @@ export function getAuditPrisma(context: AuditContext) {
             return result;
           }
 
-          await prisma.auditLog.create({
-            data: {
-              companyId: context.companyId,
-              unitId: resolveUnitId((result as { unitId?: string | null })?.unitId, context.activeUnitId),
-              userId: context.userId,
-              entityType: toEntityType(model),
-              entityId: String((result as { id?: string | number })?.id ?? ""),
-              action: "UPDATE",
-              beforeData: beforeData ? (beforeData as Prisma.InputJsonValue) : undefined,
-              afterData: serializeValue(result) as Prisma.InputJsonValue,
-            },
-          });
+          try {
+            await prisma.auditLog.create({
+              data: {
+                companyId: context.companyId,
+                unitId: resolveUnitId((result as { unitId?: string | null })?.unitId, context.activeUnitId),
+                userId: context.userId,
+                entityType: toEntityType(model),
+                entityId: String((result as { id?: string | number })?.id ?? ""),
+                action: "UPDATE",
+                beforeData: beforeData ? (beforeData as Prisma.InputJsonValue) : undefined,
+                afterData: serializeValue(result) as Prisma.InputJsonValue,
+              },
+            });
+          } catch (auditError) {
+            console.error("[audit] falha ao registrar UPDATE:", auditError);
+          }
 
           return result;
         },
@@ -153,23 +161,27 @@ export function getAuditPrisma(context: AuditContext) {
             return result;
           }
 
-          await prisma.auditLog.create({
-            data: {
-              companyId: context.companyId,
-              unitId: resolveUnitId(
-                (beforeData as { unitId?: string | null } | null)?.unitId,
-                (result as { unitId?: string | null })?.unitId,
-                context.activeUnitId,
-              ),
-              userId: context.userId,
-              entityType: toEntityType(model),
-              entityId: String(
-                (beforeData as { id?: string | number } | null)?.id ?? (result as { id?: string | number })?.id ?? "",
-              ),
-              action: "DELETE",
-              beforeData: beforeData ? (beforeData as Prisma.InputJsonValue) : undefined,
-            },
-          });
+          try {
+            await prisma.auditLog.create({
+              data: {
+                companyId: context.companyId,
+                unitId: resolveUnitId(
+                  (beforeData as { unitId?: string | null } | null)?.unitId,
+                  (result as { unitId?: string | null })?.unitId,
+                  context.activeUnitId,
+                ),
+                userId: context.userId,
+                entityType: toEntityType(model),
+                entityId: String(
+                  (beforeData as { id?: string | number } | null)?.id ?? (result as { id?: string | number })?.id ?? "",
+                ),
+                action: "DELETE",
+                beforeData: beforeData ? (beforeData as Prisma.InputJsonValue) : undefined,
+              },
+            });
+          } catch (auditError) {
+            console.error("[audit] falha ao registrar DELETE:", auditError);
+          }
 
           return result;
         },

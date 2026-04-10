@@ -11,14 +11,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # Postgres só na VM do Actions: migrate/reset/seed/E2E não tocam no banco dos secrets.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aparecida_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DIRECT_URL: ${{ secrets.DIRECT_URL }}
-      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
-      NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aparecida_ci
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/aparecida_ci
+      # Fixo no CI para não depender de secret; só vale para o Postgres efêmero deste job.
+      NEXTAUTH_SECRET: ci-e2e-nextauth-secret-32chars!!
+      NEXTAUTH_URL: http://localhost:3000
       UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
       UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
-      DISABLE_RATE_LIMIT: ${{ secrets.DISABLE_RATE_LIMIT }}
+      DISABLE_RATE_LIMIT: "true"
       NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
       ALLOW_DB_RESET: "true"
       ALLOW_DB_SEED: "true"

@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function GET() {
-  const usersCount = await prisma.user.count();
+  const setup = await prisma.appSetup.findUnique({ where: { id: 1 } });
 
   return NextResponse.json({
-    hasUsers: usersCount > 0,
+    hasUsers: setup?.isInitialized === true,
   });
 }

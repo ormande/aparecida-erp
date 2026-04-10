@@ -15,7 +15,7 @@ type VehiclePayload = {
 
 type VehicleContext = {
   companyId: string;
-  unitId: string;
+  unitId?: string;
   userId: string;
 };
 

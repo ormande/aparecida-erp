@@ -22,10 +22,23 @@ export const apiRatelimit = isRateLimitDisabled
   : new Ratelimit({ redis: redis!, limiter: Ratelimit.slidingWindow(60, "1 m"), prefix: "ratelimit:api" });
 
 export function getRateLimitIdentifier(request: Request): string {
+  // x-forwarded-for: pode conter lista "client, proxy1, proxy2" — pega o primeiro (cliente real)
   const forwarded = request.headers.get("x-forwarded-for");
-  if (!forwarded) {
-    return "anonymous";
+  if (forwarded) {
+    const ip = forwarded.split(",")[0]?.trim();
+    if (ip && ip.length > 0) return ip;
   }
-  const ip = forwarded.split(",")[0]?.trim();
-  return ip && ip.length > 0 ? ip : "anonymous";
+
+  // x-real-ip: header alternativo usado por alguns proxies (nginx, Vercel)
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  if (realIp && realIp.length > 0) return realIp;
+
+  // cf-connecting-ip: header do Cloudflare
+  const cfIp = request.headers.get("cf-connecting-ip")?.trim();
+  if (cfIp && cfIp.length > 0) return cfIp;
+
+  // Fallback com timestamp para evitar bucket compartilhado entre requisições anônimas
+  // Isso efetivamente desabilita o rate limit para requests sem IP identificável
+  // em vez de bloquear todos por um único usuário malicioso
+  return `anonymous-${Date.now()}`;
 }

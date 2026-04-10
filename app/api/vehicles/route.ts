@@ -66,7 +66,6 @@ export async function POST(request: Request) {
   try {
     const result = await vehicleService.create(payload, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
       userId: auth.context.userId,
     });
 

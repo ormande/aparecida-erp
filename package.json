@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
+    "db:reset:prod": "node scripts/reset-prod-db.mjs",
     "db:reset:test": "dotenv -e .env.test -- node scripts/reset-test-db.mjs",
     "db:seed:test": "dotenv -e .env.test -- node scripts/seed-test-db.mjs",
     "db:fresh:test": "dotenv -e .env.test -- npx prisma migrate deploy && dotenv -e .env.test -- node scripts/reset-test-db.mjs && dotenv -e .env.test -- node scripts/seed-test-db.mjs",

@@ -41,7 +41,6 @@ export function useAuth() {
       accessLevel: session.user.accessLevel,
       status: session.user.status,
       units: session.user.units ?? [],
-      activeUnitId: session.activeUnitId ?? session.user.activeUnitId,
     };
   }, [session]);
 

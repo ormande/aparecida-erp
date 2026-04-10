@@ -1,12 +1,26 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const isCi = Boolean(process.env.CI);
+
+/** No CI o GitHub Actions define DATABASE_URL (Postgres do service). Local: use .env.test via dotenv-cli. */
+const webServerEnv: Record<string, string> = {
+  NODE_ENV: "test",
+  NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? "test-secret-aparecida-erp-32chars!!",
+  NEXTAUTH_URL: process.env.NEXTAUTH_URL ?? "http://localhost:3000",
+  DISABLE_RATE_LIMIT: process.env.DISABLE_RATE_LIMIT ?? "true",
+};
+if (process.env.DATABASE_URL) {
+  webServerEnv.DATABASE_URL = process.env.DATABASE_URL;
+  webServerEnv.DIRECT_URL = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+}
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
   fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  forbidOnly: isCi,
+  retries: isCi ? 2 : 0,
+  workers: isCi ? 1 : undefined,
   reporter: "html",
   use: {
     baseURL: "http://localhost:3000",
@@ -14,20 +28,10 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npx dotenv -e .env.test -- next dev",
+    command: isCi ? "npx next dev -p 3000" : "npx dotenv -e .env.test -- next dev",
     url: "http://localhost:3000",
     reuseExistingServer: false,
-    // Força o secret de teste mesmo que o Next.js carregue .env automaticamente.
-    env: {
-      NODE_ENV: "test",
-      NEXTAUTH_SECRET: "test-secret-aparecida-erp-32chars!!",
-      NEXTAUTH_URL: "http://localhost:3000",
-      DATABASE_URL:
-        "postgresql://postgres:QloKyAqGjmNxhvgtpAJTucdektPkqtQo@interchange.proxy.rlwy.net:29864/railway",
-      DIRECT_URL:
-        "postgresql://postgres:QloKyAqGjmNxhvgtpAJTucdektPkqtQo@interchange.proxy.rlwy.net:29864/railway",
-      DISABLE_RATE_LIMIT: "true",
-    },
+    env: webServerEnv,
   },
   projects: [
     {

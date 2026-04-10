@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 
-import { getRequiredSessionContext } from "@/lib/auth";
+import { assertUnitAccess, getRequiredSessionContext } from "@/lib/auth";
 import { closureService } from "@/services/closure.service";
 import { ServiceError } from "@/services/service-error";
 
@@ -11,6 +11,7 @@ const closureSchema = z.object({
   dueDate: z.string().optional().nullable(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).default("A_PRAZO"),
   paymentMethod: z.string().max(100).default("Fechamento mensal"),
+  unitId: z.string().nullable().optional(),
 });
 
 function handleServiceError(error: unknown) {
@@ -39,10 +40,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  if (payload.unitId) {
+    const denied = assertUnitAccess(auth.context.units, payload.unitId);
+    if (denied) return denied;
+  }
+
   try {
     const result = await closureService.create(payload, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
+      unitId: payload.unitId ?? null,
       userId: auth.context.userId,
     });
 

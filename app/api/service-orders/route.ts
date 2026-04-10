@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z, ZodError } from "zod";
 
-import { getRequiredSessionContext } from "@/lib/auth";
+import { assertUnitAccess, getRequiredSessionContext } from "@/lib/auth";
 import { ServiceError } from "@/services/service-error";
 import { serviceOrderService } from "@/services/service-order.service";
 
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams;
   const page = Number(searchParams.get("page") ?? "1");
-  const limit = Number(searchParams.get("limit") ?? "10");
+  const limit = Math.min(Number(searchParams.get("limit") ?? "10"), 100);
 
   try {
     const result = await serviceOrderService.list(
@@ -99,10 +99,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const deniedUnit = assertUnitAccess(auth.context.units, payload.unitId);
+  if (deniedUnit) return deniedUnit;
+
   try {
     const result = await serviceOrderService.create(payload, {
       companyId: auth.context.companyId,
-      unitId: auth.context.activeUnitId,
+      unitId: payload.unitId,
       userId: auth.context.userId,
     });
 

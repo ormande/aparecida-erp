@@ -1,9 +1,8 @@
 import { hash, compare } from "bcryptjs";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
-import { getServerSession } from "next-auth";
 
-import { authOptions } from "@/lib/auth";
+import { getRequiredSessionContext } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const changePasswordSchema = z.object({
@@ -12,10 +11,8 @@ const changePasswordSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
-  }
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) return auth.response;
 
   let payload: z.infer<typeof changePasswordSchema>;
   try {
@@ -28,7 +25,7 @@ export async function POST(request: Request) {
   }
 
   const user = await prisma.user.findFirst({
-    where: { id: session.user.id },
+    where: { id: auth.context.userId },
     select: { passwordHash: true },
   });
 
@@ -43,7 +40,7 @@ export async function POST(request: Request) {
 
   const newHash = await hash(payload.newPassword, 10);
   await prisma.user.update({
-    where: { id: session.user.id },
+    where: { id: auth.context.userId },
     data: { passwordHash: newHash },
   });
 
