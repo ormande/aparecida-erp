@@ -17,7 +17,10 @@ const customerSchema = personSchema.merge(
       { message: "Telefone inválido. Informe apenas números, espaços, parênteses ou hífen." }
     ),
     whatsapp: z.string().max(20).optional().default(""),
-    email: z.string().email("E-mail inválido.").optional().nullable().default(null),
+    email: z.preprocess(
+      (val) => (typeof val === "string" && val.trim() === "" ? null : val),
+      z.string().email("E-mail inválido.").optional().nullable().default(null),
+    ),
     observacoes: z.string().max(2000).optional().default(""),
   }),
 );
