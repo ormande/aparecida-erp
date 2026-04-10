@@ -39,6 +39,9 @@ jobs:
       NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
       ALLOW_DB_RESET: "true"
       ALLOW_DB_SEED: "true"
+      TEST_OWNER_EMAIL: "teste@aparecida-test.local"
+      TEST_OWNER_PASSWORD: "123456"
+      TEST_COMPANY_NAME: "Aparecida Borracharia Teste"
 
     steps:
       - name: Checkout
