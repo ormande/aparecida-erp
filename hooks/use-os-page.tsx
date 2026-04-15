@@ -112,7 +112,7 @@ export function useOsPage() {
   const vehicleId = searchParams.get("vehicleId");
   const { unitId, currentUnit, isLoading: unitLoading } = useCurrentUnit();
   const { units } = useUnits();
-  const { customers } = useCustomers();
+  const { customers } = useCustomers({ limit: 200 });
   const { services } = useServices();
   const { user } = useAuth();
   const { download: downloadPdf } = usePdfDownload();

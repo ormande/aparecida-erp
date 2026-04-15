@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   }
 
   const page = Number(request.nextUrl.searchParams.get("page") ?? "1");
-  const limit = Math.min(Number(request.nextUrl.searchParams.get("limit") ?? "10"), 100);
+  const limit = Math.min(Number(request.nextUrl.searchParams.get("limit") ?? "10"), 500);
   const search = request.nextUrl.searchParams.get("search") ?? undefined;
 
   try {

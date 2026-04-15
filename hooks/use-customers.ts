@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import useSWR from "swr";
 
 import type { Client } from "@/lib/app-types";
@@ -28,19 +28,13 @@ export function useCustomers(params?: UseCustomersParams) {
   const limit = params?.limit ?? 10;
   const search = params?.search?.trim() ?? "";
 
-  const key = useMemo(() => {
+  const { data, error, mutate } = useSWR<CustomersResponse>(() => {
     const searchParams = new URLSearchParams();
     searchParams.set("page", String(page));
     searchParams.set("limit", String(limit));
-
-    if (search) {
-      searchParams.set("search", search);
-    }
-
+    if (search) searchParams.set("search", search);
     return `/api/customers?${searchParams.toString()}`;
-  }, [limit, page, search]);
-
-  const { data, error, mutate } = useSWR<CustomersResponse>(key, fetcher);
+  }, fetcher);
 
   const setCustomers = useCallback(
     (value: Client[] | ((current: Client[]) => Client[])) => {

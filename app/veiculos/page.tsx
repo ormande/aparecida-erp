@@ -24,7 +24,7 @@ import { getPersonName } from "@/lib/person-helpers";
 export default function VeiculosPage() {
   const [open, setOpen] = useState(false);
   const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(null);
-  const { customers, hydrated: customersHydrated } = useCustomers();
+  const { customers, hydrated: customersHydrated } = useCustomers({ limit: 200 });
   const { vehicles, hydrated: vehiclesHydrated, setVehicles } = useVehicles();
 
   const data = useMemo(

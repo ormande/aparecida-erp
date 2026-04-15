@@ -260,4 +260,33 @@ export const customerService = {
 
     return { customer: mapCustomerToClient(customer) };
   },
+
+  async delete(id: string, context: CustomerContext) {
+    const existing = await prisma.customer.findFirst({
+      where: { id, companyId: context.companyId },
+    });
+
+    if (!existing) {
+      throw new ServiceError("Cliente não encontrado.", 404);
+    }
+
+    const displayName =
+      existing.type === "PF"
+        ? existing.fullName ?? existing.cpf ?? "Cliente"
+        : existing.tradeName ?? existing.legalName ?? "Cliente";
+
+    const db = getAuditPrisma({
+      userId: context.userId,
+      companyId: context.companyId,
+      activeUnitId: context.unitId,
+    });
+
+    await prisma.$transaction([
+      prisma.serviceOrder.updateMany({
+        where: { customerId: id, companyId: context.companyId },
+        data: { customerNameSnapshot: displayName },
+      }),
+      db.customer.delete({ where: { id } }),
+    ]);
+  },
 };

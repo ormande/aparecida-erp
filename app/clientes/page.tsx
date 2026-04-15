@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Eye, MessageCircle, Pencil, Plus } from "lucide-react";
+import { Eye, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { ClientForm } from "@/components/clients/client-form";
 import { PersonPreviewDialog } from "@/components/people/person-preview-dialog";
 import { Button } from "@/components/ui/button";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { DataTable } from "@/components/ui/data-table";
 import {
   Dialog,
@@ -25,6 +26,7 @@ import { getClientDisplayName, getClientDocument, getWhatsAppUrl } from "@/lib/f
 export default function ClientesPage() {
   const [open, setOpen] = useState(false);
   const [viewingCustomerId, setViewingCustomerId] = useState<string | null>(null);
+  const [deletingCustomerId, setDeletingCustomerId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const { customers, meta, refresh, hydrated } = useCustomers({ page, limit: 10, search });
@@ -146,6 +148,15 @@ export default function ClientesPage() {
                       Editar
                     </Button>
                   </Link>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setDeletingCustomerId(row.id)}
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Excluir
+                  </Button>
                 </div>
               ),
             },
@@ -159,6 +170,26 @@ export default function ClientesPage() {
         person={viewingCustomer}
         title="Cliente"
         subtitle="Visualização rápida do cadastro."
+      />
+
+      <ConfirmModal
+        open={Boolean(deletingCustomerId)}
+        onOpenChange={(nextOpen) => !nextOpen && setDeletingCustomerId(null)}
+        title="Excluir cliente"
+        description="Esta ação é irreversível. O cliente será removido do sistema. O nome do cliente será preservado nas ordens de serviço existentes, mas o histórico de veículos vinculados será perdido."
+        confirmLabel="Excluir"
+        onConfirm={async () => {
+          if (!deletingCustomerId) return;
+          const response = await fetch(`/api/customers/${deletingCustomerId}`, { method: "DELETE" });
+          if (!response.ok) {
+            const data = response.status !== 204 ? await response.json().catch(() => ({})) : {};
+            toast.error(data.message ?? "Não foi possível excluir o cliente.");
+            return;
+          }
+          setDeletingCustomerId(null);
+          await refresh();
+          toast.success("Cliente excluído com sucesso.");
+        }}
       />
     </div>
   );

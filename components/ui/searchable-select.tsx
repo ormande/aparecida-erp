@@ -21,12 +21,14 @@ export function SearchableSelect({
   placeholder,
   options,
   disabled = false,
+  onSearchChange,
 }: {
   value?: string;
   onChange: (value: string) => void;
   placeholder: string;
   options: Option[];
   disabled?: boolean;
+  onSearchChange?: (search: string) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -99,8 +101,11 @@ export function SearchableSelect({
               transition={popoverMotionTransition}
               className="flex flex-col"
             >
-              <Command>
-                <CommandInput placeholder="Buscar..." />
+              <Command shouldFilter={!onSearchChange}>
+                <CommandInput
+                  placeholder="Buscar..."
+                  onValueChange={onSearchChange}
+                />
                 <CommandList>
                   <CommandEmpty>Nenhum item encontrado.</CommandEmpty>
                   <CommandGroup>

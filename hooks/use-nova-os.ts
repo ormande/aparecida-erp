@@ -64,7 +64,7 @@ export function useNovaOs() {
   const searchParams = useSearchParams();
   const { currentUnit, isLoading: unitLoading } = useCurrentUnit();
   const { units } = useUnits();
-  const { customers, hydrated: customersHydrated } = useCustomers();
+  const { customers, hydrated: customersHydrated } = useCustomers({ limit: 200 });
   const { services: catalogServices, hydrated: servicesHydrated } = useServices();
   const { employees, hydrated: employeesHydrated } = useEmployees();
   const [selectedUnitId, setSelectedUnitId] = useState("");

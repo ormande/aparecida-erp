@@ -42,7 +42,7 @@ type OrderPreview = {
 export default function FechamentosPage() {
   const { unitId } = useCurrentUnit();
   const { units } = useUnits();
-  const { customers } = useCustomers();
+  const { customers } = useCustomers({ limit: 200 });
   const { user } = useAuth();
   const { download: downloadPdf } = usePdfDownload();
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);

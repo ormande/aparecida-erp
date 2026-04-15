@@ -58,7 +58,7 @@ export function useReceivablesPage() {
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
 
   const { units } = useUnits();
-  const { customers } = useCustomers();
+  const { customers } = useCustomers({ limit: 200 });
   const { receivables, hydrated, setReceivables } = useReceivables({
     status: statusFilter,
     period: periodFilter,

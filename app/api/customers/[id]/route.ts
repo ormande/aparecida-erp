@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 
-import { getRequiredSessionContext } from "@/lib/auth";
+import { checkRole, getRequiredSessionContext } from "@/lib/auth";
 import { personSchema } from "@/lib/person-schema";
 import { customerService } from "@/services/customer.service";
 import { ServiceError } from "@/services/service-error";
@@ -74,6 +74,28 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     });
 
     return NextResponse.json(result);
+  } catch (error) {
+    return handleServiceError(error);
+  }
+}
+
+export async function DELETE(_: Request, { params }: { params: { id: string } }) {
+  const auth = await getRequiredSessionContext();
+  if (!auth.ok) {
+    return auth.response;
+  }
+
+  if (!checkRole(auth.context.session, ["PROPRIETARIO", "GESTOR"])) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    await customerService.delete(params.id, {
+      companyId: auth.context.companyId,
+      userId: auth.context.userId,
+    });
+
+    return new NextResponse(null, { status: 204 });
   } catch (error) {
     return handleServiceError(error);
   }
