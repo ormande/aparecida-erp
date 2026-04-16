@@ -20,15 +20,15 @@ test('botão "Nova OS" navega para /ordens-de-servico/nova', async ({ page }: { 
   await expect(page.getByRole("heading", { name: "Nova Ordem de Serviço" })).toBeVisible();
 });
 
-test("criação de OS avulsa com serviço manual e Pix conclui com toast e volta à listagem", async ({ page }: { page: Page }) => {
+test("criação de OS avulsa com serviço manual e PIX conclui com toast e volta à listagem", async ({ page }: { page: Page }) => {
   await page.goto("/ordens-de-servico/nova?standalone=1");
   await waitForOsPage(page, /\/ordens-de-servico\/nova(\?|$)/);
   if (!page.url().includes("standalone=1")) {
     await page.goto("/ordens-de-servico/nova?standalone=1");
   }
   await page.getByLabel("Cliente avulso").fill("Cliente avulso E2E");
-  await expect(page.getByText("Pix", { exact: true }).first()).toBeVisible();
-  await page.getByPlaceholder("Serviço 1").fill("Serviço manual E2E");
+  await expect(page.getByText("PIX", { exact: true }).first()).toBeVisible();
+  await page.getByPlaceholder("Descrição do serviço").fill("Serviço manual E2E");
   const valorServico = page.locator("input[inputmode=\"decimal\"]").first();
   await valorServico.click();
   await valorServico.press("Control+a");
