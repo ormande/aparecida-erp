@@ -1,6 +1,6 @@
 "use client";
 
-import { Info, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -18,8 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
-import { Switch } from "@/components/ui/switch";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEmployees } from "@/hooks/use-employees";
 import { useAuth } from "@/hooks/use-auth";
 import { useUnits } from "@/hooks/use-units";
@@ -33,12 +31,13 @@ function maskPhone(value: string) {
 }
 
 export default function ConfiguracoesPage() {
-  const [stockEnabled, setStockEnabled] = useState(false);
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [unitName, setUnitName] = useState("");
   const [creatingUnit, setCreatingUnit] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [savingCompany, setSavingCompany] = useState(false);
+  const [nextOsSequence, setNextOsSequence] = useState("1");
+  const [savingOsSequence, setSavingOsSequence] = useState(false);
   const [activeUnitId, setActiveUnitId] = useState("");
   const [unitDrafts, setUnitDrafts] = useState<Record<string, { name: string; address: string; phone: string }>>({});
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
@@ -68,11 +67,13 @@ export default function ConfiguracoesPage() {
       .then((data) => {
         if (active) {
           setCompanyName(data.company.name ?? "");
+          setNextOsSequence(String(data.company.nextOsSequence ?? 1));
         }
       })
       .catch(() => {
         if (active) {
           setCompanyName("");
+          setNextOsSequence("1");
         }
       });
 
@@ -140,28 +141,60 @@ export default function ConfiguracoesPage() {
   async function handleSaveCompany() {
     setSavingCompany(true);
 
-    const response = await fetch("/api/company", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: companyName,
-        address: "",
-        phone: "",
-      }),
-    });
+    try {
+      const response = await fetch("/api/company", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: companyName,
+          address: "",
+          phone: "",
+        }),
+      });
 
-    const data = await response.json();
-    setSavingCompany(false);
+      const data = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      toast.error(data.message ?? "Não foi possível salvar a empresa.");
+      if (!response.ok) {
+        toast.error((data as { message?: string }).message ?? "Não foi possível salvar a empresa.");
+        return;
+      }
+
+      setCompanyName((data as { company?: { name?: string } }).company?.name ?? "");
+      toast.success("Dados da empresa atualizados com sucesso!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar a empresa.");
+    } finally {
+      setSavingCompany(false);
+    }
+  }
+
+  async function handleSaveOsSequence() {
+    const next = Number(nextOsSequence);
+    if (!nextOsSequence || !Number.isFinite(next) || next < 1) {
+      toast.error("Informe um número de OS válido.");
       return;
     }
 
-    setCompanyName(data.company.name ?? "");
-    toast.success("Dados da empresa atualizados com sucesso!");
+    setSavingOsSequence(true);
+    try {
+      const response = await fetch("/api/company", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nextOsSequence: next }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        toast.error((data as { message?: string }).message ?? "Não foi possível salvar a numeração.");
+        return;
+      }
+      toast.success("Numeração de OS atualizada com sucesso!");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar a numeração.");
+    } finally {
+      setSavingOsSequence(false);
+    }
   }
 
   async function handleSaveUnit() {
@@ -291,6 +324,23 @@ export default function ConfiguracoesPage() {
             <div className="grid gap-2">
               <Label>Nome da empresa</Label>
               <Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Próximo número de OS</Label>
+              <Input
+                inputMode="numeric"
+                value={nextOsSequence}
+                onChange={(e) => setNextOsSequence(e.target.value.replace(/\D/g, "").slice(0, 5))}
+              />
+              <p className="text-xs text-muted-foreground">
+                A próxima OS gerada automaticamente será{" "}
+                <span className="font-medium">
+                  OS-{new Date().getFullYear()}-{String(Number(nextOsSequence || 0)).padStart(5, "0")}
+                </span>
+              </p>
+              <Button variant="outline" onClick={handleSaveOsSequence} disabled={savingOsSequence}>
+                {savingOsSequence ? "Salvando..." : "Salvar numeração"}
+              </Button>
             </div>
             <Button onClick={handleSaveCompany} disabled={savingCompany}>
               {savingCompany ? "Salvando..." : "Salvar empresa"}
@@ -480,31 +530,6 @@ export default function ConfiguracoesPage() {
                   </div>
                 </DialogContent>
               </Dialog>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="surface-card border-none">
-          <CardHeader>
-            <CardTitle>Módulos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-4 rounded-2xl border bg-muted/30 p-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <p className="font-medium">Módulo de Estoque</p>
-                  <Tooltip>
-                    <TooltipTrigger render={<Info className="h-4 w-4 text-muted-foreground" />} />
-                    <TooltipContent>
-                      <p>Ative quando quiser começar a usar o controle de estoque.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Neste momento, o toggle é ilustrativo. A flag real continua em `lib/config.ts`.
-                </p>
-              </div>
-              <Switch checked={stockEnabled} onCheckedChange={setStockEnabled} />
             </div>
           </CardContent>
         </Card>

@@ -48,6 +48,7 @@ export type OrderDetails = {
     id: string;
     serviceId?: string | null;
     description: string;
+    quantity?: number;
     laborPrice: number;
     executedByUserId?: string | null;
     executedByName?: string | null;
@@ -93,6 +94,7 @@ export type OsEditableServiceLine = {
   id: string;
   serviceId: string;
   description: string;
+  quantity: number;
   laborPrice: number;
   laborPriceInput: string;
   executedByUserId: string;
@@ -284,6 +286,7 @@ export function useOsPage() {
         id: service.id,
         serviceId: service.serviceId ?? "",
         description: service.description,
+        quantity: service.quantity ?? 1,
         laborPrice: service.laborPrice,
         laborPriceInput: formatCurrencyInput(String(Math.round(service.laborPrice * 100))),
         executedByUserId: service.executedByUserId ?? "",
@@ -310,6 +313,7 @@ export function useOsPage() {
         services: editableServices.map((service) => ({
           serviceId: service.serviceId || null,
           description: service.description,
+          quantity: service.quantity ?? 1,
           laborPrice: service.laborPrice,
           executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
         })),
@@ -460,9 +464,10 @@ export function useOsPage() {
         const companyName = companyRes.company?.name ?? "";
         const { OsPdf } = await import("@/components/pdf/os-pdf");
         const { createElement } = await import("react");
+        const filename = orderNumber.startsWith("OS-") ? orderNumber : `OS-${orderNumber}`;
         await downloadPdf(
           createElement(OsPdf, { order, companyName, unitName: order.unitName ?? "" }),
-          `OS-${orderNumber}`,
+          filename,
         );
       } catch {
         toast.error("Não foi possível gerar o PDF.");

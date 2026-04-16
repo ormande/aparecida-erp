@@ -4,7 +4,9 @@ import Link from "next/link";
 import { Eye, HardHat, Pencil, Plus, Target, UserX } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { mutate } from "swr";
 
+import { EmployeeForm } from "@/components/employees/employee-form";
 import { EmployeePreviewDialog } from "@/components/employees/employee-preview-dialog";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
@@ -15,6 +17,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "@/components/ui/input-group";
 import { Label } from "@/components/ui/label";
@@ -44,6 +47,7 @@ function AccessLevelBadge({ level }: { level: EmployeeAccessLevel }) {
 export default function FuncionariosPage() {
   const { user } = useAuth();
   const { employees, setEmployees } = useEmployees();
+  const [open, setOpen] = useState(false);
   const [viewingEmployeeId, setViewingEmployeeId] = useState<string | null>(null);
   const [goalEmployee, setGoalEmployee] = useState<{
     id: string;
@@ -153,12 +157,49 @@ export default function FuncionariosPage() {
         title="Funcionários"
         subtitle="Gerencie os registros da equipe com nível de acesso e situação operacional."
         actions={
-          <Link href="/funcionarios/novo">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Novo funcionário
-            </Button>
-          </Link>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger
+              render={
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Novo funcionário
+                </Button>
+              }
+            />
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Novo funcionário</DialogTitle>
+                <DialogDescription>Cadastre o funcionário sem sair da lista.</DialogDescription>
+              </DialogHeader>
+              <EmployeeForm
+                submitLabel="Salvar funcionário"
+                onSubmit={async (values) => {
+                  const response = await fetch("/api/employees", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(values),
+                  });
+
+                  const data = await response.json().catch(() => ({}));
+
+                  if (!response.ok) {
+                    toast.error(
+                      (data as { message?: string; error?: string }).message ??
+                        (data as { error?: string }).error ??
+                        "Não foi possível cadastrar o funcionário.",
+                    );
+                    return;
+                  }
+
+                  toast.success("Funcionário cadastrado com sucesso!");
+                  setOpen(false);
+                  await mutate("/api/employees");
+                }}
+              />
+            </DialogContent>
+          </Dialog>
         }
       />
 

@@ -13,7 +13,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
 import { useEmployees } from "@/hooks/use-employees";
 import type { OrderDetails, OsEditableData, OsEditableServiceLine } from "@/hooks/use-os-page";
-import { formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
+import { currency, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
 
 type Option = { value: string; label: string };
 
@@ -192,7 +192,7 @@ export function OsEditDialog({
 
             <div className="space-y-3">
               {editableServices.map((service) => (
-                <div key={service.id} className="grid gap-3 rounded-2xl border bg-muted/20 p-4 md:grid-cols-[minmax(0,1fr)_180px]">
+                <div key={service.id} className="rounded-2xl border bg-muted/20 p-4 space-y-3">
                   <div className="grid gap-2">
                     <Label>Descrição</Label>
                     <Input
@@ -203,6 +203,56 @@ export function OsEditDialog({
                         )
                       }
                     />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-[100px_1fr_1fr]">
+                    <div className="grid gap-2">
+                      <Label>Quantidade</Label>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        step={1}
+                        value={service.quantity}
+                        onChange={(event) =>
+                          setEditableServices((current) =>
+                            current.map((item) =>
+                              item.id === service.id
+                                ? { ...item, quantity: Math.max(1, Math.floor(Number(event.target.value) || 1)) }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Valor unitário</Label>
+                      <Input
+                        value={service.laborPriceInput}
+                        onChange={(event) =>
+                          setEditableServices((current) =>
+                            current.map((item) =>
+                              item.id === service.id
+                                ? {
+                                    ...item,
+                                    laborPriceInput: formatCurrencyInput(event.target.value),
+                                    laborPrice: parseCurrencyInput(formatCurrencyInput(event.target.value)),
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Total</Label>
+                      <div className="flex h-9 items-center rounded-2xl bg-muted px-3 text-sm font-medium">
+                        {currency(service.quantity * service.laborPrice)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
                     <Label>Funcionário executante</Label>
                     <SearchableSelect
                       value={service.executedByUserId}
@@ -211,28 +261,9 @@ export function OsEditDialog({
                           current.map((item) => (item.id === service.id ? { ...item, executedByUserId: value } : item)),
                         )
                       }
-                      placeholder="Selecione o funcionário"
+                      placeholder="Selecione o funcionário (opcional)"
                       options={employeeOptions}
                       disabled={sameEmployeeForAll || !employeeOptions.length}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Valor</Label>
-                    <Input
-                      value={service.laborPriceInput}
-                      onChange={(event) =>
-                        setEditableServices((current) =>
-                          current.map((item) =>
-                            item.id === service.id
-                              ? {
-                                  ...item,
-                                  laborPriceInput: formatCurrencyInput(event.target.value),
-                                  laborPrice: parseCurrencyInput(formatCurrencyInput(event.target.value)),
-                                }
-                              : item,
-                          ),
-                        )
-                      }
                     />
                   </div>
                 </div>

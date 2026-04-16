@@ -8,6 +8,7 @@ import { Prisma, type PaymentStatus, type ProductUnit, type ServiceOrderStatus }
 type OrderServiceItemPayload = {
   serviceId?: string | null;
   description: string;
+  quantity?: number;
   laborPrice: number;
   executedByUserId?: string | null;
   commissionRate?: number;
@@ -31,6 +32,7 @@ type CreateOrderPayload = {
   openedAt?: string;
   paymentTerm?: "A_VISTA" | "A_PRAZO" | null;
   paymentMethod?: string;
+  customOsNumber?: number;
   notes?: string;
   services: OrderServiceItemPayload[];
   products?: OrderProductPayload[];
@@ -69,15 +71,40 @@ type ListOrdersFilters = {
 };
 
 function buildOrderNumber(year: number, sequence: number) {
-  return `OS-${year}-${String(sequence).padStart(4, "0")}`;
+  return `OS-${year}-${String(sequence).padStart(5, "0")}`;
 }
 
-async function getNextOrderNumber(tx: Prisma.TransactionClient, companyId: string) {
+async function getNextOrderNumber(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  customNumber?: number,
+) {
   const lockKey = `${companyId}-os-number`;
   // pg_advisory_xact_lock(...) retorna void; use executeRaw para não desserializar resultado.
   await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
 
   const currentYear = new Date().getFullYear();
+
+  if (customNumber) {
+    const exists = await tx.serviceOrder.findFirst({
+      where: { companyId, number: buildOrderNumber(currentYear, customNumber) },
+      select: { id: true },
+    });
+    if (exists) {
+      throw new ServiceError(
+        `Já existe uma OS com o número OS-${currentYear}-${String(customNumber).padStart(5, "0")}.`,
+        409,
+      );
+    }
+    return buildOrderNumber(currentYear, customNumber);
+  }
+
+  const company = await tx.company.findFirst({
+    where: { id: companyId },
+    select: { nextOsSequence: true },
+  });
+  const minSequence = company?.nextOsSequence ?? 1;
+
   const orders = await tx.serviceOrder.findMany({
     where: {
       companyId,
@@ -95,7 +122,7 @@ async function getNextOrderNumber(tx: Prisma.TransactionClient, companyId: strin
       .filter((value) => Number.isFinite(value) && value > 0),
   );
 
-  let next = 1;
+  let next = minSequence;
   while (used.has(next)) {
     next += 1;
   }
@@ -225,6 +252,7 @@ async function getOrder(companyId: string, unitId: string | undefined, id: strin
           id: true,
           serviceId: true,
           description: true,
+          quantity: true,
           laborPrice: true,
           lineTotal: true,
           previousOrderStatus: true,
@@ -279,7 +307,7 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
     unitName: order.unit.name,
     vehicleId: order.vehicleId,
     plate: order.vehicle?.plate ?? "-",
-    vehicleLabel: order.vehicle ? `${order.vehicle.plate} â€¢ ${order.vehicle.brand} ${order.vehicle.model}` : "-",
+    vehicleLabel: order.vehicle ? `${order.vehicle.plate} - ${order.vehicle.brand} ${order.vehicle.model}` : "-",
     status: mapServiceOrderStatus(order.status),
     paymentStatus: order.paymentStatus,
     total: Number(order.totalAmount),
@@ -296,6 +324,7 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
       id: item.id,
       serviceId: item.serviceId,
       description: item.description,
+      quantity: item.quantity,
       laborPrice: Number(item.laborPrice),
       executedByUserId: item.executedByUserId,
       executedByName: item.executedBy?.name ?? null,
@@ -322,7 +351,7 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
 
 function getReferencedOrderNumbers(descriptions: string[]) {
   const matches = descriptions
-    .flatMap((description) => Array.from(description.matchAll(/OS-\d{4}-\d{4}/g)).map((match) => match[0]))
+    .flatMap((description) => Array.from(description.matchAll(/OS-\d{4}-\d{5}/g)).map((match) => match[0]))
     .filter(Boolean);
 
   return Array.from(new Set(matches));
@@ -374,10 +403,10 @@ async function ensureVehicleExists(vehicleId: string, companyId: string, custome
 }
 
 function calcOrderTotals(
-  services: Array<{ laborPrice: number }>,
+  services: Array<{ laborPrice: number; quantity?: number }>,
   products: Array<{ quantity: number; unitPrice: number }>,
 ) {
-  const laborSubtotal = services.reduce((sum, item) => sum + Number(item.laborPrice), 0);
+  const laborSubtotal = services.reduce((sum, item) => sum + (item.quantity ?? 1) * Number(item.laborPrice), 0);
   const productsSubtotal = products.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
   return {
     laborSubtotal,
@@ -546,7 +575,7 @@ export const serviceOrderService = {
         : openedAtDate;
 
     const { order, receivable } = await prisma.$transaction(async (tx) => {
-      const number = await getNextOrderNumber(tx, context.companyId);
+      const number = await getNextOrderNumber(tx, context.companyId, payload.customOsNumber);
 
       const orderRow = await tx.serviceOrder.create({
         data: {
@@ -573,8 +602,9 @@ export const serviceOrderService = {
             create: payload.services.map((service) => ({
               serviceId: service.serviceId || null,
               description: service.description,
+              quantity: service.quantity ?? 1,
               laborPrice: service.laborPrice,
-              lineTotal: service.laborPrice,
+              lineTotal: (service.quantity ?? 1) * service.laborPrice,
               executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
               commissionRate: service.commissionRate ?? 12,
             })),
@@ -753,8 +783,9 @@ export const serviceOrderService = {
               create: services.map((service) => ({
                 serviceId: service.serviceId || null,
                 description: service.description,
+                quantity: service.quantity ?? 1,
                 laborPrice: service.laborPrice,
-                lineTotal: service.laborPrice,
+                lineTotal: (service.quantity ?? 1) * service.laborPrice,
                 executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
                 commissionRate: service.commissionRate ?? 12,
               })),
@@ -786,6 +817,7 @@ export const serviceOrderService = {
                 id: true,
                 serviceId: true,
                 description: true,
+                quantity: true,
                 laborPrice: true,
                 lineTotal: true,
                 previousOrderStatus: true,
@@ -1051,6 +1083,7 @@ export const serviceOrderService = {
                 id: true,
                 serviceId: true,
                 description: true,
+                quantity: true,
                 laborPrice: true,
                 lineTotal: true,
                 previousOrderStatus: true,
@@ -1124,6 +1157,7 @@ export const serviceOrderService = {
               id: true,
               serviceId: true,
               description: true,
+              quantity: true,
               laborPrice: true,
               lineTotal: true,
               previousOrderStatus: true,

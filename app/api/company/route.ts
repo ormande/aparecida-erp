@@ -6,9 +6,10 @@ import { authOptions, checkRole } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 const companySchema = z.object({
-  name: z.string().min(2).max(100),
-  address: z.string().max(300).optional().default(""),
-  phone: z.string().max(20).optional().default(""),
+  name: z.string().min(2).max(100).optional(),
+  address: z.string().max(300).optional(),
+  phone: z.string().max(20).optional(),
+  nextOsSequence: z.coerce.number().int().min(1).optional(),
 });
 
 export async function GET() {
@@ -32,6 +33,7 @@ export async function GET() {
       address: true,
       phone: true,
       slug: true,
+      nextOsSequence: true,
     },
   });
 
@@ -53,7 +55,12 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const payload = companySchema.parse(await request.json());
+  let payload: z.infer<typeof companySchema>;
+  try {
+    payload = companySchema.parse(await request.json());
+  } catch {
+    return NextResponse.json({ message: "Dados inválidos." }, { status: 400 });
+  }
 
   const existing = await prisma.company.findUnique({
     where: {
@@ -64,6 +71,7 @@ export async function PATCH(request: Request) {
       name: true,
       phone: true,
       address: true,
+      nextOsSequence: true,
     },
   });
 
@@ -76,9 +84,10 @@ export async function PATCH(request: Request) {
       id: session.user.companyId,
     },
     data: {
-      name: payload.name,
-      address: payload.address || null,
-      phone: payload.phone || null,
+      ...(payload.name !== undefined ? { name: payload.name } : {}),
+      ...(payload.address !== undefined ? { address: payload.address || null } : {}),
+      ...(payload.phone !== undefined ? { phone: payload.phone || null } : {}),
+      ...(payload.nextOsSequence !== undefined ? { nextOsSequence: payload.nextOsSequence } : {}),
     },
     select: {
       id: true,
@@ -86,6 +95,7 @@ export async function PATCH(request: Request) {
       address: true,
       phone: true,
       slug: true,
+      nextOsSequence: true,
     },
   });
 

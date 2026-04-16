@@ -3,11 +3,22 @@
 import Link from "next/link";
 import { Eye, MessageCircle, Pencil, Plus, Truck } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { mutate } from "swr";
 
+import { SupplierForm } from "@/components/suppliers/supplier-form";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { PersonPreviewDialog } from "@/components/people/person-preview-dialog";
 import { DataTable } from "@/components/ui/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useSuppliers } from "@/hooks/use-suppliers";
 import { getPersonDocument, getPersonName } from "@/lib/person-helpers";
@@ -19,6 +30,7 @@ function getWhatsAppUrl(value: string) {
 export default function FornecedoresPage() {
   const { suppliers, hydrated } = useSuppliers();
   const [viewingSupplierId, setViewingSupplierId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
 
   const data = suppliers.map((supplier) => ({
     ...supplier,
@@ -37,13 +49,49 @@ export default function FornecedoresPage() {
         title="Fornecedores"
         subtitle="Gerencie parceiros de pneus, peças, insumos e serviços com base real da empresa."
         actions={
-          <Link
-            href="/fornecedores/novo"
-            className="inline-flex h-9 items-center justify-center rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Novo fornecedor
-          </Link>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger
+              render={
+                <Button className="rounded-full">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Novo fornecedor
+                </Button>
+              }
+            />
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Novo fornecedor</DialogTitle>
+                <DialogDescription>Cadastre o fornecedor sem sair da lista.</DialogDescription>
+              </DialogHeader>
+              <SupplierForm
+                submitLabel="Salvar fornecedor"
+                onSubmit={async (values) => {
+                  const response = await fetch("/api/suppliers", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(values),
+                  });
+
+                  const data = await response.json().catch(() => ({}));
+
+                  if (!response.ok) {
+                    toast.error(
+                      (data as { message?: string; error?: string }).message ??
+                        (data as { error?: string }).error ??
+                        "Não foi possível cadastrar o fornecedor.",
+                    );
+                    return;
+                  }
+
+                  toast.success("Fornecedor cadastrado com sucesso!");
+                  setOpen(false);
+                  await mutate("/api/suppliers");
+                }}
+              />
+            </DialogContent>
+          </Dialog>
         }
       />
 

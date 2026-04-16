@@ -23,6 +23,7 @@ const updateOrderSchema = z.object({
       z.object({
         serviceId: z.string().optional().nullable(),
         description: z.string().min(1).max(500),
+        quantity: z.coerce.number().int().min(1).optional().default(1),
         laborPrice: z.coerce.number().min(0),
         executedByUserId: z.string().optional().nullable(),
         commissionRate: z.coerce.number().int().min(1).max(100).optional().default(12),

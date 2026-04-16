@@ -32,9 +32,10 @@ export function OsViewDialog({ order, onClose }: { order: OrderDetails | null; o
       );
     } else {
       const { OsPdf } = await import("@/components/pdf/os-pdf");
+      const filename = order.number.startsWith("OS-") ? order.number : `OS-${order.number}`;
       await downloadPdf(
         createElement(OsPdf, { order, companyName, unitName: order.unitName ?? "" }),
-        `OS-${order.number}`,
+        filename,
       );
     }
   }, [order, companyName, downloadPdf]);

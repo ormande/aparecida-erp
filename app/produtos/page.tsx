@@ -3,12 +3,22 @@
 import Link from "next/link";
 import { Package, Pencil, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
+import { ProductForm } from "@/components/products/product-form";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { currency } from "@/lib/formatters";
 
 type Product = {
@@ -34,9 +44,12 @@ export default function ProdutosPage() {
   const [hydrated, setHydrated] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState("true");
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setHydrated(false);
+
     const params = new URLSearchParams();
     if (activeFilter) params.set("isActive", activeFilter);
     if (categoryFilter) params.set("category", categoryFilter);
@@ -99,12 +112,62 @@ export default function ProdutosPage() {
         title="Produtos"
         subtitle="Gerencie o catálogo de produtos disponíveis para lançamento nas OS."
         actions={
-          <Link href="/produtos/novo">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Novo produto
-            </Button>
-          </Link>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger
+              render={
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Novo produto
+                </Button>
+              }
+            />
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Novo produto</DialogTitle>
+                <DialogDescription>Cadastre o produto sem sair da lista.</DialogDescription>
+              </DialogHeader>
+              <ProductForm
+                submitLabel="Salvar produto"
+                categories={categories}
+                onSubmit={async (values) => {
+                  const response = await fetch("/api/products", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(values),
+                  });
+
+                  const data = await response.json().catch(() => ({}));
+
+                  if (!response.ok) {
+                    toast.error(
+                      (data as { message?: string; error?: string }).message ??
+                        (data as { error?: string }).error ??
+                        "Não foi possível cadastrar o produto.",
+                    );
+                    return;
+                  }
+
+                  toast.success("Produto cadastrado com sucesso!");
+                  setOpen(false);
+
+                  // Recarrega a lista respeitando os filtros atuais
+                  const params = new URLSearchParams();
+                  if (activeFilter) params.set("isActive", activeFilter);
+                  if (categoryFilter) params.set("category", categoryFilter);
+                  setHydrated(false);
+                  const refreshed = await fetch(`/api/products?${params.toString()}`).then((res) => res.json()).catch(() => ({}));
+                  setProducts(
+                    ((refreshed as { products?: ProductApiRow[] }).products ?? []).map((p) => ({
+                      ...p,
+                      costPrice: p.costPrice == null || p.costPrice === "" ? null : Number(p.costPrice),
+                      salePrice: Number(p.salePrice),
+                    })),
+                  );
+                  setHydrated(true);
+                }}
+              />
+            </DialogContent>
+          </Dialog>
         }
       />
 

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { mutate } from "swr";
 
 import type { VehicleFormValues } from "@/components/vehicles/vehicle-form";
+import type { CadastroPessoaFormValues } from "@/components/people/cadastro-pessoa-form";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useCustomers } from "@/hooks/use-customers";
 import { useEmployees } from "@/hooks/use-employees";
@@ -19,6 +20,7 @@ export type ServiceDraft = {
   id: string;
   serviceId: string;
   description: string;
+  quantity: string;
   laborPrice: number;
   laborPriceInput: string;
   executedByUserId: string;
@@ -52,6 +54,7 @@ export function createDraft(index: number): ServiceDraft {
     id: `service-${index}`,
     serviceId: "",
     description: "",
+    quantity: "1",
     laborPrice: 0,
     laborPriceInput: formatCurrencyInput("0"),
     executedByUserId: "",
@@ -76,11 +79,14 @@ export function useNovaOs() {
   const [mileage, setMileage] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Pix");
   const [paymentTerm, setPaymentTerm] = useState<"A_VISTA" | "A_PRAZO">("A_VISTA");
+  const [useCustomNumber, setUseCustomNumber] = useState(false);
+  const [customOsNumber, setCustomOsNumber] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
   const [services, setServices] = useState<ServiceDraft[]>([createDraft(1)]);
   const [products, setProducts] = useState<ProductDraft[]>([]);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [sameEmployeeForAll, setSameEmployeeForAll] = useState(false);
   const [globalEmployeeId, setGlobalEmployeeId] = useState("");
   const [openedAtPreset, setOpenedAtPreset] = useState<"today" | "yesterday" | "other">("today");
@@ -118,7 +124,7 @@ export function useNovaOs() {
   }, [urlClientId, urlStandalone]);
 
   useEffect(() => {
-    if (units.length === 1 && !selectedUnitId) {
+    if (units.length >= 1 && !selectedUnitId) {
       setSelectedUnitId(units[0].id);
     }
   }, [units, selectedUnitId]);
@@ -177,7 +183,10 @@ export function useNovaOs() {
 
   const selectedClient = customers.find((client) => client.id === clientId);
   const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId);
-  const laborTotal = services.reduce((sum, service) => sum + Number(service.laborPrice || 0), 0);
+  const laborTotal = services.reduce(
+    (sum, service) => sum + (Number(service.quantity) || 0) * Number(service.laborPrice || 0),
+    0,
+  );
   const productsTotal = products.reduce((sum, p) => sum + (Number(p.quantity) || 0) * p.unitPrice, 0);
   const total = laborTotal + productsTotal;
   const isLoading = unitLoading || !customersHydrated || !servicesHydrated || !vehiclesHydrated || !employeesHydrated;
@@ -253,6 +262,35 @@ export function useNovaOs() {
     });
   }
 
+  async function handleCreateCustomer(values: CadastroPessoaFormValues) {
+    const response = await fetch("/api/customers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(values),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      toast.error((data as { message?: string; error?: string }).message ?? (data as { error?: string }).error ?? "Não foi possível cadastrar o cliente.");
+      return;
+    }
+
+    const createdId = (data as { customer?: { id?: string } }).customer?.id;
+    if (createdId) {
+      setClientId(createdId);
+      setVehicleId("");
+    }
+
+    setCustomerModalOpen(false);
+    toast.success("Cliente cadastrado com sucesso!");
+    void mutate((key: string) => typeof key === "string" && key.startsWith("/api/customers"), undefined, {
+      revalidate: true,
+    });
+  }
+
   function resetForm() {
     setIsStandalone(false);
     setCustomerNameSnapshot("");
@@ -261,6 +299,8 @@ export function useNovaOs() {
     setMileage("");
     setPaymentMethod("Pix");
     setPaymentTerm("A_VISTA");
+    setUseCustomNumber(false);
+    setCustomOsNumber("");
     setDueDate("");
     setNotes("");
     setServices([createDraft(1)]);
@@ -269,6 +309,8 @@ export function useNovaOs() {
     setGlobalEmployeeId("");
     setOpenedAtPreset("today");
     setOpenedAtCustom("");
+    setCustomerModalOpen(false);
+    setVehicleModalOpen(false);
   }
 
   async function handleSubmit() {
@@ -297,10 +339,16 @@ export function useNovaOs() {
       return;
     }
 
+    if (useCustomNumber && (!customOsNumber || Number(customOsNumber) < 1)) {
+      toast.error("Informe um número de OS válido.");
+      return;
+    }
+
     const normalizedServices = services
       .map((service) => ({
         serviceId: service.serviceId || undefined,
         description: service.description.trim(),
+        quantity: Math.max(1, Math.floor(Number(service.quantity) || 1)),
         laborPrice: Number(service.laborPrice || 0),
         executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
         commissionRate: service.commissionRate ?? 12,
@@ -325,6 +373,7 @@ export function useNovaOs() {
         mileage: mileage ? Number(mileage) : undefined,
         paymentMethod,
         paymentTerm,
+        customOsNumber: useCustomNumber && customOsNumber ? Number(customOsNumber) : undefined,
         dueDate: paymentTerm === "A_PRAZO" ? dueDate : null,
         notes,
         openedAt: resolvedOpenedAt,
@@ -378,10 +427,16 @@ export function useNovaOs() {
       return;
     }
 
+    if (useCustomNumber && (!customOsNumber || Number(customOsNumber) < 1)) {
+      toast.error("Informe um número de OS válido.");
+      return;
+    }
+
     const normalizedServices = services
       .map((service) => ({
         serviceId: service.serviceId || undefined,
         description: service.description.trim(),
+        quantity: Math.max(1, Math.floor(Number(service.quantity) || 1)),
         laborPrice: Number(service.laborPrice || 0),
         executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
         commissionRate: service.commissionRate ?? 12,
@@ -404,6 +459,7 @@ export function useNovaOs() {
         mileage: mileage ? Number(mileage) : undefined,
         paymentMethod,
         paymentTerm,
+        customOsNumber: useCustomNumber && customOsNumber ? Number(customOsNumber) : undefined,
         dueDate: paymentTerm === "A_PRAZO" ? dueDate : null,
         notes,
         openedAt: resolvedOpenedAt,
@@ -457,6 +513,10 @@ export function useNovaOs() {
     setPaymentMethod,
     paymentTerm,
     setPaymentTerm,
+    useCustomNumber,
+    setUseCustomNumber,
+    customOsNumber,
+    setCustomOsNumber,
     dueDate,
     setDueDate,
     notes,
@@ -470,6 +530,8 @@ export function useNovaOs() {
     productsTotal,
     vehicleModalOpen,
     setVehicleModalOpen,
+    customerModalOpen,
+    setCustomerModalOpen,
     vehicleOptions,
     customerOptions,
     serviceOptions,
@@ -487,6 +549,7 @@ export function useNovaOs() {
     removeService,
     addService,
     handleCreateVehicle,
+    handleCreateCustomer,
     handleSubmit,
     handleSubmitAndContinue,
     resetForm,

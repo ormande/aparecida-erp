@@ -118,10 +118,12 @@ export function SearchableSelect({
                           className={cn(
                             "[&>svg:last-child]:hidden",
                             "cursor-pointer rounded-lg px-2 py-2 transition-colors duration-150 ease-out",
-                            "data-[selected=true]:bg-muted/80",
-                            "aria-selected:bg-transparent",
-                            isSelected && "bg-[rgba(201,168,76,0.12)] text-foreground dark:bg-[rgba(201,168,76,0.14)]",
-                            !isSelected && "hover:bg-muted/50",
+                            // hover segue o mouse
+                            "hover:bg-[rgba(201,168,76,0.09)] dark:hover:bg-[rgba(201,168,76,0.15)]",
+                            // estado de seleção do cmdk (teclado + mouse sobre)
+                            "data-selected:bg-[rgba(201,168,76,0.16)] dark:data-selected:bg-[rgba(201,168,76,0.24)]",
+                            // item atualmente selecionado no campo
+                            isSelected && "bg-[rgba(201,168,76,0.12)] dark:bg-[rgba(201,168,76,0.16)] text-foreground",
                           )}
                           onSelect={() => {
                             onChange(option.value);

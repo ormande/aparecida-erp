@@ -199,15 +199,17 @@ export function OsPdf({ order, companyName, unitName }: OsPdfProps) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Serviços</Text>
           <View style={styles.tableHeader}>
+            <Text style={styles.colQtyHeader}>Qtd</Text>
             <Text style={styles.colDescHeader}>Descrição</Text>
             <Text style={styles.colEmployeeHeader}>Funcionário</Text>
             <Text style={styles.colValueHeader}>Valor</Text>
           </View>
           {order.services.map((svc, i) => (
             <View key={`${svc.id}-${i}`} style={styles.tableRow}>
+              <Text style={styles.colQty}>{String(svc.quantity ?? 1)}</Text>
               <Text style={styles.colDesc}>{svc.description}</Text>
               <Text style={styles.colEmployee}>{svc.executedByName || "—"}</Text>
-              <Text style={styles.colValue}>{formatCurrency(svc.laborPrice)}</Text>
+              <Text style={styles.colValue}>{formatCurrency((svc.quantity ?? 1) * svc.laborPrice)}</Text>
             </View>
           ))}
         </View>

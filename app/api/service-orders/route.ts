@@ -16,12 +16,14 @@ const orderSchema = z.object({
   openedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).optional().nullable(),
   paymentMethod: z.string().max(100).optional().default(""),
+  customOsNumber: z.coerce.number().int().min(1).optional(),
   notes: z.string().max(2000).optional().default(""),
   services: z
     .array(
       z.object({
         serviceId: z.string().optional().nullable(),
         description: z.string().min(1).max(500),
+        quantity: z.coerce.number().int().min(1).optional().default(1),
         laborPrice: z.coerce.number().min(0),
         executedByUserId: z.string().optional().nullable(),
         commissionRate: z.coerce.number().int().min(1).max(100).optional().default(12),
