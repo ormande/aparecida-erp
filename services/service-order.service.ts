@@ -76,7 +76,7 @@ function buildOrderNumber(year: number, sequence: number) {
 }
 
 async function getManualOrderNumber(
-  tx: Prisma.TransactionClient,
+  tx: any,
   companyId: string,
   customNumber: number,
   excludeOrderId?: string,
@@ -104,7 +104,7 @@ async function getManualOrderNumber(
   return formatted;
 }
 
-async function getNextAutoOrderNumber(tx: Prisma.TransactionClient, companyId: string) {
+async function getNextAutoOrderNumber(tx: any, companyId: string) {
   const lockKey = `${companyId}-os-number`;
   await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
 
@@ -122,8 +122,8 @@ async function getNextAutoOrderNumber(tx: Prisma.TransactionClient, companyId: s
 
   const used = new Set(
     orders
-      .map((order) => Number(order.number.split("-").at(-1)))
-      .filter((value) => Number.isFinite(value) && value > 0),
+      .map((order: { number: string }) => Number(order.number.split("-").at(-1)))
+      .filter((value: number) => Number.isFinite(value) && value > 0),
   );
 
   let next = 1;
