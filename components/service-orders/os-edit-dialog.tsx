@@ -61,6 +61,13 @@ export function OsEditDialog({
         })),
     [employees],
   );
+  const paymentMethodOptions = useMemo(
+    () =>
+      editableData.paymentTerm === "A_PRAZO"
+        ? [...PAYMENT_METHOD_OPTIONS, { value: "Mensal", label: "Mensal" }]
+        : PAYMENT_METHOD_OPTIONS,
+    [editableData.paymentTerm],
+  );
 
   useEffect(() => {
     if (!order?.id) {
@@ -90,6 +97,13 @@ export function OsEditDialog({
     setEditableServices((current) => current.map((line) => ({ ...line, executedByUserId: globalEmployeeId })));
   }, [sameEmployeeForAll, globalEmployeeId, setEditableServices]);
 
+  useEffect(() => {
+    if (editableData.paymentTerm !== "A_PRAZO" || editableData.paymentMethod === "Mensal") {
+      return;
+    }
+    setEditableData((current) => ({ ...current, paymentMethod: "Mensal" }));
+  }, [editableData.paymentMethod, editableData.paymentTerm, setEditableData]);
+
   return (
     <Dialog open={Boolean(order)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-3xl">
@@ -106,6 +120,22 @@ export function OsEditDialog({
                 onChange={(value) => setEditableData((current) => ({ ...current, unitId: value }))}
                 options={unitOptions}
                 placeholder="Selecione a unidade"
+              />
+            </div>
+            <div className="grid gap-2 md:max-w-xs">
+              <Label>Número da OS</Label>
+              <Input
+                type="number"
+                min={1}
+                value={editableData.customOsNumber}
+                onChange={(event) =>
+                  setEditableData((current) => ({
+                    ...current,
+                    customOsNumber: event.target.value.replace(/\D/g, "").slice(0, 5),
+                  }))
+                }
+                placeholder="Ex: 11042"
+                className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -142,7 +172,8 @@ export function OsEditDialog({
                   value={editableData.paymentMethod}
                   onChange={(value) => setEditableData((current) => ({ ...current, paymentMethod: value }))}
                   placeholder="Selecione a forma de pagamento"
-                  options={PAYMENT_METHOD_OPTIONS}
+                  options={paymentMethodOptions}
+                  disabled={editableData.paymentTerm === "A_PRAZO"}
                 />
               </div>
               <div className="grid gap-2">
@@ -157,13 +188,20 @@ export function OsEditDialog({
             <div className="flex gap-2">
               <Button
                 variant={editableData.paymentTerm === "A_VISTA" ? "default" : "outline"}
-                onClick={() => setEditableData((current) => ({ ...current, paymentTerm: "A_VISTA", dueDate: "" }))}
+                onClick={() =>
+                  setEditableData((current) => ({
+                    ...current,
+                    paymentTerm: "A_VISTA",
+                    dueDate: "",
+                    paymentMethod: current.paymentMethod === "Mensal" ? "Pix" : current.paymentMethod,
+                  }))
+                }
               >
                 A vista
               </Button>
               <Button
                 variant={editableData.paymentTerm === "A_PRAZO" ? "default" : "outline"}
-                onClick={() => setEditableData((current) => ({ ...current, paymentTerm: "A_PRAZO" }))}
+                onClick={() => setEditableData((current) => ({ ...current, paymentTerm: "A_PRAZO", paymentMethod: "Mensal" }))}
               >
                 A prazo
               </Button>

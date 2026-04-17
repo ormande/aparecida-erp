@@ -23,7 +23,7 @@ export function OsSummaryCard({
   productsTotal: number;
   unitName: string;
   clientName: string;
-  vehiclePlate: string;
+  vehiclePlate?: string;
   paymentTerm: "A_VISTA" | "A_PRAZO";
   dueDate: string;
   isLoading: boolean;
@@ -56,8 +56,8 @@ export function OsSummaryCard({
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>Unidade: {unitName}</p>
           <p>Cliente: {clientName}</p>
-          <p>Veículo: {vehiclePlate}</p>
-          <p>Pagamento: {paymentTerm === "A_VISTA" ? "À vista" : "A prazo"}</p>
+          {vehiclePlate ? <p>Veículo: {vehiclePlate}</p> : null}
+          <p>Pagamento: {paymentTerm === "A_VISTA" ? "À vista" : "À prazo"}</p>
           <p>Vencimento: {paymentTerm === "A_PRAZO" ? dueDate || "-" : "Pagamento imediato"}</p>
         </div>
         <Button className="w-full" onClick={onSubmit} disabled={disabled || isLoading}>

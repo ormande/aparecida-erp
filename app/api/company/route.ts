@@ -9,7 +9,6 @@ const companySchema = z.object({
   name: z.string().min(2).max(100).optional(),
   address: z.string().max(300).optional(),
   phone: z.string().max(20).optional(),
-  nextOsSequence: z.coerce.number().int().min(1).optional(),
 });
 
 export async function GET() {
@@ -33,7 +32,6 @@ export async function GET() {
       address: true,
       phone: true,
       slug: true,
-      nextOsSequence: true,
     },
   });
 
@@ -71,7 +69,6 @@ export async function PATCH(request: Request) {
       name: true,
       phone: true,
       address: true,
-      nextOsSequence: true,
     },
   });
 
@@ -87,7 +84,6 @@ export async function PATCH(request: Request) {
       ...(payload.name !== undefined ? { name: payload.name } : {}),
       ...(payload.address !== undefined ? { address: payload.address || null } : {}),
       ...(payload.phone !== undefined ? { phone: payload.phone || null } : {}),
-      ...(payload.nextOsSequence !== undefined ? { nextOsSequence: payload.nextOsSequence } : {}),
     },
     select: {
       id: true,
@@ -95,7 +91,6 @@ export async function PATCH(request: Request) {
       address: true,
       phone: true,
       slug: true,
-      nextOsSequence: true,
     },
   });
 

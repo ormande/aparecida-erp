@@ -49,6 +49,7 @@ type UpdateOrderPayload = {
   dueDate?: string | null;
   paymentTerm?: "A_VISTA" | "A_PRAZO" | null;
   paymentMethod?: string;
+  customOsNumber?: number;
   notes?: string;
   services?: OrderServiceItemPayload[];
   products?: OrderProductPayload[];
@@ -74,37 +75,40 @@ function buildOrderNumber(year: number, sequence: number) {
   return `OS-${year}-${String(sequence).padStart(5, "0")}`;
 }
 
-async function getNextOrderNumber(
+async function getManualOrderNumber(
   tx: Prisma.TransactionClient,
   companyId: string,
-  customNumber?: number,
+  customNumber: number,
+  excludeOrderId?: string,
 ) {
+  if (!Number.isInteger(customNumber) || customNumber < 1 || customNumber > 99999) {
+    throw new ServiceError("Número da OS inválido. Use um valor entre 1 e 99999.", 400);
+  }
+
   const lockKey = `${companyId}-os-number`;
   // pg_advisory_xact_lock(...) retorna void; use executeRaw para não desserializar resultado.
   await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
 
   const currentYear = new Date().getFullYear();
-
-  if (customNumber) {
-    const exists = await tx.serviceOrder.findFirst({
-      where: { companyId, number: buildOrderNumber(currentYear, customNumber) },
-      select: { id: true },
-    });
-    if (exists) {
-      throw new ServiceError(
-        `Já existe uma OS com o número OS-${currentYear}-${String(customNumber).padStart(5, "0")}.`,
-        409,
-      );
-    }
-    return buildOrderNumber(currentYear, customNumber);
-  }
-
-  const company = await tx.company.findFirst({
-    where: { id: companyId },
-    select: { nextOsSequence: true },
+  const formatted = buildOrderNumber(currentYear, customNumber);
+  const exists = await tx.serviceOrder.findFirst({
+    where: { companyId, number: formatted },
+    select: { id: true },
   });
-  const minSequence = company?.nextOsSequence ?? 1;
+  if (exists && exists.id !== excludeOrderId) {
+    throw new ServiceError(
+      `Já existe uma OS com o número OS-${currentYear}-${String(customNumber).padStart(5, "0")}.`,
+      409,
+    );
+  }
+  return formatted;
+}
 
+async function getNextAutoOrderNumber(tx: Prisma.TransactionClient, companyId: string) {
+  const lockKey = `${companyId}-os-number`;
+  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
+
+  const currentYear = new Date().getFullYear();
   const orders = await tx.serviceOrder.findMany({
     where: {
       companyId,
@@ -122,7 +126,7 @@ async function getNextOrderNumber(
       .filter((value) => Number.isFinite(value) && value > 0),
   );
 
-  let next = minSequence;
+  let next = 1;
   while (used.has(next)) {
     next += 1;
   }
@@ -560,12 +564,14 @@ export const serviceOrderService = {
       await ensureVehicleExists(payload.vehicleId, context.companyId, payload.customerId);
     }
 
+    const isStandalone = !payload.customerId;
     const productsList = payload.products ?? [];
     const { laborSubtotal, productsSubtotal, totalAmount } = calcOrderTotals(
       payload.services,
       productsList,
     );
     const paymentTerm = payload.paymentTerm ?? "A_VISTA";
+    const paymentMethod = paymentTerm === "A_PRAZO" ? "Mensal" : payload.paymentMethod || null;
     const openedAtDate = payload.openedAt
       ? new Date(`${payload.openedAt}T00:00:00`)
       : new Date();
@@ -575,7 +581,15 @@ export const serviceOrderService = {
         : openedAtDate;
 
     const { order, receivable } = await prisma.$transaction(async (tx) => {
-      const number = await getNextOrderNumber(tx, context.companyId, payload.customOsNumber);
+      let number: string;
+      if (isStandalone) {
+        number = await getNextAutoOrderNumber(tx, context.companyId);
+      } else {
+        if (!payload.customOsNumber) {
+          throw new ServiceError("Informe um número de OS válido.", 400);
+        }
+        number = await getManualOrderNumber(tx, context.companyId, payload.customOsNumber);
+      }
 
       const orderRow = await tx.serviceOrder.create({
         data: {
@@ -589,9 +603,9 @@ export const serviceOrderService = {
           mileage: payload.mileage ?? null,
           dueDate,
           paymentTerm,
-          paymentMethod: payload.paymentMethod || null,
+          paymentMethod,
           notes: payload.notes || null,
-          isStandalone: !payload.customerId,
+          isStandalone,
           totalAmount,
           laborSubtotal,
           productsSubtotal,
@@ -750,10 +764,16 @@ export const serviceOrderService = {
         productsList,
       );
       const paymentTerm = payload.paymentTerm ?? existing.paymentTerm ?? "A_VISTA";
+      const paymentMethod = paymentTerm === "A_PRAZO" ? "Mensal" : payload.paymentMethod || null;
       const dueDate =
         paymentTerm === "A_PRAZO" && payload.dueDate ? new Date(`${payload.dueDate}T00:00:00`) : new Date();
 
       const updated = await db.$transaction(async (tx) => {
+        const nextOrderNumber =
+          payload.customOsNumber && payload.customOsNumber > 0
+            ? await getManualOrderNumber(tx, context.companyId, payload.customOsNumber, existing.id)
+            : existing.number;
+
         await tx.serviceOrderItem.deleteMany({
           where: { serviceOrderId: existing.id },
         });
@@ -769,10 +789,11 @@ export const serviceOrderService = {
             unitId: existing.unitId,
             customerNameSnapshot: payload.customerId ? null : payload.customerNameSnapshot || "Cliente avulso",
             vehicleId: payload.vehicleId || null,
+            number: nextOrderNumber,
             mileage: payload.mileage ?? null,
             dueDate,
             paymentTerm,
-            paymentMethod: payload.paymentMethod || null,
+            paymentMethod,
             notes: payload.notes || null,
             isStandalone: !payload.customerId,
             totalAmount,
@@ -880,6 +901,7 @@ export const serviceOrderService = {
             unitId: existing.unitId,
             amount: totalAmount,
             dueDate,
+            description: nextOrderNumber,
           },
         });
 

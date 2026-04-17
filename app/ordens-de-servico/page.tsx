@@ -30,7 +30,7 @@ export default function OrdensDeServicoPage() {
           <div className="flex flex-wrap gap-3">
             <Link href="/ordens-de-servico/fechamentos"><Button variant="outline">OS de fechamento</Button></Link>
             <Button variant={p.groupByCustomer ? "default" : "outline"} onClick={() => p.setGroupByCustomer((c) => !c)}>
-              {p.groupByCustomer ? "Visao individual" : "Unificar por cliente/mes"}
+              {p.groupByCustomer ? "Visão individual" : "Unificar por cliente/mês"}
             </Button>
             <Button variant="outline" onClick={p.clearFilters}>Excluir filtros</Button>
             <Link href="/ordens-de-servico/nova?standalone=1"><Button variant="outline"><FilePlus2 className="mr-2 h-4 w-4" />OS avulsa</Button></Link>
@@ -50,7 +50,7 @@ export default function OrdensDeServicoPage() {
         <div className="grid gap-3 lg:grid-cols-4">
           <SearchableSelect value={p.customerFilter} onChange={(v) => { p.setCustomerFilter(v); p.setPage(1); }} placeholder="Filtrar por cliente" options={p.customerOptions} />
           <SearchableSelect value={p.statusFilter} onChange={(v) => { p.setStatusFilter(v); p.setPage(1); }} placeholder="Filtrar por status" options={statusOpts} />
-          <SearchableSelect value={p.serviceFilter} onChange={p.setServiceFilter} placeholder="Filtrar por servico" options={p.serviceOptions} />
+          <SearchableSelect value={p.serviceFilter} onChange={p.setServiceFilter} placeholder="Filtrar por serviço" options={p.serviceOptions} />
           <div className="grid grid-cols-2 gap-3">
             <Input value={p.minValue} onChange={(e) => p.setMinValue(formatCurrencyInput(e.target.value))} placeholder="Valor minimo" />
             <Input value={p.maxValue} onChange={(e) => p.setMaxValue(formatCurrencyInput(e.target.value))} placeholder="Valor maximo" />
@@ -91,7 +91,7 @@ export default function OrdensDeServicoPage() {
             searchValue={p.search}
             onSearchChange={(v) => { p.setSearch(v); p.setPage(1); }}
             manualPagination={{ page: p.meta?.page ?? p.page, totalPages: p.meta?.totalPages ?? 1, onPageChange: p.setPage }}
-            searchPlaceholder="Buscar por numero, cliente ou placa"
+            searchPlaceholder="Buscar por número ou cliente"
             searchKeys={p.filteredOrdersSearchKeys}
             columns={p.filteredTableColumns.map((col) => ({
               ...col,

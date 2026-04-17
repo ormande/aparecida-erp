@@ -13,6 +13,7 @@ import { useEmployees } from "@/hooks/use-employees";
 import { useServices } from "@/hooks/use-services";
 import { useUnits } from "@/hooks/use-units";
 import { useVehicles } from "@/hooks/use-vehicles";
+import { VEICULOS_ATIVO } from "@/lib/config";
 import { currency, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
 import { getPersonDocument, getPersonName } from "@/lib/person-helpers";
 
@@ -79,11 +80,10 @@ export function useNovaOs() {
   const [mileage, setMileage] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Pix");
   const [paymentTerm, setPaymentTerm] = useState<"A_VISTA" | "A_PRAZO">("A_VISTA");
-  const [useCustomNumber, setUseCustomNumber] = useState(false);
   const [customOsNumber, setCustomOsNumber] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
-  const [services, setServices] = useState<ServiceDraft[]>([createDraft(1)]);
+  const [services, setServices] = useState<ServiceDraft[]>([]);
   const [products, setProducts] = useState<ProductDraft[]>([]);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
@@ -135,6 +135,13 @@ export function useNovaOs() {
     }
     setServices((current) => current.map((item) => ({ ...item, executedByUserId: globalEmployeeId })));
   }, [sameEmployeeForAll, globalEmployeeId]);
+
+  useEffect(() => {
+    if (paymentTerm !== "A_PRAZO" || paymentMethod === "Mensal") {
+      return;
+    }
+    setPaymentMethod("Mensal");
+  }, [paymentMethod, paymentTerm]);
 
   const employeeOptions = useMemo(
     () =>
@@ -299,11 +306,10 @@ export function useNovaOs() {
     setMileage("");
     setPaymentMethod("Pix");
     setPaymentTerm("A_VISTA");
-    setUseCustomNumber(false);
     setCustomOsNumber("");
     setDueDate("");
     setNotes("");
-    setServices([createDraft(1)]);
+    setServices([]);
     setProducts([]);
     setSameEmployeeForAll(false);
     setGlobalEmployeeId("");
@@ -339,7 +345,7 @@ export function useNovaOs() {
       return;
     }
 
-    if (useCustomNumber && (!customOsNumber || Number(customOsNumber) < 1)) {
+    if (!isStandalone && (!customOsNumber || Number(customOsNumber) < 1 || Number(customOsNumber) > 99999)) {
       toast.error("Informe um número de OS válido.");
       return;
     }
@@ -355,8 +361,18 @@ export function useNovaOs() {
       }))
       .filter((service) => service.description.length > 0);
 
-    if (!normalizedServices.length) {
-      toast.error("Adicione pelo menos um serviço na OS.");
+    const normalizedProducts = products
+      .filter((p) => p.description.trim().length > 0 && Number(p.quantity) > 0)
+      .map((p) => ({
+        productId: p.productId || null,
+        description: p.description,
+        unit: p.unit,
+        quantity: Number(p.quantity),
+        unitPrice: p.unitPrice,
+      }));
+
+    if (!normalizedServices.length && !normalizedProducts.length) {
+      toast.error("Adicione pelo menos um produto ou serviço na OS.");
       return;
     }
 
@@ -369,24 +385,16 @@ export function useNovaOs() {
         unitId: selectedUnitId,
         customerId: isStandalone ? null : clientId,
         customerNameSnapshot: isStandalone ? customerNameSnapshot : "",
-        vehicleId: vehicleId || undefined,
-        mileage: mileage ? Number(mileage) : undefined,
+        vehicleId: VEICULOS_ATIVO ? vehicleId || undefined : undefined,
+        mileage: VEICULOS_ATIVO && mileage ? Number(mileage) : undefined,
         paymentMethod,
         paymentTerm,
-        customOsNumber: useCustomNumber && customOsNumber ? Number(customOsNumber) : undefined,
+        customOsNumber: isStandalone ? undefined : Number(customOsNumber),
         dueDate: paymentTerm === "A_PRAZO" ? dueDate : null,
         notes,
         openedAt: resolvedOpenedAt,
         services: normalizedServices,
-        products: products
-          .filter((p) => p.description.trim().length > 0 && Number(p.quantity) > 0)
-          .map((p) => ({
-            productId: p.productId || null,
-            description: p.description,
-            unit: p.unit,
-            quantity: Number(p.quantity),
-            unitPrice: p.unitPrice,
-          })),
+        products: normalizedProducts,
       }),
     });
 
@@ -427,7 +435,7 @@ export function useNovaOs() {
       return;
     }
 
-    if (useCustomNumber && (!customOsNumber || Number(customOsNumber) < 1)) {
+    if (!isStandalone && (!customOsNumber || Number(customOsNumber) < 1 || Number(customOsNumber) > 99999)) {
       toast.error("Informe um número de OS válido.");
       return;
     }
@@ -443,8 +451,18 @@ export function useNovaOs() {
       }))
       .filter((service) => service.description.length > 0);
 
-    if (!normalizedServices.length) {
-      toast.error("Adicione pelo menos um serviço na OS.");
+    const normalizedProducts = products
+      .filter((p) => p.description.trim().length > 0 && Number(p.quantity) > 0)
+      .map((p) => ({
+        productId: p.productId || null,
+        description: p.description,
+        unit: p.unit,
+        quantity: Number(p.quantity),
+        unitPrice: p.unitPrice,
+      }));
+
+    if (!normalizedServices.length && !normalizedProducts.length) {
+      toast.error("Adicione pelo menos um produto ou serviço na OS.");
       return;
     }
 
@@ -455,24 +473,16 @@ export function useNovaOs() {
         unitId: selectedUnitId,
         customerId: isStandalone ? null : clientId,
         customerNameSnapshot: isStandalone ? customerNameSnapshot : "",
-        vehicleId: vehicleId || undefined,
-        mileage: mileage ? Number(mileage) : undefined,
+        vehicleId: VEICULOS_ATIVO ? vehicleId || undefined : undefined,
+        mileage: VEICULOS_ATIVO && mileage ? Number(mileage) : undefined,
         paymentMethod,
         paymentTerm,
-        customOsNumber: useCustomNumber && customOsNumber ? Number(customOsNumber) : undefined,
+        customOsNumber: isStandalone ? undefined : Number(customOsNumber),
         dueDate: paymentTerm === "A_PRAZO" ? dueDate : null,
         notes,
         openedAt: resolvedOpenedAt,
         services: normalizedServices,
-        products: products
-          .filter((p) => p.description.trim().length > 0 && Number(p.quantity) > 0)
-          .map((p) => ({
-            productId: p.productId || null,
-            description: p.description,
-            unit: p.unit,
-            quantity: Number(p.quantity),
-            unitPrice: p.unitPrice,
-          })),
+        products: normalizedProducts,
       }),
     });
 
@@ -513,8 +523,6 @@ export function useNovaOs() {
     setPaymentMethod,
     paymentTerm,
     setPaymentTerm,
-    useCustomNumber,
-    setUseCustomNumber,
     customOsNumber,
     setCustomOsNumber,
     dueDate,

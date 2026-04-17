@@ -17,6 +17,7 @@ const updateOrderSchema = z.object({
   dueDate: z.string().optional().nullable(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).optional().nullable(),
   paymentMethod: z.string().max(100).optional().default(""),
+  customOsNumber: z.coerce.number().int().min(1).max(99999).optional(),
   notes: z.string().max(2000).optional().default(""),
   services: z
     .array(

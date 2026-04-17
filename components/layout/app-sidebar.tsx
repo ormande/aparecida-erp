@@ -24,7 +24,7 @@ import { NsaLogo } from "@/components/layout/nsa-logo";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/hooks/use-auth";
-import { ESTOQUE_ATIVO } from "@/lib/config";
+import { ESTOQUE_ATIVO, VEICULOS_ATIVO } from "@/lib/config";
 import { isFirstSevenDaysOfMonth } from "@/lib/report-dates";
 import { cn } from "@/lib/utils";
 
@@ -47,13 +47,13 @@ const baseItems: NavItem[] = [
     children: [
       { href: "/clientes", label: "Clientes", icon: Users },
       { href: "/produtos", label: "Produtos", icon: Package },
-      { href: "/veiculos", label: "Veículos", icon: Car },
+      ...(VEICULOS_ATIVO ? [{ href: "/veiculos", label: "Veículos", icon: Car } satisfies NavChild] : []),
       { href: "/fornecedores", label: "Fornecedores", icon: Truck },
       { href: "/funcionarios", label: "Funcionários", icon: HardHat },
       { href: "/servicos", label: "Serviços", icon: Wrench },
     ],
   },
-  { href: "/veiculos", label: "Veículos", icon: CarFront },
+  ...(VEICULOS_ATIVO ? [{ href: "/veiculos", label: "Veículos", icon: CarFront } satisfies NavItem] : []),
   {
     href: "/ordens-de-servico",
     label: "Ordens de Serviço",

@@ -229,14 +229,14 @@ export function CadastroPessoaForm({
           </div>
         ) : (
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2">
-              <Label htmlFor="nomeFantasia">Nome fantasia *</Label>
+            <div className="grid gap-2">
+              <Label htmlFor="cnpj">CNPJ</Label>
               <Input
-                id="nomeFantasia"
-                value={values.nomeFantasia}
-                onChange={(event) => updateField("nomeFantasia", event.target.value)}
+                id="cnpj"
+                value={values.cnpj}
+                onChange={(event) => updateField("cnpj", maskCnpj(event.target.value))}
+                placeholder="00.000.000/0000-00"
               />
-              {errors.nomeFantasia ? <p className="text-xs text-destructive">{errors.nomeFantasia}</p> : null}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="razaoSocial">Razão social</Label>
@@ -246,14 +246,14 @@ export function CadastroPessoaForm({
                 onChange={(event) => updateField("razaoSocial", event.target.value)}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="cnpj">CNPJ</Label>
+            <div className="grid gap-2 md:col-span-2">
+              <Label htmlFor="nomeFantasia">Nome fantasia *</Label>
               <Input
-                id="cnpj"
-                value={values.cnpj}
-                onChange={(event) => updateField("cnpj", maskCnpj(event.target.value))}
-                placeholder="00.000.000/0000-00"
+                id="nomeFantasia"
+                value={values.nomeFantasia}
+                onChange={(event) => updateField("nomeFantasia", event.target.value)}
               />
+              {errors.nomeFantasia ? <p className="text-xs text-destructive">{errors.nomeFantasia}</p> : null}
             </div>
           </div>
         )}

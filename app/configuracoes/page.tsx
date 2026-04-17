@@ -36,8 +36,6 @@ export default function ConfiguracoesPage() {
   const [creatingUnit, setCreatingUnit] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [savingCompany, setSavingCompany] = useState(false);
-  const [nextOsSequence, setNextOsSequence] = useState("1");
-  const [savingOsSequence, setSavingOsSequence] = useState(false);
   const [activeUnitId, setActiveUnitId] = useState("");
   const [unitDrafts, setUnitDrafts] = useState<Record<string, { name: string; address: string; phone: string }>>({});
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
@@ -67,13 +65,11 @@ export default function ConfiguracoesPage() {
       .then((data) => {
         if (active) {
           setCompanyName(data.company.name ?? "");
-          setNextOsSequence(String(data.company.nextOsSequence ?? 1));
         }
       })
       .catch(() => {
         if (active) {
           setCompanyName("");
-          setNextOsSequence("1");
         }
       });
 
@@ -167,33 +163,6 @@ export default function ConfiguracoesPage() {
       toast.error(error instanceof Error ? error.message : "Não foi possível salvar a empresa.");
     } finally {
       setSavingCompany(false);
-    }
-  }
-
-  async function handleSaveOsSequence() {
-    const next = Number(nextOsSequence);
-    if (!nextOsSequence || !Number.isFinite(next) || next < 1) {
-      toast.error("Informe um número de OS válido.");
-      return;
-    }
-
-    setSavingOsSequence(true);
-    try {
-      const response = await fetch("/api/company", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nextOsSequence: next }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        toast.error((data as { message?: string }).message ?? "Não foi possível salvar a numeração.");
-        return;
-      }
-      toast.success("Numeração de OS atualizada com sucesso!");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível salvar a numeração.");
-    } finally {
-      setSavingOsSequence(false);
     }
   }
 
@@ -302,7 +271,9 @@ export default function ConfiguracoesPage() {
             <p className="font-medium">{user.nomeCompleto}</p>
             <p className="text-sm text-muted-foreground">{user.nivelAcesso}</p>
           </div>
-          <Badge>{user.situacao}</Badge>
+          <Badge variant="outline" className="rounded-full">
+            {user.situacao}
+          </Badge>
         </div>
       )),
     [employees],
@@ -325,23 +296,6 @@ export default function ConfiguracoesPage() {
               <Label>Nome da empresa</Label>
               <Input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
             </div>
-            <div className="grid gap-2">
-              <Label>Próximo número de OS</Label>
-              <Input
-                inputMode="numeric"
-                value={nextOsSequence}
-                onChange={(e) => setNextOsSequence(e.target.value.replace(/\D/g, "").slice(0, 5))}
-              />
-              <p className="text-xs text-muted-foreground">
-                A próxima OS gerada automaticamente será{" "}
-                <span className="font-medium">
-                  OS-{new Date().getFullYear()}-{String(Number(nextOsSequence || 0)).padStart(5, "0")}
-                </span>
-              </p>
-              <Button variant="outline" onClick={handleSaveOsSequence} disabled={savingOsSequence}>
-                {savingOsSequence ? "Salvando..." : "Salvar numeração"}
-              </Button>
-            </div>
             <Button onClick={handleSaveCompany} disabled={savingCompany}>
               {savingCompany ? "Salvando..." : "Salvar empresa"}
             </Button>
@@ -352,7 +306,9 @@ export default function ConfiguracoesPage() {
           <CardHeader>
             <CardTitle>Usuários</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">{userCards}</CardContent>
+          <CardContent className={employees.length > 2 ? "max-h-[260px] space-y-4 overflow-y-auto pr-1" : "space-y-4"}>
+            {userCards}
+          </CardContent>
         </Card>
 
         <Card className="surface-card border-none xl:col-span-2">
@@ -462,7 +418,9 @@ export default function ConfiguracoesPage() {
                 <p className="font-medium">Autenticação interna</p>
                 <p className="text-sm text-muted-foreground">Login com e-mail e senha do próprio sistema</p>
               </div>
-              <Badge>Ativo</Badge>
+              <Badge variant="outline" className="rounded-full">
+                Ativo
+              </Badge>
             </div>
           </CardContent>
         </Card>

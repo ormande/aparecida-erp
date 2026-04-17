@@ -311,10 +311,8 @@ export default function DashboardPage() {
                     <tr>
                       <th className="pb-3 font-medium">Número</th>
                       <th className="pb-3 font-medium">Cliente</th>
-                      <th className="pb-3 font-medium">Placa</th>
                       <th className="pb-3 font-medium">Status</th>
                       <th className="pb-3 font-medium">Valor</th>
-                      <th className="pb-3 font-medium">Data</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -322,12 +320,10 @@ export default function DashboardPage() {
                       <tr key={order.id} className="border-t">
                         <td className="py-4 font-medium">{order.number}</td>
                         <td>{order.clientName}</td>
-                        <td>{order.plate}</td>
                         <td>
                           <StatusBadge status={order.status} />
                         </td>
                         <td>{currency(order.total)}</td>
-                        <td>{date(order.openedAt)}</td>
                       </tr>
                     ))}
                   </tbody>

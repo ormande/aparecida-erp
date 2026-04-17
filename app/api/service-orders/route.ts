@@ -16,7 +16,7 @@ const orderSchema = z.object({
   openedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).optional().nullable(),
   paymentMethod: z.string().max(100).optional().default(""),
-  customOsNumber: z.coerce.number().int().min(1).optional(),
+  customOsNumber: z.coerce.number().int().min(1).max(99999).optional(),
   notes: z.string().max(2000).optional().default(""),
   services: z
     .array(
@@ -29,7 +29,8 @@ const orderSchema = z.object({
         commissionRate: z.coerce.number().int().min(1).max(100).optional().default(12),
       }),
     )
-    .min(1),
+    .optional()
+    .default([]),
   products: z
     .array(
       z.object({
@@ -42,6 +43,9 @@ const orderSchema = z.object({
     )
     .optional()
     .default([]),
+}).refine((data) => data.services.length > 0 || data.products.length > 0, {
+  message: "Adicione pelo menos um produto ou serviço na OS.",
+  path: ["services"],
 });
 
 function handleServiceError(error: unknown) {

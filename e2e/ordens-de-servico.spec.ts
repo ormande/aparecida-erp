@@ -8,7 +8,7 @@ test("listagem de OS carrega", async ({ page }: { page: Page }) => {
   await page.goto("/ordens-de-servico");
   await waitForOsPage(page, /\/ordens-de-servico(\?|$)/);
   await expect(page.getByRole("heading", { name: "Ordens de Servico" })).toBeVisible();
-  await expect(page.getByPlaceholder("Buscar por numero, cliente ou placa")).toBeVisible();
+  await expect(page.getByPlaceholder("Buscar por número ou cliente")).toBeVisible();
 });
 
 test('botão "Nova OS" navega para /ordens-de-servico/nova', async ({ page }: { page: Page }) => {
@@ -28,6 +28,7 @@ test("criação de OS avulsa com serviço manual e PIX conclui com toast e volta
   }
   await page.getByLabel("Cliente avulso").fill("Cliente avulso E2E");
   await expect(page.getByText("PIX", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Adicionar serviço" }).click();
   await page.getByPlaceholder("Descrição do serviço").fill("Serviço manual E2E");
   const valorServico = page.locator("input[inputmode=\"decimal\"]").first();
   await valorServico.click();

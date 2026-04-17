@@ -5,7 +5,7 @@ import type { Client } from "@/lib/app-types";
 
 function getInitialValues(client?: Client): CadastroPessoaFormValues {
   return {
-    tipo: client?.tipo ?? "pf",
+    tipo: client?.tipo ?? "pj",
     situacao: client?.situacao ?? "Ativo",
     celular: client?.celular ?? "",
     whatsapp: client?.whatsapp ?? "",

@@ -82,6 +82,7 @@ export type OsEditableData = {
   unitId: string;
   clientId: string;
   customerNameSnapshot: string;
+  customOsNumber: string;
   vehicleId: string;
   mileage: string;
   dueDate: string;
@@ -142,6 +143,7 @@ export function useOsPage() {
     unitId: "",
     clientId: "",
     customerNameSnapshot: "",
+    customOsNumber: "",
     vehicleId: "",
     mileage: "",
     dueDate: "",
@@ -274,11 +276,12 @@ export function useOsPage() {
       unitId: order.unitId,
       clientId: order.clientId ?? "",
       customerNameSnapshot: order.customerNameSnapshot ?? order.clientName,
+      customOsNumber: String(Number(order.number.split("-").at(-1) ?? "0") || ""),
       vehicleId: order.vehicleId ?? "",
       mileage: order.mileage ? String(order.mileage) : "",
       dueDate: order.dueDate ?? "",
       paymentTerm: order.paymentTerm ?? "A_VISTA",
-      paymentMethod: order.paymentMethod ?? "",
+      paymentMethod: (order.paymentTerm ?? "A_VISTA") === "A_PRAZO" ? "Mensal" : (order.paymentMethod ?? ""),
       notes: order.notes ?? "",
     });
     setEditableServices(
@@ -296,6 +299,14 @@ export function useOsPage() {
 
   const handleSaveEdit = useCallback(async (): Promise<void> => {
     if (!editOrder) return;
+    if (
+      !editableData.customOsNumber ||
+      Number(editableData.customOsNumber) < 1 ||
+      Number(editableData.customOsNumber) > 99999
+    ) {
+      toast.error("Informe um número de OS válido.");
+      return;
+    }
     const response = await fetch(`/api/service-orders/${editOrder.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -304,6 +315,7 @@ export function useOsPage() {
         unitId: editableData.unitId,
         customerId: editOrder.isStandalone ? null : editableData.clientId,
         customerNameSnapshot: editOrder.isStandalone ? editableData.customerNameSnapshot : "",
+        customOsNumber: Number(editableData.customOsNumber),
         vehicleId: editOrder.isStandalone ? null : editableData.vehicleId || null,
         mileage: editableData.mileage ? Number(editableData.mileage) : null,
         dueDate: editableData.paymentTerm === "A_PRAZO" ? editableData.dueDate : null,
@@ -339,6 +351,7 @@ export function useOsPage() {
         item.id === editOrder.id
           ? {
               ...item,
+              number: data.order.number,
               clientId: data.order.clientId,
               clientName: data.order.clientName,
               unitId: data.order.unitId,
@@ -487,7 +500,7 @@ export function useOsPage() {
       { key: "outstanding", header: "Saldo em aberto", render: (row: ClosureRow) => currency(row.outstandingAmount) },
       {
         key: "actions",
-        header: "Acoes",
+        header: "Ações",
         render: (row: ClosureRow) => (
           <Button variant="outline" size="sm" onClick={() => setClosureRow(row)} disabled={!row.customerId}>
             Gerar fechamento
@@ -503,13 +516,11 @@ export function useOsPage() {
       { key: "number", header: "Numero OS", render: (row: (typeof filteredOrders)[number]) => <span className="font-medium">{row.number}</span> },
       { key: "unit", header: "Unidade", render: (row: (typeof filteredOrders)[number]) => row.unitName ?? "Geral" },
       { key: "client", header: "Cliente", render: (row: (typeof filteredOrders)[number]) => row.clientName },
-      { key: "plate", header: "Placa", render: (row: (typeof filteredOrders)[number]) => row.plate },
       {
         key: "employee",
         header: "Funcionário",
         render: (row: (typeof filteredOrders)[number]) => row.executedByName ?? "-",
       },
-      { key: "services", header: "Servicos", render: (row: (typeof filteredOrders)[number]) => row.servicesLabel || "-" },
       {
         key: "status",
         header: "Status",
@@ -540,16 +551,9 @@ export function useOsPage() {
         },
       },
       { key: "total", header: "Valor total", render: (row: (typeof filteredOrders)[number]) => currency(row.total) },
-      { key: "date", header: "Abertura", render: (row: (typeof filteredOrders)[number]) => date(row.openedAt) },
-      {
-        key: "dueDate",
-        header: "Vencimento",
-        render: (row: (typeof filteredOrders)[number]) =>
-          row.paymentTerm === "A_PRAZO" && row.dueDate ? date(row.dueDate) : "A vista",
-      },
       {
         key: "actions",
-        header: "Acoes",
+        header: "Ações",
         render: (row: (typeof filteredOrders)[number]) => (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={async () => setViewOrder(await fetchOrder(row.id))}>

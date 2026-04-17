@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronsUpDown } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -22,6 +22,7 @@ export function SearchableSelect({
   options,
   disabled = false,
   onSearchChange,
+  searchInTrigger = false,
 }: {
   value?: string;
   onChange: (value: string) => void;
@@ -29,8 +30,11 @@ export function SearchableSelect({
   options: Option[];
   disabled?: boolean;
   onSearchChange?: (search: string) => void;
+  searchInTrigger?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [triggerSearch, setTriggerSearch] = useState("");
+  const triggerInputRef = useRef<HTMLInputElement>(null);
 
   function handleOpenChange(next: boolean) {
     if (next) {
@@ -51,15 +55,41 @@ export function SearchableSelect({
     [options, value],
   );
 
+  const visibleOptions = useMemo(() => {
+    if (!searchInTrigger) {
+      return options;
+    }
+    const query = triggerSearch.trim().toLowerCase();
+    if (!query) {
+      return options;
+    }
+    return options.filter((option) => option.label.toLowerCase().includes(query));
+  }, [options, searchInTrigger, triggerSearch]);
+
+  useEffect(() => {
+    if (!searchInTrigger || !open) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      triggerInputRef.current?.focus();
+    });
+  }, [open, searchInTrigger]);
+
+  useEffect(() => {
+    if (searchInTrigger) {
+      onSearchChange?.(triggerSearch);
+    }
+  }, [onSearchChange, searchInTrigger, triggerSearch]);
+
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
-          <button
-            type="button"
+          <div
             role="combobox"
             aria-controls={listId}
             aria-expanded={open}
+            onClick={() => !disabled && handleOpenChange(true)}
             className={cn(
               "flex h-9 w-full items-center justify-between rounded-2xl border bg-background px-3 text-sm text-foreground outline-none transition-[border-color,background-color,color,box-shadow] duration-200",
               "border-border/55 hover:border-border/80 hover:bg-muted/60 dark:border-border/45 dark:hover:border-border/70",
@@ -67,10 +97,34 @@ export function SearchableSelect({
               "disabled:pointer-events-none disabled:opacity-50",
               open && "border-[var(--color-gold)] shadow-[0_0_0_1px_rgba(201,168,76,0.2)]",
               !selected && "text-muted-foreground",
+              disabled && "pointer-events-none opacity-50",
             )}
-            disabled={disabled}
           >
-            <span className="truncate">{selected?.label ?? placeholder}</span>
+            {searchInTrigger ? (
+              <input
+                ref={triggerInputRef}
+                value={open ? triggerSearch : selected?.label ?? ""}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+                onFocus={() => !disabled && handleOpenChange(true)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTriggerSearch(next);
+                  if (!open) {
+                    handleOpenChange(true);
+                  }
+                }}
+                placeholder={placeholder}
+                className="w-full bg-transparent pr-2 text-foreground outline-none placeholder:text-muted-foreground"
+                disabled={disabled}
+              />
+            ) : (
+              <span className="truncate">{selected?.label ?? placeholder}</span>
+            )}
             <motion.span
               className="ml-2 inline-flex shrink-0"
               animate={{ rotate: open ? 180 : 0 }}
@@ -78,7 +132,7 @@ export function SearchableSelect({
             >
               <ChevronsUpDown className="h-4 w-4 opacity-50 text-muted-foreground" />
             </motion.span>
-          </button>
+          </div>
         }
       />
       <PopoverContent
@@ -101,15 +155,12 @@ export function SearchableSelect({
               transition={popoverMotionTransition}
               className="flex flex-col"
             >
-              <Command shouldFilter={!onSearchChange}>
-                <CommandInput
-                  placeholder="Buscar..."
-                  onValueChange={onSearchChange}
-                />
+              <Command shouldFilter={!onSearchChange && !searchInTrigger}>
+                {!searchInTrigger ? <CommandInput placeholder="Buscar..." onValueChange={onSearchChange} /> : null}
                 <CommandList>
                   <CommandEmpty>Nenhum item encontrado.</CommandEmpty>
                   <CommandGroup>
-                    {options.map((option) => {
+                    {visibleOptions.map((option) => {
                       const isSelected = option.value === value;
                       return (
                         <CommandItem
@@ -127,6 +178,7 @@ export function SearchableSelect({
                           )}
                           onSelect={() => {
                             onChange(option.value);
+                            setTriggerSearch(option.label);
                             setOpen(false);
                           }}
                         >
