@@ -26,7 +26,7 @@ const orderSchema = z.object({
         quantity: z.coerce.number().int().min(1).optional().default(1),
         laborPrice: z.coerce.number().min(0),
         executedByUserId: z.string().optional().nullable(),
-        commissionRate: z.coerce.number().int().min(1).max(100).optional().default(12),
+        commissionRate: z.coerce.number().int().min(0).max(100).optional().default(12),
       }),
     )
     .optional()

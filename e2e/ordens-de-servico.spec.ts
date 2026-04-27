@@ -43,4 +43,5 @@ test("criação de OS avulsa com serviço manual e PIX conclui com toast e volta
   console.log("[e2e] /api/service-orders status=", createResp.status(), "body=", createBodyText.slice(0, 500));
   await expect(page.getByText("OS criada com sucesso!")).toBeVisible({ timeout: 15_000 });
   await expect(page).toHaveURL(/\/ordens-de-servico$/);
+  await expect(page.getByRole("button", { name: "Faturar" }).first()).toBeVisible({ timeout: 10_000 });
 });

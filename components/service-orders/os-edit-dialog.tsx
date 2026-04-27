@@ -106,13 +106,13 @@ export function OsEditDialog({
 
   return (
     <Dialog open={Boolean(order)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="flex max-h-[90vh] w-[calc(100%-1rem)] flex-col overflow-hidden sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{order?.number}</DialogTitle>
           <DialogDescription>Edite a OS sem sair da listagem.</DialogDescription>
         </DialogHeader>
         {order ? (
-          <div className="grid gap-4">
+          <div className="grid flex-1 gap-4 overflow-y-auto pr-1">
             <div className="grid gap-2">
               <Label>Unidade</Label>
               <SearchableSelect
@@ -315,7 +315,7 @@ export function OsEditDialog({
                 onChange={(event) => setEditableData((current) => ({ ...current, notes: event.target.value }))}
               />
             </div>
-            <div className="flex justify-end">
+            <div className="sticky bottom-0 flex justify-end border-t bg-popover/95 pt-3 backdrop-blur-sm">
               <Button onClick={onSave}>Salvar alterações</Button>
             </div>
           </div>

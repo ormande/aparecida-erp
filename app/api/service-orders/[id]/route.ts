@@ -7,7 +7,7 @@ import { ServiceError } from "@/services/service-error";
 import { serviceOrderService } from "@/services/service-order.service";
 
 const updateOrderSchema = z.object({
-  mode: z.enum(["edit", "settle", "reopen"]),
+  mode: z.enum(["edit", "bill", "settle", "reopen"]),
   discountAmount: z.coerce.number().min(0).optional().default(0),
   partialAmount: z.coerce.number().min(0).max(999999.99).optional().default(0),
   customerId: z.string().optional().nullable(),
@@ -27,7 +27,7 @@ const updateOrderSchema = z.object({
         quantity: z.coerce.number().int().min(1).optional().default(1),
         laborPrice: z.coerce.number().min(0),
         executedByUserId: z.string().optional().nullable(),
-        commissionRate: z.coerce.number().int().min(1).max(100).optional().default(12),
+        commissionRate: z.coerce.number().int().min(0).max(100).optional().default(12),
       }),
     )
     .optional(),

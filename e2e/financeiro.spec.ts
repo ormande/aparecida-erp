@@ -19,11 +19,30 @@ test('botão "Novo recebível" abre o dialog', async ({ page }: { page: Page }) 
 });
 
 test("criação de recebível avulso exibe toast de sucesso", async ({ page }: { page: Page }) => {
+  const customerName = `Cliente Recebível E2E ${Date.now()}`;
+  const createCustomerResponse = await page.request.post("/api/customers", {
+    data: {
+      tipo: "pf",
+      nomeCompleto: customerName,
+      cpf: "",
+      dataNascimento: "",
+      nomeFantasia: "",
+      razaoSocial: "",
+      cnpj: "",
+      situacao: "Ativo",
+      celular: "11987654321",
+      whatsapp: "11987654321",
+      email: "",
+      observacoes: "",
+    },
+  });
+  expect(createCustomerResponse.ok()).toBeTruthy();
+
   await page.goto("/financeiro/receber");
   await page.getByRole("button", { name: "Novo recebível" }).click();
   const dialog = page.getByRole("dialog", { name: "Novo recebível avulso" });
   await dialog.getByRole("combobox").filter({ hasText: /Selecione o cliente/ }).click();
-  await page.getByRole("option").first().click();
+  await page.getByRole("option", { name: customerName }).click();
   await dialog.getByLabel("Descrição").fill("Recebível avulso E2E");
   await dialog.getByLabel("Valor").fill("199.9");
   const vencimento = new Date();

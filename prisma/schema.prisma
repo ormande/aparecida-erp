@@ -284,6 +284,7 @@ model ServiceOrder {
   number               String
   status               ServiceOrderStatus  @default(ABERTA)
   paymentStatus        PaymentStatus       @default(PENDENTE)
+  isBilled             Boolean             @default(false)
   openedAt             DateTime            @default(now())
   closedAt             DateTime?
   mileage              Int?

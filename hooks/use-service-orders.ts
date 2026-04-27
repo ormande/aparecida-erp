@@ -25,6 +25,7 @@ type ServiceOrderRow = {
   servicesLabel: string;
   status: "Aberta" | "Em andamento" | "Aguardando peça" | "Concluída" | "Cancelada";
   paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
+  isBilled: boolean;
   total: number;
   openedAt: string;
   dueDate?: string | null;

@@ -179,6 +179,7 @@ export default function FechamentosPage() {
               unitId: "",
               status: "Aberta" as const,
               paymentStatus: order.paymentStatus ?? "PENDENTE",
+              isBilled: true,
               mileage: null,
               isStandalone: false,
               receivableStatus: null,

@@ -43,6 +43,14 @@ export function SearchableSelect({
       requestAnimationFrame(() => {
         window.scrollTo({ top: scrollY, behavior: "instant" });
       });
+      if (!searchInTrigger) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const input = document.querySelector<HTMLInputElement>("[cmdk-input]");
+            input?.focus();
+          });
+        });
+      }
     } else {
       setOpen(false);
     }

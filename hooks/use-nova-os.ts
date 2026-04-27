@@ -133,7 +133,13 @@ export function useNovaOs() {
     if (!sameEmployeeForAll || !globalEmployeeId) {
       return;
     }
-    setServices((current) => current.map((item) => ({ ...item, executedByUserId: globalEmployeeId })));
+    setServices((current) =>
+      current.map((item) => ({
+        ...item,
+        executedByUserId: globalEmployeeId,
+        commissionRate: globalEmployeeId === "__casa__" ? 0 : item.commissionRate,
+      })),
+    );
   }, [sameEmployeeForAll, globalEmployeeId]);
 
   useEffect(() => {
@@ -145,12 +151,15 @@ export function useNovaOs() {
 
   const employeeOptions = useMemo(
     () =>
-      employees
-        .filter((emp) => emp.situacao === "Ativo")
-        .map((emp) => ({
-          value: emp.id,
-          label: emp.nomeCompleto,
-        })),
+      [
+        { value: "__casa__", label: "🏠 Casa (sem comissão)" },
+        ...employees
+          .filter((emp) => emp.situacao === "Ativo")
+          .map((emp) => ({
+            value: emp.id,
+            label: emp.nomeCompleto,
+          })),
+      ],
     [employees],
   );
 
@@ -221,6 +230,7 @@ export function useNovaOs() {
       const draft = createDraft(current.length + 1);
       if (sameEmployeeForAll && globalEmployeeId) {
         draft.executedByUserId = globalEmployeeId;
+        draft.commissionRate = globalEmployeeId === "__casa__" ? 0 : draft.commissionRate;
       }
       return [...current, draft];
     });
@@ -319,6 +329,22 @@ export function useNovaOs() {
     setVehicleModalOpen(false);
   }
 
+  function resetFormForContinue() {
+    setIsStandalone(false);
+    setCustomerNameSnapshot("");
+    setClientId("");
+    setVehicleId("");
+    setMileage("");
+    setCustomOsNumber("");
+    setNotes("");
+    setServices([]);
+    setProducts([]);
+    setSameEmployeeForAll(false);
+    setGlobalEmployeeId("");
+    setCustomerModalOpen(false);
+    setVehicleModalOpen(false);
+  }
+
   async function handleSubmit() {
     if (!selectedUnitId) {
       toast.error("Selecione uma unidade válida antes de abrir a OS.");
@@ -356,8 +382,11 @@ export function useNovaOs() {
         description: service.description.trim(),
         quantity: Math.max(1, Math.floor(Number(service.quantity) || 1)),
         laborPrice: Number(service.laborPrice || 0),
-        executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
-        commissionRate: service.commissionRate ?? 12,
+        executedByUserId:
+          service.executedByUserId?.trim() && service.executedByUserId !== "__casa__"
+            ? service.executedByUserId
+            : null,
+        commissionRate: service.executedByUserId === "__casa__" ? 0 : (service.commissionRate ?? 12),
       }))
       .filter((service) => service.description.length > 0);
 
@@ -446,8 +475,11 @@ export function useNovaOs() {
         description: service.description.trim(),
         quantity: Math.max(1, Math.floor(Number(service.quantity) || 1)),
         laborPrice: Number(service.laborPrice || 0),
-        executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
-        commissionRate: service.commissionRate ?? 12,
+        executedByUserId:
+          service.executedByUserId?.trim() && service.executedByUserId !== "__casa__"
+            ? service.executedByUserId
+            : null,
+        commissionRate: service.executedByUserId === "__casa__" ? 0 : (service.commissionRate ?? 12),
       }))
       .filter((service) => service.description.length > 0);
 
@@ -494,7 +526,7 @@ export function useNovaOs() {
     }
 
     toast.success("OS criada! Formulário pronto para nova OS.");
-    resetForm();
+    resetFormForContinue();
   }
 
   return {
@@ -561,6 +593,7 @@ export function useNovaOs() {
     handleSubmit,
     handleSubmitAndContinue,
     resetForm,
+    resetFormForContinue,
     openedAtPreset,
     setOpenedAtPreset,
     openedAtCustom,

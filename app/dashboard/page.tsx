@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Activity, AlertTriangle, CircleDollarSign, ClipboardList, Percent, Wallet, X } from "lucide-react";
+import { Activity, CircleDollarSign, ClipboardList, Percent, Wallet, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import { OsStatsCards } from "@/components/dashboard/os-stats-cards";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -13,8 +14,8 @@ import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
+import { useDashboardOsStats } from "@/hooks/use-dashboard-os-stats";
 import { useDebounce } from "@/hooks/use-debounce";
-import { usePayables } from "@/hooks/use-payables";
 import { useReceivables } from "@/hooks/use-receivables";
 import { useServiceOrders } from "@/hooks/use-service-orders";
 import { currency, date } from "@/lib/formatters";
@@ -53,16 +54,15 @@ export default function DashboardPage() {
   const isFuncionario = user?.accessLevel === "FUNCIONARIO";
   const { unitId, currentUnit, isLoading: unitLoading } = useCurrentUnit();
   const debouncedUnitId = useDebounce(unitId, 300);
+  const selectedUnitId = debouncedUnitId || undefined;
   const period = getMonthPrefixLocal();
   const previousPeriodDate = new Date();
   previousPeriodDate.setMonth(previousPeriodDate.getMonth() - 1);
   const previousPeriod = getMonthPrefixLocal(previousPeriodDate);
 
   const { orders, hydrated: ordersHydrated } = useServiceOrders({ unitId: debouncedUnitId });
+  const { coletadas, faturadas, emCaixa, totalProduzido, hydrated: osStatsHydrated } = useDashboardOsStats(selectedUnitId);
   const { receivables, hydrated: receivablesHydrated } = useReceivables({ unitId: debouncedUnitId, period });
-  const { payables, hydrated: payablesHydrated } = usePayables({ unitId: debouncedUnitId, period });
-  const { receivables: previousReceivables } = useReceivables({ unitId: debouncedUnitId, period: previousPeriod });
-  const { payables: previousPayables } = usePayables({ unitId: debouncedUnitId, period: previousPeriod });
 
   const showReportBanner = isFirstSevenDaysOfMonth();
   const previousMonthDate = new Date();
@@ -154,18 +154,13 @@ export default function DashboardPage() {
 
   const today = getTodayLocalIso();
   const openedToday = orders.filter((order) => order.openedAt === today && order.status !== "Cancelada").length;
-  const receitaMes = receivables.filter((item) => item.status === "Pago").reduce((sum, item) => sum + item.value, 0);
-  const totalReceber = receivables.filter((item) => item.status !== "Pago").reduce((sum, item) => sum + item.value, 0);
-  const totalPagar = payables.filter((item) => item.status !== "Pago").reduce((sum, item) => sum + item.value, 0);
-
-  const previousReceitaMes = previousReceivables.filter((item) => item.status === "Pago").reduce((sum, item) => sum + item.value, 0);
-  const previousPagar = previousPayables.filter((item) => item.status !== "Pago").reduce((sum, item) => sum + item.value, 0);
 
   const latestOrders = orders
     .filter((order) => !order.number.startsWith("FEC-"))
     .slice(0, 5);
   const warningsReceber = receivables.filter((item) => item.dueDate === today && item.status !== "Pago").slice(0, 3);
   const oldPendingOs = orders.filter((item) => item.status === "Em andamento" || item.status === "Aguardando peça").slice(0, 2);
+  const hasHistory = receivables.length > 0 || orders.length > 0;
 
   const revenueMap = new Map<string, number>();
   for (let index = 6; index >= 0; index -= 1) {
@@ -188,13 +183,11 @@ export default function DashboardPage() {
     revenue,
   }));
 
-  const hasHistory = previousReceivables.length > 0 || previousPayables.length > 0;
-  const financeHydrated = receivablesHydrated && payablesHydrated;
   const hydrated =
     !unitLoading &&
     ordersHydrated &&
     employeeReportHydrated &&
-    (!isFuncionario ? financeHydrated : true);
+    (!isFuncionario ? receivablesHydrated && osStatsHydrated : true);
 
   const metaPercentLabel =
     employeeRow == null ||
@@ -260,7 +253,7 @@ export default function DashboardPage() {
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {isFuncionario ? (
           <>
             <StatCard
@@ -280,19 +273,18 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            <StatCard title="OS abertas hoje" value={String(openedToday)} icon={ClipboardList} trend={hasHistory ? "up" : "none"} />
-            <StatCard
-              title="Receita do mês"
-              value={currency(receitaMes)}
-              icon={CircleDollarSign}
-              trend={hasHistory ? (receitaMes >= previousReceitaMes ? "up" : "down") : "none"}
+            <OsStatsCards
+              coletadas={coletadas}
+              faturadas={faturadas}
+              emCaixa={emCaixa}
+              totalProduzido={totalProduzido}
             />
-            <StatCard title="Contas a receber" value={currency(totalReceber)} icon={Wallet} trend={hasHistory ? "neutral" : "none"} />
             <StatCard
-              title="Contas a pagar"
-              value={currency(totalPagar)}
-              icon={AlertTriangle}
-              trend={hasHistory ? (totalPagar > previousPagar ? "down" : "neutral") : "none"}
+              title="OS abertas hoje"
+              value={String(openedToday)}
+              icon={ClipboardList}
+              trend={hasHistory ? "up" : "none"}
+              compact
             />
           </>
         )}

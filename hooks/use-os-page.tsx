@@ -34,6 +34,7 @@ export type OrderDetails = {
   vehicleLabel: string;
   status: OrderStatus;
   paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
+  isBilled: boolean;
   total: number;
   openedAt: string;
   dueDate: string;
@@ -398,7 +399,7 @@ export function useOsPage() {
   );
 
   const handleStatusChange = useCallback(
-    async (id: string, mode: "settle" | "reopen"): Promise<void> => {
+    async (id: string, mode: "settle" | "reopen" | "bill"): Promise<void> => {
       const response = await fetch(`/api/service-orders/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -417,11 +418,18 @@ export function useOsPage() {
                 status: data.order.status,
                 receivableStatus: data.order.receivableStatus,
                 paymentStatus: data.order.paymentStatus,
+                isBilled: data.order.isBilled,
               }
             : item,
         ),
       );
-      void toast.success(mode === "settle" ? "OS baixada com sucesso!" : "OS reaberta com sucesso!");
+      const successMessage =
+        mode === "settle"
+          ? "OS baixada com sucesso!"
+          : mode === "bill"
+            ? "OS faturada com sucesso!"
+            : "OS reaberta com sucesso!";
+      void toast.success(successMessage);
     },
     [setOrders],
   );
@@ -570,10 +578,12 @@ export function useOsPage() {
               onClick={() =>
                 row.paymentStatus === "PAGO"
                   ? void handleStatusChange(row.id, "reopen")
-                  : setSettleOrder({ id: row.id, number: row.number })
+                  : row.isBilled
+                    ? setSettleOrder({ id: row.id, number: row.number })
+                    : void handleStatusChange(row.id, "bill")
               }
             >
-              {row.paymentStatus === "PAGO" ? "Reabrir" : "Baixar"}
+              {row.paymentStatus === "PAGO" ? "Reabrir" : row.isBilled ? "Baixar" : "Faturar"}
             </Button>
             <Button
               variant="outline"

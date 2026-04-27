@@ -39,7 +39,7 @@ type CreateOrderPayload = {
 };
 
 type UpdateOrderPayload = {
-  mode: "edit" | "settle" | "reopen";
+  mode: "edit" | "bill" | "settle" | "reopen";
   discountAmount?: number;
   partialAmount?: number;
   customerId?: string | null;
@@ -144,6 +144,7 @@ function serviceOrderAfterDataForAudit(order: {
   number: string;
   status: string;
   paymentStatus: string;
+  isBilled: boolean;
   openedAt: Date;
   closedAt: Date | null;
   mileage: number | null;
@@ -168,6 +169,7 @@ function serviceOrderAfterDataForAudit(order: {
     number: order.number,
     status: order.status,
     paymentStatus: order.paymentStatus,
+    isBilled: order.isBilled,
     openedAt: order.openedAt.toISOString(),
     closedAt: order.closedAt?.toISOString() ?? null,
     mileage: order.mileage,
@@ -314,6 +316,7 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
     vehicleLabel: order.vehicle ? `${order.vehicle.plate} - ${order.vehicle.brand} ${order.vehicle.model}` : "-",
     status: mapServiceOrderStatus(order.status),
     paymentStatus: order.paymentStatus,
+    isBilled: order.isBilled,
     total: Number(order.totalAmount),
     openedAt: order.openedAt.toISOString().slice(0, 10),
     dueDate: order.dueDate?.toISOString().slice(0, 10) ?? "",
@@ -531,6 +534,7 @@ export const serviceOrderService = {
             ?? null,
         receivableCount: order.receivables.length,
         paymentStatus: order.paymentStatus,
+        isBilled: order.isBilled,
         receivableAmount: order.receivables
           .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
           .reduce((sum, r) => sum + Number(r.amount), 0),
@@ -580,7 +584,7 @@ export const serviceOrderService = {
         ? new Date(`${payload.dueDate}T00:00:00`)
         : openedAtDate;
 
-    const { order, receivable } = await prisma.$transaction(async (tx) => {
+    const order = await prisma.$transaction(async (tx) => {
       let number: string;
       if (isStandalone) {
         number = await getNextAutoOrderNumber(tx, context.companyId);
@@ -606,10 +610,11 @@ export const serviceOrderService = {
           paymentMethod,
           notes: payload.notes || null,
           isStandalone,
+          isBilled: false,
           totalAmount,
           laborSubtotal,
           productsSubtotal,
-          paymentStatus: paymentTerm === "A_VISTA" ? "PAGO" : "PENDENTE",
+          paymentStatus: "PENDENTE",
           createdByUserId: context.userId,
           updatedByUserId: context.userId,
           items: {
@@ -642,25 +647,7 @@ export const serviceOrderService = {
         });
       }
 
-      const receivableRow = await tx.accountReceivable.create({
-        data: {
-          companyId: context.companyId,
-          unitId: payload.unitId,
-          customerId: payload.customerId || null,
-          serviceOrderId: orderRow.id,
-          originType: "SERVICE_ORDER",
-          description: orderRow.number,
-          amount: totalAmount,
-          dueDate,
-          status: paymentTerm === "A_VISTA" ? "PAGO" : "PENDENTE",
-          paidAt: paymentTerm === "A_VISTA" ? openedAtDate : null,
-          installmentGroupId: null,
-          installmentNumber: null,
-          installmentCount: null,
-        },
-      });
-
-      return { order: orderRow, receivable: receivableRow };
+      return orderRow;
     });
 
     await prisma.auditLog.create({
@@ -672,18 +659,6 @@ export const serviceOrderService = {
         entityId: order.id,
         action: "CREATE",
         afterData: serviceOrderAfterDataForAudit(order),
-      },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        companyId: context.companyId,
-        unitId: receivable.unitId ?? context.unitId ?? null,
-        userId: context.userId,
-        entityType: "receivable",
-        entityId: receivable.id,
-        action: "CREATE",
-        afterData: receivableAfterDataForAudit(receivable),
       },
     });
 
@@ -909,6 +884,130 @@ export const serviceOrderService = {
       });
 
       return { order: mapOrder(updated) };
+    }
+
+    if (payload.mode === "bill") {
+      if (existing.isBilled) {
+        throw new ServiceError("Esta OS já foi faturada.", 400);
+      }
+
+      const dueDate = existing.dueDate ?? existing.openedAt;
+      const updated = await db.$transaction(async (tx) => {
+        const receivable = await tx.accountReceivable.create({
+          data: {
+            companyId: context.companyId,
+            unitId: existing.unitId,
+            customerId: existing.customerId || null,
+            serviceOrderId: existing.id,
+            originType: "SERVICE_ORDER",
+            description: existing.number,
+            amount: existing.totalAmount,
+            dueDate,
+            status: "PENDENTE",
+            paidAt: null,
+            installmentGroupId: null,
+            installmentNumber: null,
+            installmentCount: null,
+          },
+        });
+
+        await tx.serviceOrder.update({
+          where: { id: existing.id },
+          data: {
+            isBilled: true,
+            updatedByUserId: context.userId,
+          },
+        });
+
+        await tx.auditLog.create({
+          data: {
+            companyId: context.companyId,
+            unitId: existing.unitId,
+            userId: context.userId,
+            entityType: "receivable",
+            entityId: receivable.id,
+            action: "CREATE",
+            afterData: receivableAfterDataForAudit(receivable),
+          },
+        });
+
+        const order = await tx.serviceOrder.findFirst({
+          where: { id: existing.id },
+          include: {
+            unit: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            customer: {
+              select: {
+                type: true,
+                fullName: true,
+                tradeName: true,
+              },
+            },
+            vehicle: {
+              select: {
+                plate: true,
+                brand: true,
+                model: true,
+              },
+            },
+            items: {
+              select: {
+                id: true,
+                serviceId: true,
+                description: true,
+                quantity: true,
+                laborPrice: true,
+                lineTotal: true,
+                previousOrderStatus: true,
+                executedByUserId: true,
+                executedBy: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+            products: {
+              orderBy: { sortOrder: "asc" },
+              select: {
+                id: true,
+                productId: true,
+                description: true,
+                unit: true,
+                quantity: true,
+                unitPrice: true,
+                totalPrice: true,
+                sortOrder: true,
+              },
+            },
+            receivables: {
+              orderBy: { createdAt: "asc" },
+              select: {
+                id: true,
+                status: true,
+                amount: true,
+                dueDate: true,
+              },
+            },
+          },
+        });
+
+        if (!order) {
+          throw new ServiceError("Ordem de serviço não encontrada.", 404);
+        }
+
+        return order;
+      });
+
+      return { order: mapOrder(updated) };
+    }
+
+    if (!existing.isBilled && payload.mode === "settle") {
+      throw new ServiceError("Fature a OS antes de registrar o pagamento.", 400);
     }
 
     const receivable = existing.receivables[0];

@@ -121,7 +121,12 @@ export function OsServiceItem({
           <Label>Funcionário executante</Label>
           <SearchableSelect
             value={service.executedByUserId}
-            onChange={(value) => onChange(service.id, { executedByUserId: value })}
+            onChange={(value) =>
+              onChange(service.id, {
+                executedByUserId: value,
+                commissionRate: value === "__casa__" ? 0 : service.commissionRate,
+              })
+            }
             placeholder="Selecione o funcionário (opcional)"
             options={employeeOptions}
             disabled={sameEmployeeForAll || !employeeOptions.length}
@@ -131,22 +136,30 @@ export function OsServiceItem({
         <div className="grid gap-2">
           <Label>Comissão</Label>
           <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={service.commissionRate === 12 ? "default" : "outline"}
-              onClick={() => onChange(service.id, { commissionRate: 12 })}
-            >
-              12%
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={service.commissionRate === 30 ? "default" : "outline"}
-              onClick={() => onChange(service.id, { commissionRate: 30 })}
-            >
-              30%
-            </Button>
+            {service.executedByUserId === "__casa__" ? (
+              <Button type="button" size="sm" variant="default" disabled>
+                0% (Casa)
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={service.commissionRate === 12 ? "default" : "outline"}
+                  onClick={() => onChange(service.id, { commissionRate: 12 })}
+                >
+                  12%
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={service.commissionRate === 30 ? "default" : "outline"}
+                  onClick={() => onChange(service.id, { commissionRate: 30 })}
+                >
+                  30%
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { currency } from "@/lib/formatters";
 
 type ProductOption = {
   id: string;
@@ -45,7 +46,7 @@ export function ProductCombobox({ value, onChange, placeholder = "Selecione um p
   }, []);
 
   const options = useMemo(
-    () => products.map((p) => ({ value: p.id, label: p.name })),
+    () => products.map((p) => ({ value: p.id, label: `${p.name} — ${currency(p.salePrice)}` })),
     [products],
   );
 
