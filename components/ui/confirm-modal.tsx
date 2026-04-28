@@ -19,6 +19,7 @@ export function ConfirmModal({
   onConfirm,
   confirmLabel = "Confirmar",
   cancelLabel = "Cancelar",
+  confirmDisabled = false,
 }: {
   trigger?: React.ReactElement;
   open?: boolean;
@@ -28,6 +29,7 @@ export function ConfirmModal({
   onConfirm: () => void;
   confirmLabel?: string;
   cancelLabel?: string;
+  confirmDisabled?: boolean;
 }) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -39,7 +41,9 @@ export function ConfirmModal({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
+          <AlertDialogAction onClick={onConfirm} disabled={confirmDisabled}>
+            {confirmLabel}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

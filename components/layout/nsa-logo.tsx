@@ -26,8 +26,8 @@ export function NsaLogo({
         </div>
       ) : (
         <div
-          className="flex items-center justify-center rounded-full border border-[rgba(201,168,76,0.35)] bg-white p-1 shadow-lg"
-          style={{ width: size + 8, height: size + 8 }}
+          className="flex items-center justify-center rounded-full border border-[rgba(201,168,76,0.35)] bg-white p-0.5 shadow-lg"
+          style={{ width: size + 6, height: size + 6 }}
         >
           <Image
             src="/brand/logo.png?v=2"

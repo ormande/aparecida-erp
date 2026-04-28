@@ -120,6 +120,15 @@ export const receivableService = {
     const receivables = await prisma.accountReceivable.findMany({
       where: {
         companyId: context.companyId,
+        OR: [
+          { originType: "MANUAL" },
+          {
+            originType: "SERVICE_ORDER",
+            serviceOrder: {
+              isBilled: true,
+            },
+          },
+        ],
         ...(filters.unitId ? { unitId: filters.unitId } : {}),
         status:
           filters.status === "Pago"

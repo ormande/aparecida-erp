@@ -85,6 +85,8 @@ export function useNovaOs() {
   const [notes, setNotes] = useState("");
   const [services, setServices] = useState<ServiceDraft[]>([]);
   const [products, setProducts] = useState<ProductDraft[]>([]);
+  const [isCheckingCustomOsNumber, setIsCheckingCustomOsNumber] = useState(false);
+  const [isCustomOsNumberDuplicate, setIsCustomOsNumberDuplicate] = useState(false);
   const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [sameEmployeeForAll, setSameEmployeeForAll] = useState(false);
@@ -148,6 +150,51 @@ export function useNovaOs() {
     }
     setPaymentMethod("Mensal");
   }, [paymentMethod, paymentTerm]);
+
+  useEffect(() => {
+    if (isStandalone) {
+      setIsCheckingCustomOsNumber(false);
+      setIsCustomOsNumberDuplicate(false);
+      return;
+    }
+
+    const numeric = Number(customOsNumber);
+    if (!customOsNumber || !Number.isInteger(numeric) || numeric < 1 || numeric > 99999) {
+      setIsCheckingCustomOsNumber(false);
+      setIsCustomOsNumberDuplicate(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsCheckingCustomOsNumber(true);
+    const timer = window.setTimeout(() => {
+      fetch(`/api/service-orders/check-number?number=${numeric}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            return { exists: false };
+          }
+          return response.json() as Promise<{ exists?: boolean }>;
+        })
+        .then((data) => {
+          setIsCustomOsNumberDuplicate(Boolean(data.exists));
+        })
+        .catch(() => {
+          setIsCustomOsNumberDuplicate(false);
+        })
+        .finally(() => {
+          setIsCheckingCustomOsNumber(false);
+        });
+    }, 300);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      setIsCheckingCustomOsNumber(false);
+    };
+  }, [customOsNumber, isStandalone]);
 
   const employeeOptions = useMemo(
     () =>
@@ -375,6 +422,10 @@ export function useNovaOs() {
       toast.error("Informe um número de OS válido.");
       return;
     }
+    if (!isStandalone && isCustomOsNumberDuplicate) {
+      toast.error("Este número de OS já existe. Informe outro número.");
+      return;
+    }
 
     const normalizedServices = services
       .map((service) => ({
@@ -468,6 +519,10 @@ export function useNovaOs() {
       toast.error("Informe um número de OS válido.");
       return;
     }
+    if (!isStandalone && isCustomOsNumberDuplicate) {
+      toast.error("Este número de OS já existe. Informe outro número.");
+      return;
+    }
 
     const normalizedServices = services
       .map((service) => ({
@@ -557,6 +612,8 @@ export function useNovaOs() {
     setPaymentTerm,
     customOsNumber,
     setCustomOsNumber,
+    isCheckingCustomOsNumber,
+    isCustomOsNumberDuplicate,
     dueDate,
     setDueDate,
     notes,

@@ -36,7 +36,7 @@ export default function NovaOsPage() {
           paymentTerm={os.paymentTerm}
           dueDate={os.dueDate}
           isLoading={os.isLoading}
-          disabled={!os.selectedUnitId}
+          disabled={!os.selectedUnitId || os.isCheckingCustomOsNumber || os.isCustomOsNumberDuplicate}
           onSubmit={os.handleSubmit}
           onSubmitAndContinue={os.handleSubmitAndContinue}
         />

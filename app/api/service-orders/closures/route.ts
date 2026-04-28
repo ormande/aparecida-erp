@@ -8,6 +8,7 @@ import { ServiceError } from "@/services/service-error";
 const closureSchema = z.object({
   customerId: z.string().min(1),
   month: z.string().regex(/^\d{4}-\d{2}$/),
+  sourceOrderIds: z.array(z.string().min(1)).min(1),
   dueDate: z.string().optional().nullable(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).default("A_PRAZO"),
   paymentMethod: z.string().max(100).default("Fechamento mensal"),

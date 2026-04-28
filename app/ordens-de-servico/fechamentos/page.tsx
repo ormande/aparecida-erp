@@ -39,6 +39,14 @@ type OrderPreview = {
   paymentStatus?: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
 };
 
+const PAYMENT_METHOD_OPTIONS = [
+  { value: "Pix", label: "PIX" },
+  { value: "Dinheiro", label: "Dinheiro" },
+  { value: "Débito", label: "Débito" },
+  { value: "Crédito", label: "Crédito" },
+  { value: "Boleto", label: "Boleto" },
+] as const;
+
 export default function FechamentosPage() {
   const { unitId } = useCurrentUnit();
   const { units } = useUnits();
@@ -52,6 +60,7 @@ export default function FechamentosPage() {
   const [discountInput, setDiscountInput] = useState("");
   const [isPartial, setIsPartial] = useState(false);
   const [partialAmountInput, setPartialAmountInput] = useState("");
+  const [settlePaymentMethod, setSettlePaymentMethod] = useState("Pix");
   const [customerFilter, setCustomerFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("");
@@ -116,6 +125,7 @@ export default function FechamentosPage() {
         mode,
         discountAmount: mode === "settle" && !isPartial ? parseCurrencyInput(discountInput) : 0,
         partialAmount: mode === "settle" && isPartial ? parseCurrencyInput(partialAmountInput) : 0,
+        paymentMethod: mode === "settle" ? settlePaymentMethod : undefined,
       }),
     });
     const data = await response.json();
@@ -137,6 +147,7 @@ export default function FechamentosPage() {
     setDiscountInput("");
     setIsPartial(false);
     setPartialAmountInput("");
+    setSettlePaymentMethod("Pix");
     toast.success(mode === "settle" ? "Fechamento baixado com sucesso!" : "Fechamento reaberto com sucesso!");
   }
 
@@ -205,6 +216,7 @@ export default function FechamentosPage() {
     setDiscountInput("");
     setIsPartial(false);
     setPartialAmountInput("");
+    setSettlePaymentMethod("Pix");
     setSettleOrder(data.order);
   }
 
@@ -399,6 +411,7 @@ export default function FechamentosPage() {
             setDiscountInput("");
             setIsPartial(false);
             setPartialAmountInput("");
+            setSettlePaymentMethod("Pix");
           }
         }}
       >
@@ -472,6 +485,15 @@ export default function FechamentosPage() {
                   </p>
                 </div>
               ) : null}
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Forma de pagamento</label>
+                <SearchableSelect
+                  value={settlePaymentMethod}
+                  onChange={setSettlePaymentMethod}
+                  placeholder="Selecione a forma de pagamento"
+                  options={[...PAYMENT_METHOD_OPTIONS]}
+                />
+              </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setSettleOrder(null)}>Cancelar</Button>
                 <Button onClick={() => handleStatusChange(settleOrder.id, "settle")}>Confirmar baixa</Button>

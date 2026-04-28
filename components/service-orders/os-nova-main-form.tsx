@@ -69,6 +69,12 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                 <p className="text-xs text-muted-foreground">
                   Na OS avulsa o número é gerado automaticamente pelo sistema.
                 </p>
+              ) : os.isCheckingCustomOsNumber && os.customOsNumber ? (
+                <p className="text-xs text-muted-foreground">Verificando número da OS...</p>
+              ) : os.isCustomOsNumberDuplicate ? (
+                <p className="text-xs text-destructive">
+                  Este número já está em uso. Escolha outro para continuar.
+                </p>
               ) : os.customOsNumber && Number(os.customOsNumber) > 0 ? (
                 <p className="text-xs text-muted-foreground">
                   A OS será criada com o número{" "}

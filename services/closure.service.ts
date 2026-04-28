@@ -5,6 +5,7 @@ import { ServiceError } from "@/services/service-error";
 type ClosurePayload = {
   customerId: string;
   month: string;
+  sourceOrderIds: string[];
   dueDate?: string | null;
   paymentTerm: "A_VISTA" | "A_PRAZO";
   paymentMethod: string;
@@ -68,6 +69,7 @@ export const closureService = {
 
     const sourceOrders = await prisma.serviceOrder.findMany({
       where: {
+        id: { in: payload.sourceOrderIds },
         companyId: context.companyId,
         ...(context.unitId ? { unitId: context.unitId } : {}),
         customerId: payload.customerId,
@@ -99,6 +101,10 @@ export const closureService = {
 
     if (!sourceOrders.length) {
       throw new ServiceError("Nenhuma OS encontrada para gerar fechamento.", 400);
+    }
+
+    if (sourceOrders.length !== payload.sourceOrderIds.length) {
+      throw new ServiceError("Algumas OS selecionadas não pertencem ao cliente/período informado.", 400);
     }
 
     const closureUnitId = sourceOrders[0].unitId;

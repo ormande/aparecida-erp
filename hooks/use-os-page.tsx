@@ -16,7 +16,7 @@ import { useServiceOrders } from "@/hooks/use-service-orders";
 import { useServices } from "@/hooks/use-services";
 import { useUnits } from "@/hooks/use-units";
 import { useVehicles } from "@/hooks/use-vehicles";
-import { currency, date, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
+import { currency, date, formatCurrencyInput } from "@/lib/formatters";
 import { getPersonName } from "@/lib/person-helpers";
 
 export type OrderStatus = "Aberta" | "Em andamento" | "Aguardando peça" | "Concluída" | "Cancelada";
@@ -79,6 +79,14 @@ export type ClosureRow = {
   unitScope: string | null;
 };
 
+export type ClosureSelectableOrder = {
+  id: string;
+  number: string;
+  openedAt: string;
+  total: number;
+  paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
+};
+
 export type OsEditableData = {
   unitId: string;
   clientId: string;
@@ -102,6 +110,20 @@ export type OsEditableServiceLine = {
   executedByUserId: string;
 };
 
+export type OsEditableProductLine = {
+  id: string;
+  productId: string;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  unitPriceInput: string;
+};
+
+type UseOsPageOptions = {
+  fixedBillingFilter?: "ABERTAS" | "FATURADAS" | "PAGAS";
+};
+
 const STATUS_FILTER_OPTIONS = [
   { value: "Aberta", label: "Aberta" },
   { value: "Em andamento", label: "Em andamento" },
@@ -110,7 +132,14 @@ const STATUS_FILTER_OPTIONS = [
   { value: "Cancelada", label: "Cancelada" },
 ] as const;
 
-export function useOsPage() {
+const BILLING_FILTER_OPTIONS = [
+  { value: "ABERTAS", label: "OS abertas" },
+  { value: "FATURADAS", label: "OS faturadas" },
+  { value: "PAGAS", label: "OS pagas" },
+] as const;
+
+export function useOsPage(options: UseOsPageOptions = {}) {
+  const { fixedBillingFilter } = options;
   const searchParams = useSearchParams();
   const queryClientId = searchParams.get("clientId");
   const vehicleId = searchParams.get("vehicleId");
@@ -127,18 +156,19 @@ export function useOsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [serviceFilter, setServiceFilter] = useState("");
-  const [minValue, setMinValue] = useState("");
-  const [maxValue, setMaxValue] = useState("");
+  const [billingFilter, setBillingFilter] = useState(fixedBillingFilter ?? "");
   const [datePreset, setDatePreset] = useState<"all" | "today" | "yesterday" | "custom">("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [groupByCustomer, setGroupByCustomer] = useState(false);
   const [closureRow, setClosureRow] = useState<ClosureRow | null>(null);
+  const [selectedClosureOrderIds, setSelectedClosureOrderIds] = useState<string[]>([]);
   const [closurePaymentTerm, setClosurePaymentTerm] = useState<"A_VISTA" | "A_PRAZO">("A_PRAZO");
   const [closureDueDate, setClosureDueDate] = useState("");
   const [editOrder, setEditOrder] = useState<OrderDetails | null>(null);
   const [viewOrder, setViewOrder] = useState<OrderDetails | null>(null);
   const [settleOrder, setSettleOrder] = useState<{ id: string; number: string } | null>(null);
+  const [billOrder, setBillOrder] = useState<{ id: string; number: string } | null>(null);
   const [statusOrder, setStatusOrder] = useState<{ id: string; number: string; status: string } | null>(null);
   const [editableData, setEditableData] = useState<OsEditableData>({
     unitId: "",
@@ -153,11 +183,25 @@ export function useOsPage() {
     notes: "",
   });
   const [editableServices, setEditableServices] = useState<OsEditableServiceLine[]>([]);
+  const [editableProducts, setEditableProducts] = useState<OsEditableProductLine[]>([]);
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+  const [statusLoadingByOrderId, setStatusLoadingByOrderId] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (unitId) setSelectedUnitId((current) => current || unitId);
   }, [unitId]);
+
+  useEffect(() => {
+    if (fixedBillingFilter) {
+      setBillingFilter(fixedBillingFilter);
+    }
+  }, [fixedBillingFilter]);
+
+  useEffect(() => {
+    if (fixedBillingFilter !== "FATURADAS") {
+      setGroupByCustomer(false);
+    }
+  }, [fixedBillingFilter]);
 
   useEffect(() => {
     setPage(1);
@@ -201,10 +245,9 @@ export function useOsPage() {
     return orders.filter((order) => {
       if (order.number.startsWith("FEC-")) return false;
       if (serviceFilter && !order.servicesLabel.toLowerCase().includes(serviceFilter.toLowerCase())) return false;
-      const min = parseCurrencyInput(minValue);
-      if (min > 0 && order.total < min) return false;
-      const max = parseCurrencyInput(maxValue);
-      if (max > 0 && order.total > max) return false;
+      if (billingFilter === "ABERTAS" && order.isBilled) return false;
+      if (billingFilter === "FATURADAS" && (!order.isBilled || order.paymentStatus === "PAGO")) return false;
+      if (billingFilter === "PAGAS" && order.paymentStatus !== "PAGO") return false;
       if (datePreset === "today") {
         const openedAt = new Date(`${order.openedAt}T00:00:00`);
         if (openedAt.toDateString() !== today.toDateString()) return false;
@@ -219,7 +262,7 @@ export function useOsPage() {
       }
       return true;
     });
-  }, [customFrom, customTo, datePreset, maxValue, minValue, orders, serviceFilter]);
+  }, [billingFilter, customFrom, customTo, datePreset, orders, serviceFilter]);
 
   const groupedOrders = useMemo(() => {
     const grouped = new Map<string, ClosureRow>();
@@ -247,6 +290,46 @@ export function useOsPage() {
     }
     return Array.from(grouped.values());
   }, [filteredOrders, selectedUnitId]);
+
+  const closureAvailableOrders = useMemo<ClosureSelectableOrder[]>(() => {
+    if (!closureRow) {
+      return [];
+    }
+    return filteredOrders
+      .filter((order) => {
+        if (order.number.startsWith("FEC-")) return false;
+        const month = order.openedAt.slice(0, 7);
+        return month === closureRow.month && (order.clientId ?? order.clientName) === (closureRow.customerId ?? closureRow.customerName);
+      })
+      .map((order) => ({
+        id: order.id,
+        number: order.number,
+        openedAt: order.openedAt,
+        total: order.total,
+        paymentStatus: order.paymentStatus,
+      }));
+  }, [closureRow, filteredOrders]);
+
+  const toggleClosureOrderSelection = useCallback((orderId: string) => {
+    setSelectedClosureOrderIds((current) =>
+      current.includes(orderId) ? current.filter((id) => id !== orderId) : [...current, orderId],
+    );
+  }, []);
+
+  const openClosureDialog = useCallback(
+    (row: ClosureRow) => {
+      setClosureRow(row);
+      const defaultSelected = filteredOrders
+        .filter((order) => {
+          if (order.number.startsWith("FEC-")) return false;
+          const month = order.openedAt.slice(0, 7);
+          return month === row.month && (order.clientId ?? order.clientName) === (row.customerId ?? row.customerName);
+        })
+        .map((order) => order.id);
+      setSelectedClosureOrderIds(defaultSelected);
+    },
+    [filteredOrders],
+  );
 
   const groupedOrdersSearchKeys = useMemo<Array<(row: ClosureRow) => string>>(
     () => [(row) => row.customerName, (row) => row.month],
@@ -277,7 +360,7 @@ export function useOsPage() {
       unitId: order.unitId,
       clientId: order.clientId ?? "",
       customerNameSnapshot: order.customerNameSnapshot ?? order.clientName,
-      customOsNumber: String(Number(order.number.split("-").at(-1) ?? "0") || ""),
+      customOsNumber: (order.number.split("-").at(-1) ?? "").padStart(5, "0"),
       vehicleId: order.vehicleId ?? "",
       mileage: order.mileage ? String(order.mileage) : "",
       dueDate: order.dueDate ?? "",
@@ -296,18 +379,68 @@ export function useOsPage() {
         executedByUserId: service.executedByUserId ?? "",
       })),
     );
+    setEditableProducts(
+      (order.products ?? []).map((product) => ({
+        id: product.id,
+        productId: product.productId ?? "",
+        description: product.description,
+        unit: product.unit,
+        quantity: product.quantity,
+        unitPrice: product.unitPrice,
+        unitPriceInput: formatCurrencyInput(String(Math.round(product.unitPrice * 100))),
+      })),
+    );
   }, [fetchOrder]);
 
   const handleSaveEdit = useCallback(async (): Promise<void> => {
     if (!editOrder) return;
-    if (
-      !editableData.customOsNumber ||
-      Number(editableData.customOsNumber) < 1 ||
-      Number(editableData.customOsNumber) > 99999
-    ) {
-      toast.error("Informe um número de OS válido.");
+
+    if (!editableData.unitId) {
+      toast.error("Selecione a unidade.");
       return;
     }
+
+    const customNumber = Number(editableData.customOsNumber);
+    if (!editableData.customOsNumber || customNumber < 1 || customNumber > 99999) {
+      toast.error("Número da OS inválido. Use um valor entre 1 e 99999.");
+      return;
+    }
+
+    if (!editOrder.isStandalone && !editableData.clientId) {
+      toast.error("Selecione o cliente para continuar.");
+      return;
+    }
+
+    if (!editableServices.length && !editableProducts.length) {
+      toast.error("Adicione ao menos um serviço ou produto.");
+      return;
+    }
+
+    const hasInvalidService = editableServices.some(
+      (service) =>
+        service.description.trim().length === 0 ||
+        Number(service.quantity) < 1 ||
+        Number.isNaN(Number(service.laborPrice)) ||
+        Number(service.laborPrice) < 0,
+    );
+    if (hasInvalidService) {
+      toast.error("Preencha corretamente os serviços (descrição, quantidade e valor).");
+      return;
+    }
+
+    const hasInvalidProduct = editableProducts.some(
+      (product) =>
+        product.description.trim().length === 0 ||
+        product.unit.trim().length === 0 ||
+        Number(product.quantity) <= 0 ||
+        Number.isNaN(Number(product.unitPrice)) ||
+        Number(product.unitPrice) < 0,
+    );
+    if (hasInvalidProduct) {
+      toast.error("Preencha corretamente os produtos (descrição, unidade, quantidade e valor).");
+      return;
+    }
+
     const response = await fetch(`/api/service-orders/${editOrder.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -316,7 +449,7 @@ export function useOsPage() {
         unitId: editableData.unitId,
         customerId: editOrder.isStandalone ? null : editableData.clientId,
         customerNameSnapshot: editOrder.isStandalone ? editableData.customerNameSnapshot : "",
-        customOsNumber: Number(editableData.customOsNumber),
+        customOsNumber: customNumber,
         vehicleId: editOrder.isStandalone ? null : editableData.vehicleId || null,
         mileage: editableData.mileage ? Number(editableData.mileage) : null,
         dueDate: editableData.paymentTerm === "A_PRAZO" ? editableData.dueDate : null,
@@ -328,8 +461,21 @@ export function useOsPage() {
           description: service.description,
           quantity: service.quantity ?? 1,
           laborPrice: service.laborPrice,
-          executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
+          executedByUserId:
+            service.executedByUserId?.trim() && service.executedByUserId !== "__casa__"
+              ? service.executedByUserId
+              : null,
+          commissionRate: service.executedByUserId === "__casa__" ? 0 : undefined,
         })),
+        products: editableProducts
+          .filter((product) => product.description.trim().length > 0 && Number(product.quantity) > 0)
+          .map((product) => ({
+            productId: product.productId || null,
+            description: product.description,
+            unit: product.unit,
+            quantity: product.quantity,
+            unitPrice: product.unitPrice,
+          })),
       }),
     });
     const data = await response.json();
@@ -370,7 +516,7 @@ export function useOsPage() {
     });
     setEditOrder(null);
     void toast.success("OS atualizada com sucesso!");
-  }, [editOrder, editableData, editableServices, setOrders]);
+  }, [editOrder, editableData, editableProducts, editableServices, setOrders]);
 
   const handleStatusUpdate = useCallback(
     async (id: string, newStatus: string): Promise<void> => {
@@ -399,39 +545,61 @@ export function useOsPage() {
   );
 
   const handleStatusChange = useCallback(
-    async (id: string, mode: "settle" | "reopen" | "bill"): Promise<void> => {
-      const response = await fetch(`/api/service-orders/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        toast.error(data.message ?? "Nao foi possivel alterar o status da OS.");
+    async (
+      id: string,
+      mode: "settle" | "reopen" | "bill" | "unbill",
+      options?: { paymentMethod?: string },
+    ): Promise<void> => {
+      if (statusLoadingByOrderId[id]) {
         return;
       }
-      setOrders((current) =>
-        current.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                status: data.order.status,
-                receivableStatus: data.order.receivableStatus,
-                paymentStatus: data.order.paymentStatus,
-                isBilled: data.order.isBilled,
-              }
-            : item,
-        ),
-      );
-      const successMessage =
-        mode === "settle"
-          ? "OS baixada com sucesso!"
-          : mode === "bill"
-            ? "OS faturada com sucesso!"
-            : "OS reaberta com sucesso!";
-      void toast.success(successMessage);
+      setStatusLoadingByOrderId((current) => ({ ...current, [id]: true }));
+      try {
+        const response = await fetch(`/api/service-orders/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode,
+            ...(options?.paymentMethod ? { paymentMethod: options.paymentMethod } : {}),
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          toast.error(data.message ?? "Nao foi possivel alterar o status da OS.");
+          return;
+        }
+        setOrders((current) =>
+          current.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  status: data.order.status,
+                  receivableStatus: data.order.receivableStatus,
+                  paymentStatus: data.order.paymentStatus,
+                  isBilled: data.order.isBilled,
+                }
+              : item,
+          ),
+        );
+        const successMessage =
+          mode === "settle"
+            ? "OS baixada com sucesso!"
+            : mode === "bill"
+              ? "OS faturada com sucesso!"
+              : mode === "unbill"
+                ? "Faturamento da OS cancelado com sucesso!"
+                : "OS reaberta com sucesso!";
+        void toast.success(successMessage);
+        if (mode === "bill") {
+          setBillOrder(null);
+        }
+      } catch {
+        toast.error("Nao foi possivel alterar o status da OS.");
+      } finally {
+        setStatusLoadingByOrderId((current) => ({ ...current, [id]: false }));
+      }
     },
-    [setOrders],
+    [setOrders, statusLoadingByOrderId],
   );
 
   const executeDelete = useCallback(
@@ -453,6 +621,10 @@ export function useOsPage() {
       toast.error("Selecione um cliente valido.");
       return;
     }
+    if (selectedClosureOrderIds.length <= 1) {
+      toast.error("Selecione pelo menos duas OS para gerar o fechamento.");
+      return;
+    }
     const response = await fetch("/api/service-orders/closures", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -460,6 +632,7 @@ export function useOsPage() {
         customerId: closureRow.customerId,
         unitId: closureRow.unitScope,
         month: closureRow.month,
+        sourceOrderIds: selectedClosureOrderIds,
         paymentTerm: closurePaymentTerm,
         dueDate: closurePaymentTerm === "A_PRAZO" ? closureDueDate : null,
       }),
@@ -471,8 +644,9 @@ export function useOsPage() {
     }
     setOrders((current) => [data.order, ...current]);
     setClosureRow(null);
+    setSelectedClosureOrderIds([]);
     void toast.success("OS de fechamento gerada com sucesso!");
-  }, [closureDueDate, closurePaymentTerm, closureRow, setOrders]);
+  }, [closureDueDate, closurePaymentTerm, closureRow, selectedClosureOrderIds, setOrders]);
 
   const handleOsPdfDownload = useCallback(
     async (orderId: string, orderNumber: string) => {
@@ -510,13 +684,13 @@ export function useOsPage() {
         key: "actions",
         header: "Ações",
         render: (row: ClosureRow) => (
-          <Button variant="outline" size="sm" onClick={() => setClosureRow(row)} disabled={!row.customerId}>
+          <Button variant="outline" size="sm" onClick={() => openClosureDialog(row)} disabled={!row.customerId}>
             Gerar fechamento
           </Button>
         ),
       },
     ],
-    [],
+    [openClosureDialog],
   );
 
   const filteredTableColumns = useMemo(
@@ -575,16 +749,40 @@ export function useOsPage() {
             <Button
               variant="outline"
               size="sm"
+              disabled={
+                Boolean(statusLoadingByOrderId[row.id]) ||
+                (row.isBilled && row.paymentStatus !== "PAGO" && Boolean(row.isLockedByOpenClosure))
+              }
               onClick={() =>
                 row.paymentStatus === "PAGO"
                   ? void handleStatusChange(row.id, "reopen")
                   : row.isBilled
                     ? setSettleOrder({ id: row.id, number: row.number })
-                    : void handleStatusChange(row.id, "bill")
+                    : setBillOrder({ id: row.id, number: row.number })
+              }
+              title={
+                row.isBilled && row.paymentStatus !== "PAGO" && row.isLockedByOpenClosure
+                  ? "Baixe o fechamento vinculado antes de baixar esta OS."
+                  : undefined
               }
             >
               {row.paymentStatus === "PAGO" ? "Reabrir" : row.isBilled ? "Baixar" : "Faturar"}
             </Button>
+            {row.isBilled && row.paymentStatus !== "PAGO" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={Boolean(statusLoadingByOrderId[row.id]) || Boolean(row.isLockedByOpenClosure)}
+                onClick={() => void handleStatusChange(row.id, "unbill")}
+                title={
+                  row.isLockedByOpenClosure
+                    ? "Exclua ou baixe o fechamento vinculado antes de cancelar o faturamento."
+                    : undefined
+                }
+              >
+                Cancelar faturamento
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"
@@ -621,13 +819,12 @@ export function useOsPage() {
     setSearch("");
     setPage(1);
     setServiceFilter("");
-    setMinValue("");
-    setMaxValue("");
+    setBillingFilter(fixedBillingFilter ?? "");
     setDatePreset("all");
     setCustomFrom("");
     setCustomTo("");
     setGroupByCustomer(false);
-  }, []);
+  }, [fixedBillingFilter]);
 
   return {
     user,
@@ -648,10 +845,8 @@ export function useOsPage() {
     setPage,
     serviceFilter,
     setServiceFilter,
-    minValue,
-    setMinValue,
-    maxValue,
-    setMaxValue,
+    billingFilter,
+    setBillingFilter,
     datePreset,
     setDatePreset,
     customFrom,
@@ -662,6 +857,10 @@ export function useOsPage() {
     setGroupByCustomer,
     closureRow,
     setClosureRow,
+    closureAvailableOrders,
+    selectedClosureOrderIds,
+    setSelectedClosureOrderIds,
+    toggleClosureOrderSelection,
     closurePaymentTerm,
     setClosurePaymentTerm,
     closureDueDate,
@@ -674,10 +873,15 @@ export function useOsPage() {
     setSettleOrder,
     statusOrder,
     setStatusOrder,
+    billOrder,
+    setBillOrder,
+    statusLoadingByOrderId,
     editableData,
     setEditableData,
     editableServices,
     setEditableServices,
+    editableProducts,
+    setEditableProducts,
     orders,
     meta,
     hydrated,
@@ -692,6 +896,7 @@ export function useOsPage() {
     groupedTableColumns,
     filteredTableColumns,
     statusFilterOptions: STATUS_FILTER_OPTIONS,
+    billingFilterOptions: BILLING_FILTER_OPTIONS,
     fetchOrder,
     openEditDialog,
     handleSaveEdit,

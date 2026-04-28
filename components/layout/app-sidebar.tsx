@@ -59,7 +59,9 @@ const baseItems: NavItem[] = [
     label: "Ordens de Serviço",
     icon: Wrench,
     children: [
-      { href: "/ordens-de-servico", label: "Ordens normais", icon: Wrench },
+      { href: "/ordens-de-servico", label: "Ordens abertas", icon: Wrench },
+      { href: "/ordens-de-servico/faturadas", label: "Ordens faturadas", icon: Wrench },
+      { href: "/ordens-de-servico/pagas", label: "Ordens pagas", icon: Wrench },
       { href: "/ordens-de-servico/fechamentos", label: "Fechamentos", icon: Package },
     ],
   },
@@ -208,7 +210,6 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
                 {item.children?.length ? (
                   <div className="ml-4 space-y-1 border-l border-sidebar-border pl-4">
                     {item.children.map((child) => {
-                      const ChildIcon = child.icon;
                       const childActive =
                         pathname === child.href || (child.href !== item.href && pathname.startsWith(`${child.href}/`));
 
@@ -224,7 +225,7 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
                               : "text-[rgba(240,244,248,0.68)] hover:bg-[rgba(255,255,255,0.06)] hover:text-white",
                           )}
                         >
-                          <ChildIcon className="h-3.5 w-3.5" />
+                          <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden />
                           {child.label}
                         </Link>
                       );
