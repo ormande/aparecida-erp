@@ -320,6 +320,8 @@ model ServiceOrderItem {
   serviceOrderId        String
   serviceId             String?
   description           String
+  /// OS filha vinculada em linhas de FEC (ex.: OS-2026-00001). Evita depender só do texto em `description`.
+  referencedOrderNumber String?
   quantity              Int                  @default(1)
   laborPrice            Decimal              @db.Decimal(10, 2)
   commissionRate        Int                  @default(12)
@@ -359,6 +361,8 @@ model AccountReceivable {
   unitId             String?
   customerId         String?
   serviceOrderId     String?
+  /// 0 = linha principal de faturamento da OS; 1+ = linhas adicionais (ex.: saldo após baixa parcial de FEC).
+  lineSlot           Int                  @default(0)
   originType         ReceivableOriginType @default(MANUAL)
   description        String
   amount             Decimal              @db.Decimal(10, 2)
@@ -375,6 +379,7 @@ model AccountReceivable {
   customer           Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
   serviceOrder       ServiceOrder?        @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
 
+  @@unique([serviceOrderId, lineSlot])
   @@index([companyId, unitId, dueDate])
   @@index([companyId, status])
 }

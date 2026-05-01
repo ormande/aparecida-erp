@@ -1,4 +1,10 @@
 import { mapServiceOrderStatus } from "@/lib/db-mappers";
+import {
+  fecLineReferencedOrderNumbers,
+  fecOutstandingFromItems,
+  fetchReferencedOrderNumbersInOpenClosures,
+  getReferencedOrderNumbersFromFecItems,
+} from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { normalizeSearch } from "@/lib/search-helpers";
@@ -186,12 +192,21 @@ function serviceOrderAfterDataForAudit(order: {
   };
 }
 
+/** Trava linhas de OS na ordem dos ids (evita deadlock) para leitura coerente de isBilled sob concorrência. */
+async function lockServiceOrdersByIdForUpdate(tx: { $executeRaw: (args: Prisma.Sql) => Promise<unknown> }, orderIds: string[]) {
+  const sorted = Array.from(new Set(orderIds)).sort();
+  for (const orderId of sorted) {
+    await tx.$executeRaw(Prisma.sql`SELECT 1 FROM "ServiceOrder" WHERE id = ${orderId} FOR UPDATE`);
+  }
+}
+
 function receivableAfterDataForAudit(receivable: {
   id: string;
   companyId: string;
   unitId: string | null;
   customerId: string | null;
   serviceOrderId: string | null;
+  lineSlot: number;
   originType: string;
   description: string;
   amount: Prisma.Decimal;
@@ -210,6 +225,7 @@ function receivableAfterDataForAudit(receivable: {
     unitId: receivable.unitId,
     customerId: receivable.customerId,
     serviceOrderId: receivable.serviceOrderId,
+    lineSlot: receivable.lineSlot,
     originType: receivable.originType,
     description: receivable.description,
     amount: Number(receivable.amount),
@@ -258,6 +274,7 @@ async function getOrder(companyId: string, unitId: string | undefined, id: strin
           id: true,
           serviceId: true,
           description: true,
+          referencedOrderNumber: true,
           quantity: true,
           laborPrice: true,
           lineTotal: true,
@@ -354,41 +371,6 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
       .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
       .reduce((sum, r) => sum + Number(r.amount), 0),
   };
-}
-
-function getReferencedOrderNumbers(descriptions: string[]) {
-  const matches = descriptions
-    .flatMap((description) => Array.from(description.matchAll(/OS-\d{4}-\d{5}/g)).map((match) => match[0]))
-    .filter(Boolean);
-
-  return Array.from(new Set(matches));
-}
-
-async function getReferencedNumbersFromOpenClosures(companyId: string, unitId?: string) {
-  const openClosures = await prisma.serviceOrder.findMany({
-    where: {
-      companyId,
-      ...(unitId ? { unitId } : {}),
-      number: { startsWith: "FEC-" },
-      paymentStatus: { not: "PAGO" },
-    },
-    select: {
-      items: {
-        select: {
-          description: true,
-        },
-      },
-    },
-  });
-
-  const referenced = new Set<string>();
-  for (const closure of openClosures) {
-    const numbers = getReferencedOrderNumbers(closure.items.map((item) => item.description));
-    for (const number of numbers) {
-      referenced.add(number);
-    }
-  }
-  return referenced;
 }
 
 function mapStatusFilter(status?: string) {
@@ -526,7 +508,7 @@ export const serviceOrderService = {
           },
         },
       }),
-      getReferencedNumbersFromOpenClosures(context.companyId, filters.unitId),
+      fetchReferencedOrderNumbersInOpenClosures(context.companyId, filters.unitId),
     ]);
 
     return {
@@ -845,6 +827,7 @@ export const serviceOrderService = {
                 id: true,
                 serviceId: true,
                 description: true,
+                referencedOrderNumber: true,
                 quantity: true,
                 laborPrice: true,
                 lineTotal: true,
@@ -924,13 +907,235 @@ export const serviceOrderService = {
       }
 
       const dueDate = existing.dueDate ?? existing.openedAt;
-      const updated = await db.$transaction(async (tx) => {
+
+      if (existing.number.startsWith("FEC-")) {
+        const sourceNumbers = getReferencedOrderNumbersFromFecItems(existing.items);
+        if (!sourceNumbers.length) {
+          throw new ServiceError("Nenhuma OS de origem encontrada no fechamento.", 400);
+        }
+
+        const uniqueNumbers = Array.from(new Set(sourceNumbers));
+        let updated;
+        try {
+          updated = await db.$transaction(async (tx) => {
+          const sourceOrders = await tx.serviceOrder.findMany({
+            where: {
+              companyId: context.companyId,
+              ...(context.unitId ? { unitId: context.unitId } : {}),
+              number: { in: uniqueNumbers },
+            },
+            select: {
+              id: true,
+              unitId: true,
+              number: true,
+              customerId: true,
+              openedAt: true,
+              dueDate: true,
+              totalAmount: true,
+              isBilled: true,
+            },
+          });
+
+          if (sourceOrders.length !== uniqueNumbers.length) {
+            throw new ServiceError("Alguma OS de origem do fechamento não foi encontrada.", 400);
+          }
+
+          await lockServiceOrdersByIdForUpdate(tx, [existing.id, ...sourceOrders.map((o) => o.id)]);
+
+          const fecAfterLock = await tx.serviceOrder.findFirst({
+            where: {
+              id: existing.id,
+              companyId: context.companyId,
+              ...(context.unitId ? { unitId: context.unitId } : {}),
+            },
+            select: { isBilled: true },
+          });
+          if (!fecAfterLock) {
+            throw new ServiceError("Ordem de serviço não encontrada.", 404);
+          }
+          if (fecAfterLock.isBilled) {
+            throw new ServiceError("Esta OS já foi faturada.", 400);
+          }
+
+          const sourceOrdersAfterLock = await tx.serviceOrder.findMany({
+            where: {
+              companyId: context.companyId,
+              ...(context.unitId ? { unitId: context.unitId } : {}),
+              number: { in: uniqueNumbers },
+            },
+            select: {
+              id: true,
+              unitId: true,
+              number: true,
+              customerId: true,
+              openedAt: true,
+              dueDate: true,
+              totalAmount: true,
+              isBilled: true,
+            },
+          });
+
+          for (const child of sourceOrdersAfterLock) {
+            if (child.isBilled) {
+              continue;
+            }
+            const childDue = child.dueDate ?? child.openedAt;
+            const childReceivable = await tx.accountReceivable.create({
+              data: {
+                companyId: context.companyId,
+                unitId: child.unitId,
+                customerId: child.customerId || null,
+                serviceOrderId: child.id,
+                lineSlot: 0,
+                originType: "SERVICE_ORDER",
+                description: child.number,
+                amount: child.totalAmount,
+                dueDate: childDue,
+                status: "PENDENTE",
+                paidAt: null,
+                installmentGroupId: null,
+                installmentNumber: null,
+                installmentCount: null,
+              },
+            });
+
+            await tx.serviceOrder.update({
+              where: { id: child.id },
+              data: {
+                isBilled: true,
+                updatedByUserId: context.userId,
+              },
+            });
+
+            await tx.auditLog.create({
+              data: {
+                companyId: context.companyId,
+                unitId: child.unitId,
+                userId: context.userId,
+                entityType: "receivable",
+                entityId: childReceivable.id,
+                action: "CREATE",
+                afterData: receivableAfterDataForAudit(childReceivable),
+              },
+            });
+          }
+
+          await tx.serviceOrder.update({
+            where: { id: existing.id },
+            data: {
+              isBilled: true,
+              updatedByUserId: context.userId,
+            },
+          });
+
+          const order = await tx.serviceOrder.findFirst({
+            where: { id: existing.id },
+            include: {
+              unit: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              customer: {
+                select: {
+                  type: true,
+                  fullName: true,
+                  tradeName: true,
+                },
+              },
+              vehicle: {
+                select: {
+                  plate: true,
+                  brand: true,
+                  model: true,
+                },
+              },
+              items: {
+                select: {
+                  id: true,
+                  serviceId: true,
+                  description: true,
+                  referencedOrderNumber: true,
+                  quantity: true,
+                  laborPrice: true,
+                  lineTotal: true,
+                  previousOrderStatus: true,
+                  executedByUserId: true,
+                  executedBy: {
+                    select: {
+                      name: true,
+                    },
+                  },
+                },
+              },
+              products: {
+                orderBy: { sortOrder: "asc" },
+                select: {
+                  id: true,
+                  productId: true,
+                  description: true,
+                  unit: true,
+                  quantity: true,
+                  unitPrice: true,
+                  totalPrice: true,
+                  sortOrder: true,
+                },
+              },
+              receivables: {
+                orderBy: { createdAt: "asc" },
+                select: {
+                  id: true,
+                  status: true,
+                  amount: true,
+                  dueDate: true,
+                },
+              },
+            },
+          });
+
+          if (!order) {
+            throw new ServiceError("Ordem de serviço não encontrada.", 404);
+          }
+
+          return order;
+        });
+        } catch (error) {
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+            throw new ServiceError("Esta OS já possui recebível de faturamento registrado.", 409);
+          }
+          throw error;
+        }
+
+        return { order: mapOrder(updated) };
+      }
+
+      let updated;
+      try {
+        updated = await db.$transaction(async (tx) => {
+        await lockServiceOrdersByIdForUpdate(tx, [existing.id]);
+        const orderAfterLock = await tx.serviceOrder.findFirst({
+          where: {
+            id: existing.id,
+            companyId: context.companyId,
+            ...(context.unitId ? { unitId: context.unitId } : {}),
+          },
+          select: { isBilled: true },
+        });
+        if (!orderAfterLock) {
+          throw new ServiceError("Ordem de serviço não encontrada.", 404);
+        }
+        if (orderAfterLock.isBilled) {
+          throw new ServiceError("Esta OS já foi faturada.", 400);
+        }
+
         const receivable = await tx.accountReceivable.create({
           data: {
             companyId: context.companyId,
             unitId: existing.unitId,
             customerId: existing.customerId || null,
             serviceOrderId: existing.id,
+            lineSlot: 0,
             originType: "SERVICE_ORDER",
             description: existing.number,
             amount: existing.totalAmount,
@@ -991,6 +1196,7 @@ export const serviceOrderService = {
                 id: true,
                 serviceId: true,
                 description: true,
+                referencedOrderNumber: true,
                 quantity: true,
                 laborPrice: true,
                 lineTotal: true,
@@ -1034,6 +1240,12 @@ export const serviceOrderService = {
 
         return order;
       });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+          throw new ServiceError("Esta OS já possui recebível de faturamento registrado.", 409);
+        }
+        throw error;
+      }
 
       return { order: mapOrder(updated) };
     }
@@ -1044,7 +1256,7 @@ export const serviceOrderService = {
       }
 
       if (!existing.number.startsWith("FEC-")) {
-        const lockedNumbers = await getReferencedNumbersFromOpenClosures(context.companyId, existing.unitId);
+        const lockedNumbers = await fetchReferencedOrderNumbersInOpenClosures(context.companyId, existing.unitId);
         if (lockedNumbers.has(existing.number)) {
           throw new ServiceError(
             "Esta OS está vinculada a um fechamento em aberto. Exclua ou baixe o fechamento antes de cancelar o faturamento.",
@@ -1055,10 +1267,98 @@ export const serviceOrderService = {
 
       const hasPaidReceivable = existing.receivables.some((item) => item.status === "PAGO");
       if (hasPaidReceivable || existing.paymentStatus === "PAGO") {
-        throw new ServiceError("Não é possível cancelar o faturamento de uma OS já paga. Reabra primeiro.", 400);
+        throw new ServiceError(
+          "Não é possível cancelar o faturamento enquanto a OS está baixada. Reabra o pagamento primeiro (menu da OS) e tente novamente.",
+          400,
+        );
       }
 
       const updated = await db.$transaction(async (tx) => {
+        if (existing.number.startsWith("FEC-")) {
+          const childNumbers = Array.from(
+            new Set(getReferencedOrderNumbersFromFecItems(existing.items)),
+          );
+          if (childNumbers.length) {
+            const children = await tx.serviceOrder.findMany({
+              where: {
+                companyId: context.companyId,
+                number: { in: childNumbers },
+              },
+              include: {
+                receivables: {
+                  select: { status: true },
+                },
+              },
+            });
+
+            for (const ch of children) {
+              if (ch.receivables.some((r) => r.status === "PAGO")) {
+                throw new ServiceError(
+                  "Não é possível cancelar o faturamento do fechamento com OS filha já paga.",
+                  400,
+                );
+              }
+            }
+
+            const childIds = children.map((c) => c.id);
+            const childReceivables = await tx.accountReceivable.findMany({
+              where: {
+                serviceOrderId: { in: childIds },
+                originType: "SERVICE_ORDER",
+              },
+            });
+            for (const rec of childReceivables) {
+              await tx.auditLog.create({
+                data: {
+                  companyId: context.companyId,
+                  unitId: rec.unitId,
+                  userId: context.userId,
+                  entityType: "receivable",
+                  entityId: rec.id,
+                  action: "DELETE",
+                  beforeData: receivableAfterDataForAudit(rec),
+                },
+              });
+            }
+            for (const ch of children) {
+              await tx.accountReceivable.deleteMany({
+                where: {
+                  serviceOrderId: ch.id,
+                  originType: "SERVICE_ORDER",
+                },
+              });
+              await tx.serviceOrder.update({
+                where: { id: ch.id },
+                data: {
+                  isBilled: false,
+                  paymentStatus: "PENDENTE",
+                  updatedByUserId: context.userId,
+                },
+              });
+            }
+          }
+        }
+
+        const ownReceivables = await tx.accountReceivable.findMany({
+          where: {
+            serviceOrderId: existing.id,
+            originType: "SERVICE_ORDER",
+          },
+        });
+        for (const rec of ownReceivables) {
+          await tx.auditLog.create({
+            data: {
+              companyId: context.companyId,
+              unitId: rec.unitId,
+              userId: context.userId,
+              entityType: "receivable",
+              entityId: rec.id,
+              action: "DELETE",
+              beforeData: receivableAfterDataForAudit(rec),
+            },
+          });
+        }
+
         await tx.accountReceivable.deleteMany({
           where: {
             serviceOrderId: existing.id,
@@ -1103,6 +1403,7 @@ export const serviceOrderService = {
                 id: true,
                 serviceId: true,
                 description: true,
+                referencedOrderNumber: true,
                 quantity: true,
                 laborPrice: true,
                 lineTotal: true,
@@ -1155,7 +1456,7 @@ export const serviceOrderService = {
     }
 
     if (payload.mode === "settle" && !existing.number.startsWith("FEC-")) {
-      const lockedNumbers = await getReferencedNumbersFromOpenClosures(context.companyId, existing.unitId);
+      const lockedNumbers = await fetchReferencedOrderNumbersInOpenClosures(context.companyId, existing.unitId);
       if (lockedNumbers.has(existing.number)) {
         throw new ServiceError(
           "Esta OS está vinculada a um fechamento em aberto. Baixe o fechamento antes de baixar esta OS.",
@@ -1164,18 +1465,54 @@ export const serviceOrderService = {
       }
     }
 
-    const receivable = existing.receivables[0];
-    if (!receivable) {
-      throw new ServiceError("Recebível vinculado não encontrado.", 404);
+    if (payload.mode === "reopen" && !existing.number.startsWith("FEC-")) {
+      const lockedNumbers = await fetchReferencedOrderNumbersInOpenClosures(context.companyId, existing.unitId);
+      if (lockedNumbers.has(existing.number)) {
+        throw new ServiceError(
+          "Esta OS está vinculada a um fechamento em aberto. Baixe ou reabra o fechamento antes de reabrir o pagamento desta OS.",
+          400,
+        );
+      }
+      if (!existing.isBilled) {
+        throw new ServiceError("Não há faturamento registrado para reabrir o pagamento.", 400);
+      }
+      if (existing.paymentStatus === "PAGO_PARCIAL") {
+        throw new ServiceError(
+          "Reabrir pagamento de OS comum com baixa parcial não está disponível. Entre em contato com o suporte se precisar corrigir.",
+          400,
+        );
+      }
+      const paidLike =
+        existing.paymentStatus === "PAGO" ||
+        existing.receivables.some((r) => r.status === "PAGO");
+      if (!paidLike) {
+        throw new ServiceError(
+          "Só é possível reabrir o pagamento quando a OS está baixada (paga).",
+          400,
+        );
+      }
     }
 
-    const targetStatus = payload.mode === "settle" ? "PAGO" : "PENDENTE";
-    const closureOutstandingAmount = existing.items.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+    const receivable = existing.receivables[0] ?? null;
+    const closureOutstandingAmount = fecOutstandingFromItems(existing.items);
     const isPartialPayment =
       existing.number.startsWith("FEC-") &&
       payload.mode === "settle" &&
       (payload.partialAmount ?? 0) > 0 &&
       (payload.partialAmount ?? 0) < closureOutstandingAmount;
+
+    if (!existing.number.startsWith("FEC-") && !receivable) {
+      throw new ServiceError("Recebível vinculado não encontrado.", 404);
+    }
+
+    if (existing.number.startsWith("FEC-") && !receivable && isPartialPayment) {
+      throw new ServiceError(
+        "Baixa parcial não está disponível para fechamento sem recebível na OS de fechamento (somente baixa total).",
+        400,
+      );
+    }
+
+    const targetStatus = payload.mode === "settle" ? "PAGO" : "PENDENTE";
 
     const appliedDiscount =
       existing.number.startsWith("FEC-") && payload.mode === "settle" && !isPartialPayment
@@ -1200,46 +1537,72 @@ export const serviceOrderService = {
           : "PAGO"
         : "PENDENTE";
 
-    const updated = await db.$transaction(async (tx) => {
-      await tx.accountReceivable.update({
-        where: { id: receivable.id },
-        data: {
-          amount:
-            existing.number.startsWith("FEC-")
-              ? payload.mode === "settle"
-                ? closureSettledAmount
-                : closureOutstandingAmount
-              : receivable.amount,
-          status: targetStatus,
-          paidAt: payload.mode === "settle" ? new Date() : null,
-        },
-      });
+    const isRegularReopen = payload.mode === "reopen" && !existing.number.startsWith("FEC-");
 
-      if (isPartialPayment && remainingAmount > 0) {
-        await tx.accountReceivable.create({
-          data: {
-            companyId: context.companyId,
-            unitId: existing.unitId || null,
-            customerId: existing.customerId || null,
+    const updated = await db.$transaction(async (tx) => {
+      if (isRegularReopen) {
+        await tx.accountReceivable.updateMany({
+          where: {
             serviceOrderId: existing.id,
             originType: "SERVICE_ORDER",
-            description: `Pendência de ${existing.number}`,
-            amount: remainingAmount,
-            dueDate: existing.dueDate ?? new Date(),
+          },
+          data: {
             status: "PENDENTE",
-            installmentGroupId: null,
-            installmentNumber: null,
-            installmentCount: null,
+            paidAt: null,
           },
         });
+        await tx.accountReceivable.deleteMany({
+          where: {
+            serviceOrderId: existing.id,
+            originType: "SERVICE_ORDER",
+            lineSlot: { gt: 0 },
+          },
+        });
+      } else if (receivable) {
+        await tx.accountReceivable.update({
+          where: { id: receivable.id },
+          data: {
+            amount:
+              existing.number.startsWith("FEC-")
+                ? payload.mode === "settle"
+                  ? closureSettledAmount
+                  : closureOutstandingAmount
+                : receivable.amount,
+            status: targetStatus,
+            paidAt: payload.mode === "settle" ? new Date() : null,
+          },
+        });
+
+        if (isPartialPayment && remainingAmount > 0) {
+          await tx.accountReceivable.create({
+            data: {
+              companyId: context.companyId,
+              unitId: existing.unitId || null,
+              customerId: existing.customerId || null,
+              serviceOrderId: existing.id,
+              lineSlot: 1,
+              originType: "SERVICE_ORDER",
+              description: `Pendência de ${existing.number}`,
+              amount: remainingAmount,
+              dueDate: existing.dueDate ?? new Date(),
+              status: "PENDENTE",
+              installmentGroupId: null,
+              installmentNumber: null,
+              installmentCount: null,
+            },
+          });
+        }
       }
 
       if (existing.number.startsWith("FEC-")) {
-        const sourceNumbers = getReferencedOrderNumbers(existing.items.map((item) => item.description));
-        const reopenableSourceNumbers = getReferencedOrderNumbers(
-          existing.items
-            .filter((item) => !item.description.includes("ja pago") && !item.description.includes("jÃ¡ pago"))
-            .map((item) => item.description),
+        const sourceNumbers = getReferencedOrderNumbersFromFecItems(existing.items);
+        const reopenableSourceNumbers = getReferencedOrderNumbersFromFecItems(
+          existing.items.filter(
+            (item) =>
+              !item.description.toLowerCase().includes("ja pago") &&
+              !item.description.includes("já pago") &&
+              !item.description.includes("jÃ¡ pago"),
+          ),
         );
         const effectiveSourceNumbers = payload.mode === "reopen" ? reopenableSourceNumbers : sourceNumbers;
         const sourceReceivableStatus = payload.mode === "settle" && !isPartialPayment ? "PAGO" : "PENDENTE";
@@ -1292,7 +1655,7 @@ export const serviceOrderService = {
             if (payload.mode === "reopen") {
               const previousStatusByNumber = new Map<string, ServiceOrderStatus>();
               for (const item of existing.items) {
-                for (const num of getReferencedOrderNumbers([item.description])) {
+                for (const num of fecLineReferencedOrderNumbers(item)) {
                   if (!previousStatusByNumber.has(num)) {
                     previousStatusByNumber.set(num, item.previousOrderStatus ?? "ABERTA");
                   }
@@ -1366,6 +1729,7 @@ export const serviceOrderService = {
                 id: true,
                 serviceId: true,
                 description: true,
+                referencedOrderNumber: true,
                 quantity: true,
                 laborPrice: true,
                 lineTotal: true,
@@ -1413,6 +1777,7 @@ export const serviceOrderService = {
               ? payload.paymentMethod.trim()
               : undefined,
           updatedByUserId: context.userId,
+          ...(payload.mode === "reopen" && !existing.number.startsWith("FEC-") ? { closedAt: null } : {}),
         },
       });
 
@@ -1444,6 +1809,7 @@ export const serviceOrderService = {
               id: true,
               serviceId: true,
               description: true,
+              referencedOrderNumber: true,
               quantity: true,
               laborPrice: true,
               lineTotal: true,

@@ -57,6 +57,7 @@ export default function FechamentosPage() {
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [settleOrder, setSettleOrder] = useState<OrderPreview | null>(null);
+  const [billFecOrder, setBillFecOrder] = useState<{ id: string; number: string } | null>(null);
   const [discountInput, setDiscountInput] = useState("");
   const [isPartial, setIsPartial] = useState(false);
   const [partialAmountInput, setPartialAmountInput] = useState("");
@@ -117,16 +118,30 @@ export default function FechamentosPage() {
     label: getPersonName(customer, "-"),
   }));
 
-  async function handleStatusChange(id: string, mode: "settle" | "reopen") {
-    const response = await fetch(`/api/service-orders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        mode,
-        discountAmount: mode === "settle" && !isPartial ? parseCurrencyInput(discountInput) : 0,
-        partialAmount: mode === "settle" && isPartial ? parseCurrencyInput(partialAmountInput) : 0,
-        paymentMethod: mode === "settle" ? settlePaymentMethod : undefined,
-      }),
+  async function handleStatusChange(id: string, mode: "settle" | "reopen" | "bill") {
+    const url =
+      mode === "bill"
+        ? `/api/service-orders/${id}/bill`
+        : mode === "reopen"
+          ? `/api/service-orders/${id}/reopen`
+          : `/api/service-orders/${id}/settle`;
+    const method = "POST";
+    const body =
+      mode === "settle"
+        ? JSON.stringify({
+            discountAmount: !isPartial ? parseCurrencyInput(discountInput) : 0,
+            partialAmount: isPartial ? parseCurrencyInput(partialAmountInput) : 0,
+            paymentMethod: settlePaymentMethod,
+          })
+        : undefined;
+    const response = await fetch(url, {
+      method,
+      ...(body
+        ? {
+            headers: { "Content-Type": "application/json" },
+            body,
+          }
+        : {}),
     });
     const data = await response.json();
     if (!response.ok) return toast.error(data.message ?? "Não foi possível alterar o status.");
@@ -139,16 +154,24 @@ export default function FechamentosPage() {
               receivableStatus: data.order.receivableStatus,
               paymentStatus: data.order.paymentStatus,
               receivableAmount: data.order.receivableAmount,
+              isBilled: data.order.isBilled,
             }
           : item,
       ),
     );
     setSettleOrder(null);
+    setBillFecOrder(null);
     setDiscountInput("");
     setIsPartial(false);
     setPartialAmountInput("");
     setSettlePaymentMethod("Pix");
-    toast.success(mode === "settle" ? "Fechamento baixado com sucesso!" : "Fechamento reaberto com sucesso!");
+    toast.success(
+      mode === "settle"
+        ? "Fechamento baixado com sucesso!"
+        : mode === "bill"
+          ? "Fechamento faturado com sucesso!"
+          : "Fechamento reaberto com sucesso!",
+    );
   }
 
   async function executeDelete(id: string) {
@@ -325,17 +348,19 @@ export default function FechamentosPage() {
                   <Button variant="outline" size="sm" onClick={() => openOrderPreview(row.id)}>
                     Ver
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      row.paymentStatus === "PAGO"
-                        ? handleStatusChange(row.id, "reopen")
-                        : openSettleDialog(row.id)
-                    }
-                  >
-                    {row.paymentStatus === "PAGO" ? "Reabrir" : "Baixar"}
-                  </Button>
+                  {!row.isBilled ? (
+                    <Button variant="outline" size="sm" onClick={() => setBillFecOrder({ id: row.id, number: row.number })}>
+                      Faturar
+                    </Button>
+                  ) : row.paymentStatus === "PAGO" ? (
+                    <Button variant="outline" size="sm" onClick={() => void handleStatusChange(row.id, "reopen")}>
+                      Reabrir
+                    </Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => openSettleDialog(row.id)}>
+                      Baixar
+                    </Button>
+                  )}
                   {user?.accessLevel === "PROPRIETARIO" ? (
                     <Button
                       variant="outline"
@@ -366,6 +391,28 @@ export default function FechamentosPage() {
           ]}
         />
       </div>
+
+      <ConfirmModal
+        open={Boolean(billFecOrder)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBillFecOrder(null);
+          }
+        }}
+        title="Faturar OS de fechamento"
+        description={
+          billFecOrder
+            ? `Isso vai faturar ${billFecOrder.number} e todas as OS de origem vinculadas. Deseja continuar?`
+            : ""
+        }
+        onConfirm={() => {
+          if (billFecOrder) {
+            void handleStatusChange(billFecOrder.id, "bill");
+          }
+        }}
+        confirmLabel="Faturar fechamento"
+        cancelLabel="Cancelar"
+      />
 
       <Dialog open={Boolean(orderPreview)} onOpenChange={(open) => !open && setOrderPreview(null)}>
         <DialogContent className="sm:max-w-2xl">

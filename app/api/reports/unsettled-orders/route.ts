@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 
 import { getRequiredSessionContext } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getReferencedOrderNumbersFromFecItems } from "@/lib/service-order-reference";
 
 const querySchema = z.object({
   unitId: z.string().min(1).optional(),
@@ -49,17 +50,14 @@ export async function GET(request: NextRequest) {
       paymentStatus: { not: "PAGO" },
     },
     select: {
-      items: { select: { description: true } },
+      items: { select: { description: true, referencedOrderNumber: true } },
     },
   });
 
   const referencedNumbers = new Set<string>();
   for (const closure of pendingClosures) {
-    for (const item of closure.items) {
-      const matches = Array.from(item.description.matchAll(/OS-\d{4}-\d{4}/g));
-      for (const match of matches) {
-        referencedNumbers.add(match[0]);
-      }
+    for (const number of getReferencedOrderNumbersFromFecItems(closure.items)) {
+      referencedNumbers.add(number);
     }
   }
 

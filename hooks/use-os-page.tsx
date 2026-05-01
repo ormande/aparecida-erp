@@ -198,7 +198,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   }, [fixedBillingFilter]);
 
   useEffect(() => {
-    if (fixedBillingFilter !== "FATURADAS") {
+    if (fixedBillingFilter !== "ABERTAS") {
       setGroupByCustomer(false);
     }
   }, [fixedBillingFilter]);
@@ -555,13 +555,31 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       }
       setStatusLoadingByOrderId((current) => ({ ...current, [id]: true }));
       try {
-        const response = await fetch(`/api/service-orders/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode,
-            ...(options?.paymentMethod ? { paymentMethod: options.paymentMethod } : {}),
-          }),
+        const url =
+          mode === "bill"
+            ? `/api/service-orders/${id}/bill`
+            : mode === "unbill"
+              ? `/api/service-orders/${id}/bill`
+              : mode === "reopen"
+                ? `/api/service-orders/${id}/reopen`
+                : `/api/service-orders/${id}/settle`;
+        const method = mode === "unbill" ? "DELETE" : "POST";
+        const body =
+          mode === "settle"
+            ? JSON.stringify({
+                discountAmount: 0,
+                partialAmount: 0,
+                ...(options?.paymentMethod ? { paymentMethod: options.paymentMethod } : {}),
+              })
+            : undefined;
+        const response = await fetch(url, {
+          method,
+          ...(body
+            ? {
+                headers: { "Content-Type": "application/json" },
+                body,
+              }
+            : {}),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -751,6 +769,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               size="sm"
               disabled={
                 Boolean(statusLoadingByOrderId[row.id]) ||
+                (!row.isBilled && Boolean(row.isLockedByOpenClosure)) ||
                 (row.isBilled && row.paymentStatus !== "PAGO" && Boolean(row.isLockedByOpenClosure))
               }
               onClick={() =>
@@ -761,9 +780,11 @@ export function useOsPage(options: UseOsPageOptions = {}) {
                     : setBillOrder({ id: row.id, number: row.number })
               }
               title={
-                row.isBilled && row.paymentStatus !== "PAGO" && row.isLockedByOpenClosure
-                  ? "Baixe o fechamento vinculado antes de baixar esta OS."
-                  : undefined
+                !row.isBilled && row.isLockedByOpenClosure
+                  ? "Fature a OS de fechamento vinculada antes de faturar esta OS."
+                  : row.isBilled && row.paymentStatus !== "PAGO" && row.isLockedByOpenClosure
+                    ? "Baixe o fechamento vinculado antes de baixar esta OS."
+                    : undefined
               }
             >
               {row.paymentStatus === "PAGO" ? "Reabrir" : row.isBilled ? "Baixar" : "Faturar"}

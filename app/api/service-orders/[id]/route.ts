@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 
 import { checkRole, getRequiredSessionContext } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { fecOutstandingFromItems } from "@/lib/service-order-reference";
 import { ServiceError } from "@/services/service-error";
 import { serviceOrderService } from "@/services/service-order.service";
 
@@ -94,10 +95,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   ) {
     const order = await prisma.serviceOrder.findFirst({
       where: { id: params.id, companyId: auth.context.companyId },
-      select: { items: { select: { lineTotal: true } } },
+      select: { items: { select: { lineTotal: true, description: true } } },
     });
     if (order) {
-      const outstanding = order.items.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+      const outstanding = fecOutstandingFromItems(order.items);
       if (payload.partialAmount >= outstanding) {
         return NextResponse.json(
           { message: "O valor parcial não pode ser igual ou maior que o total devido. Use a baixa total." },

@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 
 import { mapReceivableToAppReceivable } from "@/lib/db-mappers";
+import { getReferencedOrderNumbersFromFecItems } from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { ServiceError } from "@/services/service-error";
@@ -89,18 +90,15 @@ export const receivableService = {
       },
       select: {
         items: {
-          select: { description: true },
+          select: { description: true, referencedOrderNumber: true },
         },
       },
     });
 
     const referencedNumbers = new Set<string>();
     for (const closure of closureOrders) {
-      for (const item of closure.items) {
-        const matches = Array.from(item.description.matchAll(/OS-\d{4}-\d{4}/g));
-        for (const match of matches) {
-          referencedNumbers.add(match[0]);
-        }
+      for (const number of getReferencedOrderNumbersFromFecItems(closure.items)) {
+        referencedNumbers.add(number);
       }
     }
 
@@ -126,6 +124,9 @@ export const receivableService = {
             originType: "SERVICE_ORDER",
             serviceOrder: {
               isBilled: true,
+              NOT: {
+                number: { startsWith: "FEC-" },
+              },
             },
           },
         ],

@@ -24,7 +24,7 @@ type ServiceOrdersPageContentProps = {
 export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceOrdersPageContentProps) {
   const p = useOsPage({ fixedBillingFilter });
   const statusOpts = [...p.statusFilterOptions];
-  const allowClosureGrouping = fixedBillingFilter === "FATURADAS";
+  const allowClosureGrouping = fixedBillingFilter === "ABERTAS";
 
   return (
     <div className="space-y-8">

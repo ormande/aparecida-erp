@@ -1,3 +1,4 @@
+import { fetchReferencedOrderNumbersInOpenClosures } from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { ServiceError } from "@/services/service-error";
@@ -107,6 +108,24 @@ export const closureService = {
       throw new ServiceError("Algumas OS selecionadas não pertencem ao cliente/período informado.", 400);
     }
 
+    const notOpen = sourceOrders.filter((o) => o.isBilled);
+    if (notOpen.length > 0) {
+      throw new ServiceError("Só é possível incluir OS ainda não faturadas no fechamento.", 400);
+    }
+
+    const lockedInOtherFec = await fetchReferencedOrderNumbersInOpenClosures(
+      context.companyId,
+      context.unitId ?? undefined,
+    );
+    for (const o of sourceOrders) {
+      if (lockedInOtherFec.has(o.number)) {
+        throw new ServiceError(
+          `A OS ${o.number} já consta em outro fechamento em aberto. Conclua ou reabra aquele fechamento antes de incluir esta OS novamente.`,
+          400,
+        );
+      }
+    }
+
     const closureUnitId = sourceOrders[0].unitId;
 
     const customerRow = sourceOrders[0].customer;
@@ -122,6 +141,7 @@ export const closureService = {
         description: isPaid
           ? `${item.description} (referência da ${order.number} - já pago)`
           : `${item.description} (${order.number})`,
+        referencedOrderNumber: order.number,
         laborPrice: Number(item.laborPrice),
         lineTotal: isPaid ? 0 : Number(item.lineTotal),
         originalLineTotal: Number(item.lineTotal),
@@ -152,7 +172,7 @@ export const closureService = {
           dueDate,
           paymentTerm: payload.paymentTerm,
           paymentMethod: payload.paymentMethod,
-          isBilled: true,
+          isBilled: false,
           notes: `Fechamento mensal de ${payload.month} com ${sourceOrders.length} OS de origem.`,
           totalAmount: totalSpent,
           createdByUserId: context.userId,
@@ -161,6 +181,7 @@ export const closureService = {
             create: allItems.map((item) => ({
               serviceId: item.serviceId ?? null,
               description: item.description,
+              referencedOrderNumber: item.referencedOrderNumber,
               quantity: item.quantity,
               laborPrice: item.laborPrice,
               lineTotal: item.lineTotal,
@@ -169,22 +190,6 @@ export const closureService = {
           },
         },
       });
-
-      if (outstandingAmount > 0) {
-        await tx.accountReceivable.create({
-          data: {
-            companyId: context.companyId,
-            unitId: null,
-            customerId: payload.customerId,
-            serviceOrderId: order.id,
-            originType: "SERVICE_ORDER",
-            description: order.number,
-            amount: outstandingAmount,
-            dueDate,
-            status: "PENDENTE",
-          },
-        });
-      }
 
       return order;
     });
@@ -206,9 +211,9 @@ export const closureService = {
         dueDate: closureOrder.dueDate?.toISOString().slice(0, 10) ?? null,
         paymentTerm: closureOrder.paymentTerm,
         paymentMethod: closureOrder.paymentMethod ?? "",
-        isBilled: true,
+        isBilled: false,
         isStandalone: false,
-        receivableStatus: outstandingAmount > 0 ? "PENDENTE" : "PAGO",
+        receivableStatus: null,
       },
     };
   },
