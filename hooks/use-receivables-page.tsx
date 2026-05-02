@@ -15,7 +15,6 @@ export type OrderPreview = {
   id: string;
   number: string;
   clientName: string;
-  vehicleLabel: string;
   openedAt: string;
   dueDate: string;
   paymentTerm: "A_VISTA" | "A_PRAZO" | null;

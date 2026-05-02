@@ -13,28 +13,18 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import type { Client } from "@/lib/app-types";
 import { currency, date, getClientDisplayName, getClientDocument } from "@/lib/formatters";
 
-type ClientVehicle = {
-  id: string;
-  plate: string;
-  brand: string;
-  model: string;
-  year: number;
-};
-
 type ClientOrder = {
   id: string;
   number: string;
   status: "Aberta" | "Em andamento" | "Aguardando peça" | "Concluída" | "Cancelada";
   total: number;
   openedAt: string;
-  vehiclePlate: string;
 };
 
 export default function ClienteDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [client, setClient] = useState<Client | null>(null);
-  const [clientVehicles, setClientVehicles] = useState<ClientVehicle[]>([]);
   const [latestOrders, setLatestOrders] = useState<ClientOrder[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -53,7 +43,6 @@ export default function ClienteDetailPage() {
       .then((data) => {
         if (active) {
           setClient(data.customer);
-          setClientVehicles(data.vehicles ?? []);
           setLatestOrders(data.latestOrders ?? []);
         }
       })
@@ -144,61 +133,29 @@ export default function ClienteDetailPage() {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="surface-card border-none">
-            <CardHeader>
-              <CardTitle>Resumo</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Situação</span>
-                <StatusBadge status={client.situacao} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Telefone</span>
-                <span>{client.celular}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">WhatsApp</span>
-                <span>{client.whatsapp}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">E-mail</span>
-                <span>{client.email || "-"}</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="surface-card border-none">
-            <CardHeader>
-              <CardTitle>Veículos vinculados</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {clientVehicles.map((vehicle) => (
-                <div key={vehicle.id} className="rounded-2xl border bg-muted/30 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{vehicle.plate}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {vehicle.brand} {vehicle.model}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Ano {vehicle.year}</p>
-                    </div>
-                    <Link
-                      href={`/ordens-de-servico?vehicleId=${vehicle.id}`}
-                      className="inline-flex h-8 items-center justify-center rounded-lg border border-border bg-background px-3 text-sm font-medium transition hover:bg-muted"
-                    >
-                      Ver OS
-                    </Link>
-                  </div>
-                </div>
-              ))}
-              {clientVehicles.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhum veículo vinculado a este cliente.</p>
-              ) : null}
-            </CardContent>
-          </Card>
-        </div>
+        <Card className="surface-card border-none">
+          <CardHeader>
+            <CardTitle>Resumo</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Situação</span>
+              <StatusBadge status={client.situacao} />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Telefone</span>
+              <span>{client.celular}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">WhatsApp</span>
+              <span>{client.whatsapp}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">E-mail</span>
+              <span>{client.email || "-"}</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="surface-card border-none">
@@ -206,11 +163,10 @@ export default function ClienteDetailPage() {
           <CardTitle>Últimas OS</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[700px] text-sm">
+          <table className="w-full min-w-[560px] text-sm">
             <thead className="text-left text-muted-foreground">
               <tr>
                 <th className="pb-3 font-medium">Número</th>
-                <th className="pb-3 font-medium">Veículo</th>
                 <th className="pb-3 font-medium">Status</th>
                 <th className="pb-3 font-medium">Valor</th>
                 <th className="pb-3 font-medium">Data</th>
@@ -220,7 +176,6 @@ export default function ClienteDetailPage() {
               {latestOrders.map((order) => (
                 <tr key={order.id} className="border-t">
                   <td className="py-4 font-medium">{order.number}</td>
-                  <td>{order.vehiclePlate}</td>
                   <td>
                     <StatusBadge status={order.status} />
                   </td>

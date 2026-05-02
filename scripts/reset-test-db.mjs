@@ -17,7 +17,6 @@ async function main() {
     prisma.accountReceivable.deleteMany(),
     prisma.accountPayable.deleteMany(),
     prisma.serviceOrder.deleteMany(),
-    prisma.vehicle.deleteMany(),
     prisma.serviceCatalog.deleteMany(),
     prisma.customer.deleteMany(),
     prisma.supplier.deleteMany(),

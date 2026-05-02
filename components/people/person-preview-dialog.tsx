@@ -94,17 +94,9 @@ export function PersonPreviewDialog({
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid gap-2">
-                <Label>E-mail</Label>
-                <Input value={person.email ?? ""} disabled />
-              </div>
-              {"veiculosCount" in person ? (
-                <div className="grid gap-2">
-                  <Label>Veículos vinculados</Label>
-                  <Input value={String(person.veiculosCount)} disabled />
-                </div>
-              ) : null}
+            <div className="grid gap-2">
+              <Label>E-mail</Label>
+              <Input value={person.email ?? ""} disabled />
             </div>
 
             <div className="grid gap-2">

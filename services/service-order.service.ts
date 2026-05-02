@@ -1,8 +1,16 @@
 import { mapServiceOrderStatus } from "@/lib/db-mappers";
 import {
+  buildInstallmentsForBilling,
+  installmentPlanToJson,
+  parseStoredBillingPlan,
+  type OrderInstallmentPayload,
+} from "@/lib/os-installments";
+import {
   fecLineReferencedOrderNumbers,
   fecOutstandingFromItems,
+  fetchReferencedOrderNumbersInAllClosures,
   fetchReferencedOrderNumbersInOpenClosures,
+  fetchReferencedReceivableIdsInAllClosures,
   getReferencedOrderNumbersFromFecItems,
 } from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
@@ -10,6 +18,9 @@ import { prisma } from "@/lib/prisma";
 import { normalizeSearch } from "@/lib/search-helpers";
 import { ServiceError } from "@/services/service-error";
 import { Prisma, type PaymentStatus, type ProductUnit, type ServiceOrderStatus } from "@prisma/client";
+
+/** Default do Prisma é 5s; faturamento com parcelas / FEC + auditoria pode levar mais. */
+const BILLING_INTERACTIVE_TX = { maxWait: 15_000, timeout: 60_000 } as const;
 
 type OrderServiceItemPayload = {
   serviceId?: string | null;
@@ -32,8 +43,6 @@ type CreateOrderPayload = {
   unitId: string;
   customerId?: string | null;
   customerNameSnapshot?: string;
-  vehicleId?: string | null;
-  mileage?: number | null;
   dueDate?: string | null;
   openedAt?: string;
   paymentTerm?: "A_VISTA" | "A_PRAZO" | null;
@@ -42,6 +51,7 @@ type CreateOrderPayload = {
   notes?: string;
   services: OrderServiceItemPayload[];
   products?: OrderProductPayload[];
+  installments?: OrderInstallmentPayload[];
 };
 
 type UpdateOrderPayload = {
@@ -50,8 +60,6 @@ type UpdateOrderPayload = {
   partialAmount?: number;
   customerId?: string | null;
   customerNameSnapshot?: string;
-  vehicleId?: string | null;
-  mileage?: number | null;
   dueDate?: string | null;
   paymentTerm?: "A_VISTA" | "A_PRAZO" | null;
   paymentMethod?: string;
@@ -59,6 +67,8 @@ type UpdateOrderPayload = {
   notes?: string;
   services?: OrderServiceItemPayload[];
   products?: OrderProductPayload[];
+  /** Na edição: ausente = não altera o plano; array vazio ou menos de 2 = remove parcelas salvas; 2+ = novo plano. */
+  installments?: OrderInstallmentPayload[] | null;
 };
 
 type ServiceOrderContext = {
@@ -73,8 +83,22 @@ type ListOrdersFilters = {
   search?: string;
   status?: string;
   unitId?: string;
-  vehicleId?: string;
   customerId?: string;
+  /** Ex.: "FEC-" para listar só OS de fechamento */
+  numberPrefix?: string;
+  /** Exclui números que começam com FEC- (útil para agrupamento / fechamento) */
+  excludeFechamentos?: boolean;
+  /** Mês de abertura (YYYY-MM), intervalo [início, fim do mês) */
+  openedMonth?: string;
+  /** Filtro de data mínima (YYYY-MM-DD) */
+  openedFrom?: string;
+  /** Filtro de data máxima (YYYY-MM-DD) */
+  openedTo?: string;
+  minTotal?: number;
+  maxTotal?: number;
+  paymentStatus?: string;
+  /** Filtro das abas de listagem: OS abertas (não faturadas), faturadas (não pagas), pagas */
+  billingScope?: "ABERTAS" | "FATURADAS" | "PAGAS";
 };
 
 function buildOrderNumber(year: number, sequence: number) {
@@ -146,14 +170,12 @@ function serviceOrderAfterDataForAudit(order: {
   unitId: string;
   customerId: string | null;
   customerNameSnapshot: string | null;
-  vehicleId: string | null;
   number: string;
   status: string;
   paymentStatus: string;
   isBilled: boolean;
   openedAt: Date;
   closedAt: Date | null;
-  mileage: number | null;
   dueDate: Date | null;
   paymentTerm: string | null;
   paymentMethod: string | null;
@@ -171,14 +193,12 @@ function serviceOrderAfterDataForAudit(order: {
     unitId: order.unitId,
     customerId: order.customerId,
     customerNameSnapshot: order.customerNameSnapshot,
-    vehicleId: order.vehicleId,
     number: order.number,
     status: order.status,
     paymentStatus: order.paymentStatus,
     isBilled: order.isBilled,
     openedAt: order.openedAt.toISOString(),
     closedAt: order.closedAt?.toISOString() ?? null,
-    mileage: order.mileage,
     dueDate: order.dueDate?.toISOString() ?? null,
     paymentTerm: order.paymentTerm,
     paymentMethod: order.paymentMethod,
@@ -218,7 +238,10 @@ function receivableAfterDataForAudit(receivable: {
   installmentCount: number | null;
   createdAt: Date;
   updatedAt: Date;
-}): Prisma.InputJsonValue {
+} | null | undefined): Prisma.InputJsonValue {
+  if (!receivable) {
+    return {};
+  }
   return {
     id: receivable.id,
     companyId: receivable.companyId,
@@ -260,13 +283,6 @@ async function getOrder(companyId: string, unitId: string | undefined, id: strin
           type: true,
           fullName: true,
           tradeName: true,
-        },
-      },
-      vehicle: {
-        select: {
-          plate: true,
-          brand: true,
-          model: true,
         },
       },
       items: {
@@ -327,10 +343,7 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
     clientName: getCustomerDisplayName(order),
     customerNameSnapshot: order.customerNameSnapshot,
     unitId: order.unitId,
-    unitName: order.unit.name,
-    vehicleId: order.vehicleId,
-    plate: order.vehicle?.plate ?? "-",
-    vehicleLabel: order.vehicle ? `${order.vehicle.plate} - ${order.vehicle.brand} ${order.vehicle.model}` : "-",
+    unitName: order.unit?.name ?? "",
     status: mapServiceOrderStatus(order.status),
     paymentStatus: order.paymentStatus,
     isBilled: order.isBilled,
@@ -340,7 +353,6 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
     paymentTerm: order.paymentTerm,
     paymentMethod: order.paymentMethod ?? "",
     notes: order.notes ?? "",
-    mileage: order.mileage ?? null,
     isStandalone: order.isStandalone,
     laborSubtotal: Number(order.laborSubtotal),
     productsSubtotal: Number(order.productsSubtotal),
@@ -370,6 +382,7 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
     receivableAmount: order.receivables
       .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
       .reduce((sum, r) => sum + Number(r.amount), 0),
+    billingInstallmentPlan: parseStoredBillingPlan(order.billingInstallmentPlan) ?? null,
   };
 }
 
@@ -403,19 +416,12 @@ async function ensureCustomerExists(customerId: string, companyId: string) {
   }
 }
 
-async function ensureVehicleExists(vehicleId: string, companyId: string, customerId?: string | null) {
-  const vehicle = await prisma.vehicle.findFirst({
-    where: { id: vehicleId, companyId },
-    select: { id: true, customerId: true },
-  });
-
-  if (!vehicle) {
-    throw new ServiceError("Veículo não encontrado.", 404);
+/** Valor finito com 2 casas para Decimal(10,2) no Postgres. */
+function receivableAmount2(value: number): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ServiceError("Valor de recebível inválido.", 400);
   }
-
-  if (customerId && vehicle.customerId !== customerId) {
-    throw new ServiceError("Veículo não encontrado.", 404);
-  }
+  return Math.round(value * 100) / 100;
 }
 
 function calcOrderTotals(
@@ -431,6 +437,21 @@ function calcOrderTotals(
   };
 }
 
+function resolveInstallmentPayloadForBill(
+  storedRaw: unknown,
+  body: OrderInstallmentPayload[] | null | undefined,
+): OrderInstallmentPayload[] | undefined {
+  const parsed = parseStoredBillingPlan(storedRaw);
+  if (parsed && parsed.length >= 2) {
+    return parsed;
+  }
+  const fromBody = body ?? undefined;
+  if (fromBody && fromBody.length >= 2) {
+    return fromBody;
+  }
+  return undefined;
+}
+
 export const serviceOrderService = {
   async list(filters: ListOrdersFilters, context: Pick<ServiceOrderContext, "companyId">) {
     const page = filters.page && filters.page > 0 ? filters.page : 1;
@@ -441,10 +462,66 @@ export const serviceOrderService = {
     const where: Prisma.ServiceOrderWhereInput = {
       companyId: context.companyId,
       unitId: filters.unitId || undefined,
-      vehicleId: filters.vehicleId,
       customerId: filters.customerId,
       status: mappedStatus,
     };
+
+    const extraAnd: Prisma.ServiceOrderWhereInput[] = [];
+
+    if (filters.numberPrefix?.trim()) {
+      extraAnd.push({ number: { startsWith: filters.numberPrefix.trim() } });
+    }
+
+    if (filters.excludeFechamentos) {
+      extraAnd.push({ NOT: { number: { startsWith: "FEC-" } } });
+    }
+
+    const openedMonthMatch = filters.openedMonth?.trim() && /^(\d{4})-(\d{2})$/.exec(filters.openedMonth.trim());
+    if (openedMonthMatch) {
+      const y = Number(openedMonthMatch[1]);
+      const m = Number(openedMonthMatch[2]);
+      const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+      const end = new Date(y, m, 1, 0, 0, 0, 0);
+      extraAnd.push({ openedAt: { gte: start, lt: end } });
+    }
+
+    if (filters.openedFrom?.trim()) {
+      extraAnd.push({ openedAt: { gte: new Date(`${filters.openedFrom.trim()}T00:00:00`) } });
+    }
+    if (filters.openedTo?.trim()) {
+      extraAnd.push({ openedAt: { lte: new Date(`${filters.openedTo.trim()}T23:59:59.999`) } });
+    }
+
+    const minTot =
+      typeof filters.minTotal === "number" && !Number.isNaN(filters.minTotal) ? filters.minTotal : undefined;
+    const maxTot =
+      typeof filters.maxTotal === "number" && !Number.isNaN(filters.maxTotal) ? filters.maxTotal : undefined;
+    if (minTot !== undefined && maxTot !== undefined) {
+      extraAnd.push({ totalAmount: { gte: minTot, lte: maxTot } });
+    } else if (minTot !== undefined) {
+      extraAnd.push({ totalAmount: { gte: minTot } });
+    } else if (maxTot !== undefined) {
+      extraAnd.push({ totalAmount: { lte: maxTot } });
+    }
+
+    const ps = filters.paymentStatus?.trim();
+    if (ps === "PENDENTE" || ps === "PAGO_PARCIAL" || ps === "PAGO") {
+      extraAnd.push({ paymentStatus: ps });
+    }
+
+    const bs = filters.billingScope;
+    if (bs === "ABERTAS") {
+      extraAnd.push({ isBilled: false });
+    } else if (bs === "FATURADAS") {
+      extraAnd.push({ isBilled: true });
+      extraAnd.push({ NOT: { paymentStatus: "PAGO" } });
+    } else if (bs === "PAGAS") {
+      extraAnd.push({ paymentStatus: "PAGO" });
+    }
+
+    if (extraAnd.length > 0) {
+      where.AND = extraAnd;
+    }
 
     if (normalizedSearch) {
       const pattern = `%${normalizeSearch(normalizedSearch)}%`;
@@ -452,7 +529,6 @@ export const serviceOrderService = {
         SELECT DISTINCT so."id"
         FROM "ServiceOrder" so
         LEFT JOIN "Customer" c ON c."id" = so."customerId"
-        LEFT JOIN "Vehicle" v ON v."id" = so."vehicleId"
         LEFT JOIN "ServiceOrderItem" soi ON soi."serviceOrderId" = so."id"
         WHERE so."companyId" = ${context.companyId}
           AND (
@@ -460,7 +536,6 @@ export const serviceOrderService = {
             OR unaccent(LOWER(COALESCE(so."customerNameSnapshot", ''))) LIKE unaccent(LOWER(${pattern}::text))
             OR unaccent(LOWER(COALESCE(c."fullName", ''))) LIKE unaccent(LOWER(${pattern}::text))
             OR unaccent(LOWER(COALESCE(c."tradeName", ''))) LIKE unaccent(LOWER(${pattern}::text))
-            OR unaccent(LOWER(COALESCE(v."plate", ''))) LIKE unaccent(LOWER(${pattern}::text))
             OR unaccent(LOWER(COALESCE(soi."description", ''))) LIKE unaccent(LOWER(${pattern}::text))
           )
       `);
@@ -468,7 +543,7 @@ export const serviceOrderService = {
       where.id = { in: ids.length > 0 ? ids : [] };
     }
 
-    const [total, orders, lockedOrderNumbers] = await Promise.all([
+    const [total, orders, lockedOrderNumbers, lockedInAnyClosure, lockedReceivableIds] = await Promise.all([
       prisma.serviceOrder.count({ where }),
       prisma.serviceOrder.findMany({
         where,
@@ -482,9 +557,6 @@ export const serviceOrderService = {
               fullName: true,
               tradeName: true,
             },
-          },
-          vehicle: {
-            select: { plate: true },
           },
           unit: {
             select: {
@@ -504,11 +576,20 @@ export const serviceOrderService = {
             },
           },
           receivables: {
-            select: { status: true, amount: true },
+            select: {
+              id: true,
+              status: true,
+              amount: true,
+              dueDate: true,
+              installmentNumber: true,
+              installmentCount: true,
+            },
           },
         },
       }),
       fetchReferencedOrderNumbersInOpenClosures(context.companyId, filters.unitId),
+      fetchReferencedOrderNumbersInAllClosures(context.companyId, filters.unitId),
+      fetchReferencedReceivableIdsInAllClosures(context.companyId, filters.unitId),
     ]);
 
     return {
@@ -524,9 +605,7 @@ export const serviceOrderService = {
         id: order.id,
         number: order.number,
         clientId: order.customerId,
-        vehicleId: order.vehicleId,
         clientName: getCustomerDisplayName(order),
-        plate: order.vehicle?.plate ?? "-",
         unitId: order.unitId,
         unitName: order.unit.name,
         servicesLabel: order.items.map((service) => service.description).join(", "),
@@ -543,12 +622,24 @@ export const serviceOrderService = {
             ?? order.receivables[0]?.status
             ?? null,
         receivableCount: order.receivables.length,
+        receivableLines: order.receivables.map((r) => ({
+          id: r.id,
+          amount: Number(r.amount),
+          dueDate: r.dueDate.toISOString().slice(0, 10),
+          status: r.status,
+          installmentNumber: r.installmentNumber,
+          installmentCount: r.installmentCount,
+          isLockedByAnyClosure: lockedReceivableIds.has(r.id),
+        })),
         paymentStatus: order.paymentStatus,
         isBilled: order.isBilled,
         isLockedByOpenClosure:
           !order.number.startsWith("FEC-") &&
           order.paymentStatus !== "PAGO" &&
           lockedOrderNumbers.has(order.number),
+        isLockedByAnyClosure:
+          !order.number.startsWith("FEC-") &&
+          lockedInAnyClosure.has(order.number),
         receivableAmount: order.receivables
           .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
           .reduce((sum, r) => sum + Number(r.amount), 0),
@@ -578,10 +669,6 @@ export const serviceOrderService = {
       await ensureCustomerExists(payload.customerId, context.companyId);
     }
 
-    if (payload.vehicleId) {
-      await ensureVehicleExists(payload.vehicleId, context.companyId, payload.customerId);
-    }
-
     const isStandalone = !payload.customerId;
     const productsList = payload.products ?? [];
     const { laborSubtotal, productsSubtotal, totalAmount } = calcOrderTotals(
@@ -589,7 +676,7 @@ export const serviceOrderService = {
       productsList,
     );
     const paymentTerm = payload.paymentTerm ?? "A_VISTA";
-    const paymentMethod = paymentTerm === "A_PRAZO" ? "Mensal" : payload.paymentMethod || null;
+    const paymentMethod = payload.paymentMethod?.trim() ? payload.paymentMethod.trim() : null;
     const openedAtDate = payload.openedAt
       ? new Date(`${payload.openedAt}T00:00:00`)
       : new Date();
@@ -597,6 +684,12 @@ export const serviceOrderService = {
       paymentTerm === "A_PRAZO" && payload.dueDate
         ? new Date(`${payload.dueDate}T00:00:00`)
         : openedAtDate;
+
+    let billingInstallmentPlan: Prisma.InputJsonValue | undefined;
+    if (payload.installments && payload.installments.length >= 2) {
+      const normalized = buildInstallmentsForBilling(totalAmount, dueDate, payload.installments);
+      billingInstallmentPlan = installmentPlanToJson(normalized);
+    }
 
     const order = await prisma.$transaction(async (tx) => {
       let number: string;
@@ -615,10 +708,8 @@ export const serviceOrderService = {
           unitId: payload.unitId,
           customerId: payload.customerId || null,
           customerNameSnapshot: payload.customerId ? null : payload.customerNameSnapshot || "Cliente avulso",
-          vehicleId: payload.vehicleId || null,
           number,
           openedAt: payload.openedAt ? new Date(`${payload.openedAt}T00:00:00`) : new Date(),
-          mileage: payload.mileage ?? null,
           dueDate,
           paymentTerm,
           paymentMethod,
@@ -631,6 +722,7 @@ export const serviceOrderService = {
           paymentStatus: "PENDENTE",
           createdByUserId: context.userId,
           updatedByUserId: context.userId,
+          ...(billingInstallmentPlan !== undefined ? { billingInstallmentPlan } : {}),
           items: {
             create: payload.services.map((service) => ({
               serviceId: service.serviceId || null,
@@ -742,10 +834,6 @@ export const serviceOrderService = {
         await ensureCustomerExists(payload.customerId, context.companyId);
       }
 
-      if (payload.vehicleId) {
-        await ensureVehicleExists(payload.vehicleId, context.companyId, payload.customerId);
-      }
-
       const services = payload.services ?? [];
       const productsList = payload.products ?? [];
       const { laborSubtotal, productsSubtotal, totalAmount } = calcOrderTotals(
@@ -753,7 +841,7 @@ export const serviceOrderService = {
         productsList,
       );
       const paymentTerm = payload.paymentTerm ?? existing.paymentTerm ?? "A_VISTA";
-      const paymentMethod = paymentTerm === "A_PRAZO" ? "Mensal" : payload.paymentMethod || null;
+      const paymentMethod = payload.paymentMethod?.trim() ? payload.paymentMethod.trim() : null;
       const dueDate =
         paymentTerm === "A_PRAZO" && payload.dueDate ? new Date(`${payload.dueDate}T00:00:00`) : new Date();
 
@@ -771,15 +859,24 @@ export const serviceOrderService = {
           where: { serviceOrderId: existing.id },
         });
 
+        const billingPlanPatch =
+          existing.isBilled || payload.installments === undefined
+            ? {}
+            : !payload.installments || payload.installments.length < 2
+              ? { billingInstallmentPlan: Prisma.JsonNull }
+              : {
+                  billingInstallmentPlan: installmentPlanToJson(
+                    buildInstallmentsForBilling(totalAmount, dueDate, payload.installments),
+                  ),
+                };
+
         const order = await tx.serviceOrder.update({
           where: { id: existing.id },
           data: {
             customerId: payload.customerId || null,
             unitId: existing.unitId,
             customerNameSnapshot: payload.customerId ? null : payload.customerNameSnapshot || "Cliente avulso",
-            vehicleId: payload.vehicleId || null,
             number: nextOrderNumber,
-            mileage: payload.mileage ?? null,
             dueDate,
             paymentTerm,
             paymentMethod,
@@ -789,6 +886,7 @@ export const serviceOrderService = {
             laborSubtotal,
             productsSubtotal,
             updatedByUserId: context.userId,
+            ...billingPlanPatch,
             items: {
               create: services.map((service) => ({
                 serviceId: service.serviceId || null,
@@ -813,13 +911,6 @@ export const serviceOrderService = {
                 type: true,
                 fullName: true,
                 tradeName: true,
-              },
-            },
-            vehicle: {
-              select: {
-                plate: true,
-                brand: true,
-                model: true,
               },
             },
             items: {
@@ -906,9 +997,41 @@ export const serviceOrderService = {
         throw new ServiceError("Esta OS já foi faturada.", 400);
       }
 
-      const dueDate = existing.dueDate ?? existing.openedAt;
+      const effectivePaymentTerm =
+        payload.paymentTerm === "A_VISTA" || payload.paymentTerm === "A_PRAZO"
+          ? payload.paymentTerm
+          : existing.paymentTerm ?? "A_VISTA";
+      const trimmedDue = payload.dueDate?.trim();
+      let effectiveDueDate: Date;
+      if (trimmedDue && /^\d{4}-\d{2}-\d{2}$/.test(trimmedDue)) {
+        effectiveDueDate = new Date(`${trimmedDue}T00:00:00`);
+      } else if (effectivePaymentTerm === "A_PRAZO") {
+        effectiveDueDate = existing.dueDate ?? existing.openedAt;
+      } else {
+        effectiveDueDate = existing.openedAt;
+      }
+      const trimmedMethod = payload.paymentMethod?.trim();
+      const effectivePaymentMethod =
+        trimmedMethod !== undefined && trimmedMethod !== null && trimmedMethod.length > 0
+          ? trimmedMethod
+          : (existing.paymentMethod ?? "");
+      const installmentPayload = resolveInstallmentPayloadForBill(
+        existing.billingInstallmentPlan,
+        payload.installments,
+      );
+      const installmentPlan = buildInstallmentsForBilling(
+        Number(existing.totalAmount),
+        effectiveDueDate,
+        installmentPayload,
+      );
+      const orderDueDate = installmentPlan[0]?.dueDate ?? effectiveDueDate;
 
       if (existing.number.startsWith("FEC-")) {
+        const fecTotalAmount = Number(existing.totalAmount);
+        if (!Number.isFinite(fecTotalAmount) || fecTotalAmount <= 0) {
+          throw new ServiceError("Total do fechamento inválido para faturamento.", 400);
+        }
+
         const sourceNumbers = getReferencedOrderNumbersFromFecItems(existing.items);
         if (!sourceNumbers.length) {
           throw new ServiceError("Nenhuma OS de origem encontrada no fechamento.", 400);
@@ -979,30 +1102,57 @@ export const serviceOrderService = {
             if (child.isBilled) {
               continue;
             }
-            const childDue = child.dueDate ?? child.openedAt;
-            const childReceivable = await tx.accountReceivable.create({
-              data: {
-                companyId: context.companyId,
-                unitId: child.unitId,
-                customerId: child.customerId || null,
+            const childPreBill = await tx.accountReceivable.findMany({
+              where: {
                 serviceOrderId: child.id,
-                lineSlot: 0,
                 originType: "SERVICE_ORDER",
-                description: child.number,
-                amount: child.totalAmount,
-                dueDate: childDue,
-                status: "PENDENTE",
-                paidAt: null,
-                installmentGroupId: null,
-                installmentNumber: null,
-                installmentCount: null,
               },
+              select: { id: true },
             });
+            if (childPreBill.length > 0) {
+              throw new ServiceError(
+                `A OS ${child.number} já possui recebível de faturamento. Atualize a página antes de faturar o fechamento.`,
+                409,
+              );
+            }
+            const installmentGroupId = installmentPlan.length > 1 ? crypto.randomUUID() : null;
+            const childReceivables = [];
+            for (let index = 0; index < installmentPlan.length; index += 1) {
+              const part = installmentPlan[index];
+              childReceivables.push(
+                await tx.accountReceivable.create({
+                  data: {
+                    companyId: context.companyId,
+                    unitId: child.unitId,
+                    customerId: child.customerId || null,
+                    serviceOrderId: child.id,
+                    lineSlot: index,
+                    originType: "SERVICE_ORDER",
+                    description:
+                      installmentPlan.length > 1
+                        ? `${child.number} (${index + 1}/${installmentPlan.length})`
+                        : child.number,
+                    amount: receivableAmount2(
+                      (Number(child.totalAmount) * part.amount) / fecTotalAmount,
+                    ),
+                    dueDate: part.dueDate,
+                    status: "PENDENTE",
+                    paidAt: null,
+                    installmentGroupId,
+                    installmentNumber: installmentPlan.length > 1 ? index + 1 : null,
+                    installmentCount: installmentPlan.length > 1 ? installmentPlan.length : null,
+                  },
+                }),
+              );
+            }
 
             await tx.serviceOrder.update({
               where: { id: child.id },
               data: {
                 isBilled: true,
+                dueDate: orderDueDate,
+                paymentTerm: effectivePaymentTerm,
+                paymentMethod: effectivePaymentMethod || null,
                 updatedByUserId: context.userId,
               },
             });
@@ -1013,9 +1163,9 @@ export const serviceOrderService = {
                 unitId: child.unitId,
                 userId: context.userId,
                 entityType: "receivable",
-                entityId: childReceivable.id,
+                entityId: childReceivables[0]?.id ?? child.id,
                 action: "CREATE",
-                afterData: receivableAfterDataForAudit(childReceivable),
+                afterData: receivableAfterDataForAudit(childReceivables[0]),
               },
             });
           }
@@ -1024,6 +1174,9 @@ export const serviceOrderService = {
             where: { id: existing.id },
             data: {
               isBilled: true,
+              dueDate: orderDueDate,
+              paymentTerm: effectivePaymentTerm,
+              paymentMethod: effectivePaymentMethod || null,
               updatedByUserId: context.userId,
             },
           });
@@ -1042,13 +1195,6 @@ export const serviceOrderService = {
                   type: true,
                   fullName: true,
                   tradeName: true,
-                },
-              },
-              vehicle: {
-                select: {
-                  plate: true,
-                  brand: true,
-                  model: true,
                 },
               },
               items: {
@@ -1099,7 +1245,7 @@ export const serviceOrderService = {
           }
 
           return order;
-        });
+        }, BILLING_INTERACTIVE_TX);
         } catch (error) {
           if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
             throw new ServiceError("Esta OS já possui recebível de faturamento registrado.", 409);
@@ -1129,29 +1275,56 @@ export const serviceOrderService = {
           throw new ServiceError("Esta OS já foi faturada.", 400);
         }
 
-        const receivable = await tx.accountReceivable.create({
-          data: {
-            companyId: context.companyId,
-            unitId: existing.unitId,
-            customerId: existing.customerId || null,
+        const preBillReceivables = await tx.accountReceivable.findMany({
+          where: {
             serviceOrderId: existing.id,
-            lineSlot: 0,
             originType: "SERVICE_ORDER",
-            description: existing.number,
-            amount: existing.totalAmount,
-            dueDate,
-            status: "PENDENTE",
-            paidAt: null,
-            installmentGroupId: null,
-            installmentNumber: null,
-            installmentCount: null,
           },
+          select: { id: true, lineSlot: true },
         });
+        if (preBillReceivables.length > 0) {
+          throw new ServiceError(
+            "Esta OS já possui recebível de faturamento vinculado. Atualize a página. Se a OS não estiver como faturada, pode haver inconsistência — evite clicar duas vezes em Faturar.",
+            409,
+          );
+        }
+
+        const installmentGroupId = installmentPlan.length > 1 ? crypto.randomUUID() : null;
+        const createdReceivables = [];
+        for (let index = 0; index < installmentPlan.length; index += 1) {
+          const part = installmentPlan[index];
+          createdReceivables.push(
+            await tx.accountReceivable.create({
+              data: {
+                companyId: context.companyId,
+                unitId: existing.unitId,
+                customerId: existing.customerId || null,
+                serviceOrderId: existing.id,
+                lineSlot: index,
+                originType: "SERVICE_ORDER",
+                description:
+                  installmentPlan.length > 1
+                    ? `${existing.number} (${index + 1}/${installmentPlan.length})`
+                    : existing.number,
+                amount: receivableAmount2(part.amount),
+                dueDate: part.dueDate,
+                status: "PENDENTE",
+                paidAt: null,
+                installmentGroupId,
+                installmentNumber: installmentPlan.length > 1 ? index + 1 : null,
+                installmentCount: installmentPlan.length > 1 ? installmentPlan.length : null,
+              },
+            }),
+          );
+        }
 
         await tx.serviceOrder.update({
           where: { id: existing.id },
           data: {
             isBilled: true,
+            dueDate: orderDueDate,
+            paymentTerm: effectivePaymentTerm,
+            paymentMethod: effectivePaymentMethod || null,
             updatedByUserId: context.userId,
           },
         });
@@ -1162,9 +1335,9 @@ export const serviceOrderService = {
             unitId: existing.unitId,
             userId: context.userId,
             entityType: "receivable",
-            entityId: receivable.id,
+            entityId: createdReceivables[0]?.id ?? existing.id,
             action: "CREATE",
-            afterData: receivableAfterDataForAudit(receivable),
+            afterData: receivableAfterDataForAudit(createdReceivables[0]),
           },
         });
 
@@ -1182,13 +1355,6 @@ export const serviceOrderService = {
                 type: true,
                 fullName: true,
                 tradeName: true,
-              },
-            },
-            vehicle: {
-              select: {
-                plate: true,
-                brand: true,
-                model: true,
               },
             },
             items: {
@@ -1239,7 +1405,7 @@ export const serviceOrderService = {
         }
 
         return order;
-      });
+      }, BILLING_INTERACTIVE_TX);
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
           throw new ServiceError("Esta OS já possui recebível de faturamento registrado.", 409);
@@ -1389,13 +1555,6 @@ export const serviceOrderService = {
                 type: true,
                 fullName: true,
                 tradeName: true,
-              },
-            },
-            vehicle: {
-              select: {
-                plate: true,
-                brand: true,
-                model: true,
               },
             },
             items: {
@@ -1556,8 +1715,30 @@ export const serviceOrderService = {
             serviceOrderId: existing.id,
             originType: "SERVICE_ORDER",
             lineSlot: { gt: 0 },
+            installmentGroupId: null,
           },
         });
+      } else if (!existing.number.startsWith("FEC-")) {
+        if (payload.mode === "settle") {
+          await tx.accountReceivable.updateMany({
+            where: {
+              serviceOrderId: existing.id,
+              originType: "SERVICE_ORDER",
+            },
+            data: {
+              status: "PAGO",
+              paidAt: new Date(),
+            },
+          });
+        } else if (receivable) {
+          await tx.accountReceivable.update({
+            where: { id: receivable.id },
+            data: {
+              status: targetStatus,
+              paidAt: null,
+            },
+          });
+        }
       } else if (receivable) {
         await tx.accountReceivable.update({
           where: { id: receivable.id },
@@ -1717,13 +1898,6 @@ export const serviceOrderService = {
                 tradeName: true,
               },
             },
-            vehicle: {
-              select: {
-                plate: true,
-                brand: true,
-                model: true,
-              },
-            },
             items: {
               select: {
                 id: true,
@@ -1795,13 +1969,6 @@ export const serviceOrderService = {
               type: true,
               fullName: true,
               tradeName: true,
-            },
-          },
-          vehicle: {
-            select: {
-              plate: true,
-              brand: true,
-              model: true,
             },
           },
           items: {

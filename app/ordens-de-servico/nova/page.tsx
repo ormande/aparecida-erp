@@ -7,7 +7,6 @@ import { OsSummaryCard } from "@/components/service-orders/os-summary-card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { useNovaOs } from "@/hooks/use-nova-os";
-import { VEICULOS_ATIVO } from "@/lib/config";
 
 export default function NovaOsPage() {
   const os = useNovaOs();
@@ -32,7 +31,6 @@ export default function NovaOsPage() {
           productsTotal={os.productsTotal}
           unitName={os.summaryUnitName}
           clientName={os.summaryClientName}
-          vehiclePlate={VEICULOS_ATIVO ? os.summaryVehiclePlate : undefined}
           paymentTerm={os.paymentTerm}
           dueDate={os.dueDate}
           isLoading={os.isLoading}

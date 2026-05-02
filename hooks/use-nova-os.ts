@@ -1,21 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { mutate } from "swr";
 
-import type { VehicleFormValues } from "@/components/vehicles/vehicle-form";
 import type { CadastroPessoaFormValues } from "@/components/people/cadastro-pessoa-form";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useCustomers } from "@/hooks/use-customers";
 import { useEmployees } from "@/hooks/use-employees";
 import { useServices } from "@/hooks/use-services";
 import { useUnits } from "@/hooks/use-units";
-import { useVehicles } from "@/hooks/use-vehicles";
-import { VEICULOS_ATIVO } from "@/lib/config";
 import { currency, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
 import { getPersonDocument, getPersonName } from "@/lib/person-helpers";
+import type { OsInstallmentPlanFieldsHandle } from "@/components/service-orders/os-installment-plan-fields";
 
 export type ServiceDraft = {
   id: string;
@@ -76,8 +74,6 @@ export function useNovaOs() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [customerNameSnapshot, setCustomerNameSnapshot] = useState("");
   const [clientId, setClientId] = useState("");
-  const [vehicleId, setVehicleId] = useState("");
-  const [mileage, setMileage] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Pix");
   const [paymentTerm, setPaymentTerm] = useState<"A_VISTA" | "A_PRAZO">("A_VISTA");
   const [customOsNumber, setCustomOsNumber] = useState("");
@@ -87,13 +83,13 @@ export function useNovaOs() {
   const [products, setProducts] = useState<ProductDraft[]>([]);
   const [isCheckingCustomOsNumber, setIsCheckingCustomOsNumber] = useState(false);
   const [isCustomOsNumberDuplicate, setIsCustomOsNumberDuplicate] = useState(false);
-  const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [sameEmployeeForAll, setSameEmployeeForAll] = useState(false);
   const [globalEmployeeId, setGlobalEmployeeId] = useState("");
   const [openedAtPreset, setOpenedAtPreset] = useState<"today" | "yesterday" | "other">("today");
   const [openedAtCustom, setOpenedAtCustom] = useState("");
-  const { vehicles, hydrated: vehiclesHydrated, setVehicles } = useVehicles(clientId || undefined);
+  const [installmentResetKey, setInstallmentResetKey] = useState(0);
+  const installmentPlanRef = useRef<OsInstallmentPlanFieldsHandle>(null);
 
   function todayStr() {
     return new Date().toISOString().slice(0, 10);
@@ -143,13 +139,6 @@ export function useNovaOs() {
       })),
     );
   }, [sameEmployeeForAll, globalEmployeeId]);
-
-  useEffect(() => {
-    if (paymentTerm !== "A_PRAZO" || paymentMethod === "Mensal") {
-      return;
-    }
-    setPaymentMethod("Mensal");
-  }, [paymentMethod, paymentTerm]);
 
   useEffect(() => {
     if (isStandalone) {
@@ -210,15 +199,6 @@ export function useNovaOs() {
     [employees],
   );
 
-  const vehicleOptions = useMemo(
-    () =>
-      vehicles.map((vehicle) => ({
-        value: vehicle.id,
-        label: `${vehicle.plate} • ${vehicle.brand} ${vehicle.model}`,
-      })),
-    [vehicles],
-  );
-
   const customerOptions = useMemo(
     () =>
       customers.map((customer) => ({
@@ -245,14 +225,13 @@ export function useNovaOs() {
   );
 
   const selectedClient = customers.find((client) => client.id === clientId);
-  const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId);
   const laborTotal = services.reduce(
     (sum, service) => sum + (Number(service.quantity) || 0) * Number(service.laborPrice || 0),
     0,
   );
   const productsTotal = products.reduce((sum, p) => sum + (Number(p.quantity) || 0) * p.unitPrice, 0);
   const total = laborTotal + productsTotal;
-  const isLoading = unitLoading || !customersHydrated || !servicesHydrated || !vehiclesHydrated || !employeesHydrated;
+  const isLoading = unitLoading || !customersHydrated || !servicesHydrated || !employeesHydrated;
   const unitOptions = units.map((unit) => ({ value: unit.id, label: unit.name }));
 
   const summaryUnitName =
@@ -262,7 +241,6 @@ export function useNovaOs() {
     : selectedClient
       ? getPersonName(selectedClient)
       : "Não selecionado";
-  const summaryVehiclePlate = selectedVehicle?.plate ?? "Não vinculado";
 
   function onServiceChange(id: string, patch: Partial<ServiceDraft>) {
     setServices((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -298,32 +276,6 @@ export function useNovaOs() {
   function enterStandaloneMode() {
     setIsStandalone(true);
     setClientId("");
-    setVehicleId("");
-  }
-
-  async function handleCreateVehicle(values: VehicleFormValues) {
-    const response = await fetch("/api/vehicles", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(values),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      toast.error(data.message ?? "Não foi possível cadastrar o veículo.");
-      return;
-    }
-
-    setVehicles((current) => [...current, data.vehicle]);
-    setVehicleId(data.vehicle.id);
-    setVehicleModalOpen(false);
-    toast.success("Veículo cadastrado com sucesso!");
-    void mutate((key: string) => typeof key === "string" && key.startsWith("/api/customers"), undefined, {
-      revalidate: true,
-    });
   }
 
   async function handleCreateCustomer(values: CadastroPessoaFormValues) {
@@ -345,7 +297,6 @@ export function useNovaOs() {
     const createdId = (data as { customer?: { id?: string } }).customer?.id;
     if (createdId) {
       setClientId(createdId);
-      setVehicleId("");
     }
 
     setCustomerModalOpen(false);
@@ -359,8 +310,6 @@ export function useNovaOs() {
     setIsStandalone(false);
     setCustomerNameSnapshot("");
     setClientId("");
-    setVehicleId("");
-    setMileage("");
     setPaymentMethod("Pix");
     setPaymentTerm("A_VISTA");
     setCustomOsNumber("");
@@ -373,15 +322,13 @@ export function useNovaOs() {
     setOpenedAtPreset("today");
     setOpenedAtCustom("");
     setCustomerModalOpen(false);
-    setVehicleModalOpen(false);
+    setInstallmentResetKey((k) => k + 1);
   }
 
   function resetFormForContinue() {
     setIsStandalone(false);
     setCustomerNameSnapshot("");
     setClientId("");
-    setVehicleId("");
-    setMileage("");
     setCustomOsNumber("");
     setNotes("");
     setServices([]);
@@ -389,7 +336,7 @@ export function useNovaOs() {
     setSameEmployeeForAll(false);
     setGlobalEmployeeId("");
     setCustomerModalOpen(false);
-    setVehicleModalOpen(false);
+    setInstallmentResetKey((k) => k + 1);
   }
 
   async function handleSubmit() {
@@ -456,6 +403,11 @@ export function useNovaOs() {
       return;
     }
 
+    if (installmentPlanRef.current && !installmentPlanRef.current.validate()) {
+      return;
+    }
+    const installmentsPayload = installmentPlanRef.current?.getForCreate();
+
     const response = await fetch("/api/service-orders", {
       method: "POST",
       headers: {
@@ -465,8 +417,6 @@ export function useNovaOs() {
         unitId: selectedUnitId,
         customerId: isStandalone ? null : clientId,
         customerNameSnapshot: isStandalone ? customerNameSnapshot : "",
-        vehicleId: VEICULOS_ATIVO ? vehicleId || undefined : undefined,
-        mileage: VEICULOS_ATIVO && mileage ? Number(mileage) : undefined,
         paymentMethod,
         paymentTerm,
         customOsNumber: isStandalone ? undefined : Number(customOsNumber),
@@ -475,6 +425,7 @@ export function useNovaOs() {
         openedAt: resolvedOpenedAt,
         services: normalizedServices,
         products: normalizedProducts,
+        ...(installmentsPayload && installmentsPayload.length >= 2 ? { installments: installmentsPayload } : {}),
       }),
     });
 
@@ -553,6 +504,11 @@ export function useNovaOs() {
       return;
     }
 
+    if (installmentPlanRef.current && !installmentPlanRef.current.validate()) {
+      return;
+    }
+    const installmentsPayloadContinue = installmentPlanRef.current?.getForCreate();
+
     const response = await fetch("/api/service-orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -560,8 +516,6 @@ export function useNovaOs() {
         unitId: selectedUnitId,
         customerId: isStandalone ? null : clientId,
         customerNameSnapshot: isStandalone ? customerNameSnapshot : "",
-        vehicleId: VEICULOS_ATIVO ? vehicleId || undefined : undefined,
-        mileage: VEICULOS_ATIVO && mileage ? Number(mileage) : undefined,
         paymentMethod,
         paymentTerm,
         customOsNumber: isStandalone ? undefined : Number(customOsNumber),
@@ -570,6 +524,9 @@ export function useNovaOs() {
         openedAt: resolvedOpenedAt,
         services: normalizedServices,
         products: normalizedProducts,
+        ...(installmentsPayloadContinue && installmentsPayloadContinue.length >= 2
+          ? { installments: installmentsPayloadContinue }
+          : {}),
       }),
     });
 
@@ -589,7 +546,6 @@ export function useNovaOs() {
     customersHydrated,
     catalogServices,
     servicesHydrated,
-    vehiclesHydrated,
     employees,
     employeesHydrated,
     employeeOptions,
@@ -602,10 +558,6 @@ export function useNovaOs() {
     setCustomerNameSnapshot,
     clientId,
     setClientId,
-    vehicleId,
-    setVehicleId,
-    mileage,
-    setMileage,
     paymentMethod,
     setPaymentMethod,
     paymentTerm,
@@ -625,11 +577,8 @@ export function useNovaOs() {
     addProduct,
     laborTotal,
     productsTotal,
-    vehicleModalOpen,
-    setVehicleModalOpen,
     customerModalOpen,
     setCustomerModalOpen,
-    vehicleOptions,
     customerOptions,
     serviceOptions,
     unitOptions,
@@ -637,7 +586,6 @@ export function useNovaOs() {
     isLoading,
     summaryUnitName,
     summaryClientName,
-    summaryVehiclePlate,
     sameEmployeeForAll,
     setSameEmployeeForAll,
     globalEmployeeId,
@@ -645,7 +593,6 @@ export function useNovaOs() {
     onServiceChange,
     removeService,
     addService,
-    handleCreateVehicle,
     handleCreateCustomer,
     handleSubmit,
     handleSubmitAndContinue,
@@ -656,6 +603,8 @@ export function useNovaOs() {
     openedAtCustom,
     setOpenedAtCustom,
     resolvedOpenedAt,
+    installmentPlanRef,
+    installmentResetKey,
   };
 }
 

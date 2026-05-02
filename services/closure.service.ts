@@ -1,21 +1,37 @@
-import { fetchReferencedOrderNumbersInOpenClosures } from "@/lib/service-order-reference";
+import { buildInstallmentsForBilling, installmentPlanToJson, type OrderInstallmentPayload } from "@/lib/os-installments";
+import { fetchReferencedOrderNumbersInAllClosures } from "@/lib/service-order-reference";
+import { fetchReferencedReceivableIdsInAllClosures } from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { ServiceError } from "@/services/service-error";
+import type { Prisma, ServiceOrderStatus } from "@prisma/client";
 
 type ClosurePayload = {
   customerId: string;
   month: string;
   sourceOrderIds: string[];
+  sourceSelections?: Array<{ orderId: string; receivableId?: string | null }>;
   dueDate?: string | null;
   paymentTerm: "A_VISTA" | "A_PRAZO";
   paymentMethod: string;
+  installments?: OrderInstallmentPayload[];
 };
 
 type ClosureContext = {
   companyId: string;
   unitId?: string | null;
   userId: string;
+};
+
+type ClosureLine = {
+  serviceId: string | null;
+  description: string;
+  referencedOrderNumber: string | null;
+  laborPrice: number;
+  lineTotal: number;
+  originalLineTotal: number;
+  quantity: number;
+  previousOrderStatus: ServiceOrderStatus;
 };
 
 function buildClosureNumber(year: number, sequence: number) {
@@ -68,9 +84,14 @@ export const closureService = {
     const start = new Date(Date.UTC(year, month - 1, 1));
     const end = new Date(Date.UTC(year, month, 1));
 
+    const selectionRows = payload.sourceSelections?.length
+      ? payload.sourceSelections
+      : payload.sourceOrderIds.map((orderId) => ({ orderId, receivableId: null }));
+    const sourceOrderIds = Array.from(new Set(selectionRows.map((item) => item.orderId)));
+
     const sourceOrders = await prisma.serviceOrder.findMany({
       where: {
-        id: { in: payload.sourceOrderIds },
+        id: { in: sourceOrderIds },
         companyId: context.companyId,
         ...(context.unitId ? { unitId: context.unitId } : {}),
         customerId: payload.customerId,
@@ -86,6 +107,7 @@ export const closureService = {
       },
       include: {
         items: true,
+        products: true,
         receivables: true,
         customer: {
           select: {
@@ -104,25 +126,37 @@ export const closureService = {
       throw new ServiceError("Nenhuma OS encontrada para gerar fechamento.", 400);
     }
 
-    if (sourceOrders.length !== payload.sourceOrderIds.length) {
+    if (sourceOrders.length !== sourceOrderIds.length) {
       throw new ServiceError("Algumas OS selecionadas não pertencem ao cliente/período informado.", 400);
     }
 
-    const notOpen = sourceOrders.filter((o) => o.isBilled);
+    const notOpen = sourceOrders.filter((o) => {
+      if (!o.isBilled) return false;
+      return !selectionRows.some((s) => s.orderId === o.id && s.receivableId);
+    });
     if (notOpen.length > 0) {
       throw new ServiceError("Só é possível incluir OS ainda não faturadas no fechamento.", 400);
     }
 
-    const lockedInOtherFec = await fetchReferencedOrderNumbersInOpenClosures(
+    const lockedInOtherFec = await fetchReferencedOrderNumbersInAllClosures(
+      context.companyId,
+      context.unitId ?? undefined,
+    );
+    const lockedReceivableIds = await fetchReferencedReceivableIdsInAllClosures(
       context.companyId,
       context.unitId ?? undefined,
     );
     for (const o of sourceOrders) {
-      if (lockedInOtherFec.has(o.number)) {
+      if (lockedInOtherFec.has(o.number) && !selectionRows.some((s) => s.orderId === o.id && s.receivableId)) {
         throw new ServiceError(
           `A OS ${o.number} já consta em outro fechamento em aberto. Conclua ou reabra aquele fechamento antes de incluir esta OS novamente.`,
           400,
         );
+      }
+    }
+    for (const selection of selectionRows) {
+      if (selection.receivableId && lockedReceivableIds.has(selection.receivableId)) {
+        throw new ServiceError("Uma ou mais parcelas selecionadas já pertencem a outro fechamento.", 400);
       }
     }
 
@@ -132,11 +166,30 @@ export const closureService = {
     const customerName =
       customerRow?.type === "PF" ? customerRow.fullName ?? "Cliente" : customerRow?.tradeName ?? "Cliente";
 
-    const allItems = sourceOrders.flatMap((order) => {
+    const allItems: ClosureLine[] = sourceOrders.flatMap((order): ClosureLine[] => {
+      const orderSelections = selectionRows.filter((item) => item.orderId === order.id);
+      const selectedReceivableIds = orderSelections
+        .map((item) => item.receivableId)
+        .filter((v): v is string => Boolean(v));
+      if (selectedReceivableIds.length > 0) {
+        return order.receivables
+          .filter((r) => selectedReceivableIds.includes(r.id))
+          .map((r) => ({
+            serviceId: null,
+            description: `Parcela ${r.installmentNumber ?? 1}/${r.installmentCount ?? 1} da ${order.number} [RCV:${r.id}]`,
+            referencedOrderNumber: null,
+            laborPrice: Number(r.amount),
+            lineTotal: Number(r.amount),
+            originalLineTotal: Number(r.amount),
+            quantity: 1,
+            previousOrderStatus: order.status,
+          }));
+      }
+
       const receivable = order.receivables[0];
       const isPaid = receivable?.status === "PAGO";
 
-      return order.items.map((item) => ({
+      const serviceItems: ClosureLine[] = order.items.map((item) => ({
         serviceId: item.serviceId,
         description: isPaid
           ? `${item.description} (referência da ${order.number} - já pago)`
@@ -148,13 +201,52 @@ export const closureService = {
         quantity: item.quantity,
         previousOrderStatus: order.status,
       }));
+
+      const productItems: ClosureLine[] = order.products.map((product) => ({
+        serviceId: null,
+        description: isPaid
+          ? `[Produto] ${product.description} (${order.number} - já pago)`
+          : `[Produto] ${product.description} (${order.number})`,
+        referencedOrderNumber: order.number,
+        laborPrice: Number(product.unitPrice),
+        lineTotal: isPaid ? 0 : Number(product.totalPrice),
+        originalLineTotal: Number(product.totalPrice),
+        quantity: Number(product.quantity),
+        previousOrderStatus: order.status,
+      }));
+
+      if (serviceItems.length === 0 && productItems.length === 0) {
+        return [
+          {
+            serviceId: null,
+            description: `[Sem itens] ${order.number}`,
+            referencedOrderNumber: order.number,
+            laborPrice: 0,
+            lineTotal: 0,
+            originalLineTotal: 0,
+            quantity: 1,
+            previousOrderStatus: order.status,
+          },
+        ];
+      }
+
+      return [...serviceItems, ...productItems];
     });
 
     const totalSpent = allItems.reduce((sum, item) => sum + item.originalLineTotal, 0);
     const outstandingAmount = allItems.reduce((sum, item) => sum + item.lineTotal, 0);
+    if (allItems.length === 0 || totalSpent <= 0) {
+      throw new ServiceError("Nenhuma OS/parcela elegível foi selecionada para o fechamento.", 400);
+    }
     const closureNumber = await getNextClosureNumber(context.companyId);
     const dueDate =
       payload.paymentTerm === "A_PRAZO" && payload.dueDate ? new Date(`${payload.dueDate}T00:00:00`) : new Date();
+
+    let billingInstallmentPlan: Prisma.InputJsonValue | undefined;
+    if (payload.installments && payload.installments.length >= 2) {
+      const normalized = buildInstallmentsForBilling(totalSpent, dueDate, payload.installments);
+      billingInstallmentPlan = installmentPlanToJson(normalized);
+    }
 
     const db = getAuditPrisma({
       userId: context.userId,
@@ -177,6 +269,7 @@ export const closureService = {
           totalAmount: totalSpent,
           createdByUserId: context.userId,
           updatedByUserId: context.userId,
+          ...(billingInstallmentPlan !== undefined ? { billingInstallmentPlan } : {}),
           items: {
             create: allItems.map((item) => ({
               serviceId: item.serviceId ?? null,
@@ -200,7 +293,6 @@ export const closureService = {
         number: closureOrder.number,
         clientId: payload.customerId,
         clientName: customerName,
-        plate: "-",
         unitId: closureUnitId,
         unitName: undefined,
         servicesLabel: `Fechamento mensal (${sourceOrders.length} OS)`,

@@ -109,7 +109,6 @@ model Company {
   receivables   AccountReceivable[]
   payables      AccountPayable[]
   auditLogs     AuditLog[]
-  Vehicle       Vehicle[]
   products         Product[]
   orderProducts    ServiceOrderProduct[]
 }
@@ -189,7 +188,6 @@ model Customer {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   company       Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  vehicles      Vehicle[]
   serviceOrders ServiceOrder[]
   receivables   AccountReceivable[]
 }
@@ -233,25 +231,6 @@ model ServiceCatalog {
   orderItems      ServiceOrderItem[]
 }
 
-model Vehicle {
-  id            String         @id @default(cuid())
-  companyId     String
-  customerId    String
-  plate         String
-  model         String
-  brand         String
-  year          Int
-  color         String?
-  notes         String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer      Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  serviceOrders ServiceOrder[]
-
-  @@unique([companyId, plate])
-}
-
 model Product {
   id           String                @id @default(cuid())
   companyId    String
@@ -280,14 +259,12 @@ model ServiceOrder {
   unitId               String
   customerId           String?
   customerNameSnapshot String?
-  vehicleId            String?
   number               String
   status               ServiceOrderStatus  @default(ABERTA)
   paymentStatus        PaymentStatus       @default(PENDENTE)
   isBilled             Boolean             @default(false)
   openedAt             DateTime            @default(now())
   closedAt             DateTime?
-  mileage              Int?
   dueDate              DateTime?
   paymentTerm          PaymentTerm?
   paymentMethod        String?
@@ -296,6 +273,8 @@ model ServiceOrder {
   totalAmount          Decimal             @default(0) @db.Decimal(10, 2)
   laborSubtotal        Decimal             @default(0) @db.Decimal(10, 2)
   productsSubtotal     Decimal             @default(0) @db.Decimal(10, 2)
+  /// Plano de parcelas definido na abertura (ou na criação do FEC): [{ dueDate: "YYYY-MM-DD", amount }]. Null = parcela única no faturamento.
+  billingInstallmentPlan Json?
   createdByUserId      String?
   updatedByUserId      String?
   createdAt            DateTime            @default(now())
@@ -303,7 +282,6 @@ model ServiceOrder {
   company              Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   unit                 Unit                @relation(fields: [unitId], references: [id], onDelete: Restrict)
   customer             Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  vehicle              Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
   createdBy            User?               @relation("ServiceOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
   updatedBy            User?               @relation("ServiceOrderUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   items                ServiceOrderItem[]

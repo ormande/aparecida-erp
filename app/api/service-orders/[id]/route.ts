@@ -13,8 +13,6 @@ const updateOrderSchema = z.object({
   partialAmount: z.coerce.number().min(0).max(999999.99).optional().default(0),
   customerId: z.string().optional().nullable(),
   customerNameSnapshot: z.string().max(100).optional().default(""),
-  vehicleId: z.string().optional().nullable(),
-  mileage: z.coerce.number().optional().nullable(),
   dueDate: z.string().optional().nullable(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).optional().nullable(),
   paymentMethod: z.string().max(100).optional().default(""),
@@ -44,6 +42,15 @@ const updateOrderSchema = z.object({
     )
     .optional()
     .default([]),
+  installments: z
+    .array(
+      z.object({
+        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        amount: z.coerce.number().positive(),
+      }),
+    )
+    .max(12)
+    .optional(),
 });
 
 function handleServiceError(error: unknown) {

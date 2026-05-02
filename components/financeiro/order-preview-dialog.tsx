@@ -29,10 +29,6 @@ export function OrderPreviewDialog({
                 <p>{orderPreview.clientName}</p>
               </div>
               <div>
-                <span className="text-sm text-muted-foreground">Veículo</span>
-                <p>{orderPreview.vehicleLabel}</p>
-              </div>
-              <div>
                 <span className="text-sm text-muted-foreground">Abertura</span>
                 <p>{date(orderPreview.openedAt)}</p>
               </div>

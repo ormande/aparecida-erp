@@ -27,9 +27,7 @@ type BasePerson = {
   cnpj?: string;
 };
 
-export type Client = BasePerson & {
-  veiculosCount: number;
-};
+export type Client = BasePerson;
 
 export type Supplier = BasePerson & {
   categoria: SupplierCategory;

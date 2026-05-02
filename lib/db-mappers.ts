@@ -9,7 +9,6 @@ import type {
   Supplier,
   SupplierCategory,
   User,
-  Vehicle,
 } from "@prisma/client";
 
 import type { Client, Employee, Payable, Receivable, Supplier as AppSupplier } from "@/lib/app-types";
@@ -73,11 +72,7 @@ export function mapCustomerToClient(
     | "tradeName"
     | "legalName"
     | "cnpj"
-  > & {
-    _count?: {
-      vehicles?: number;
-    };
-  },
+  >,
 ): Client {
   return {
     id: customer.id,
@@ -87,7 +82,6 @@ export function mapCustomerToClient(
     whatsapp: customer.whatsapp ?? customer.phone,
     email: customer.email ?? "",
     observacoes: customer.notes ?? "",
-    veiculosCount: customer._count?.vehicles ?? 0,
     nomeCompleto: customer.fullName ?? undefined,
     cpf: customer.cpf ?? undefined,
     dataNascimento: customer.birthDate ? customer.birthDate.toISOString().slice(0, 10) : undefined,
@@ -159,32 +153,6 @@ export function mapSupplierToAppSupplier(
     nomeFantasia: supplier.tradeName ?? undefined,
     razaoSocial: supplier.legalName ?? undefined,
     cnpj: supplier.cnpj ?? undefined,
-  };
-}
-
-export type AppVehicle = {
-  id: string;
-  plate: string;
-  model: string;
-  brand: string;
-  year: number;
-  color: string;
-  clientId: string;
-  notes: string;
-};
-
-export function mapVehicleToAppVehicle(
-  vehicle: Pick<Vehicle, "id" | "plate" | "model" | "brand" | "year" | "color" | "customerId" | "notes">,
-): AppVehicle {
-  return {
-    id: vehicle.id,
-    plate: vehicle.plate,
-    model: vehicle.model,
-    brand: vehicle.brand,
-    year: vehicle.year,
-    color: vehicle.color ?? "",
-    clientId: vehicle.customerId,
-    notes: vehicle.notes ?? "",
   };
 }
 

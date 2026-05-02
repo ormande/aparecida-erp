@@ -5,9 +5,14 @@ import { prisma } from "@/lib/prisma";
  * Usar este padrão em todo o código que extrai referências a partir de texto (FEC, relatórios, etc.).
  */
 export const SERVICE_ORDER_NUMBER_REGEX = /OS-\d{4}-\d{5}/g;
+export const RECEIVABLE_REFERENCE_REGEX = /\[RCV:([a-z0-9]+)\]/gi;
 
 export function extractServiceOrderNumbersFromText(text: string): string[] {
   return Array.from(text.matchAll(SERVICE_ORDER_NUMBER_REGEX)).map((match) => match[0]);
+}
+
+export function extractReceivableIdsFromText(text: string): string[] {
+  return Array.from(text.matchAll(RECEIVABLE_REFERENCE_REGEX)).map((match) => match[1]);
 }
 
 export type FecItemReferenceSource = {
@@ -53,6 +58,36 @@ export function fecLineReferencedOrderNumbers(item: FecItemReferenceSource): str
   return extractServiceOrderNumbersFromText(item.description);
 }
 
+export async function fetchReferencedReceivableIdsInAllClosures(
+  companyId: string,
+  unitId?: string,
+): Promise<Set<string>> {
+  const closures = await prisma.serviceOrder.findMany({
+    where: {
+      companyId,
+      ...(unitId ? { unitId } : {}),
+      number: { startsWith: "FEC-" },
+    },
+    select: {
+      items: {
+        select: {
+          description: true,
+        },
+      },
+    },
+  });
+
+  const referenced = new Set<string>();
+  for (const closure of closures) {
+    for (const item of closure.items) {
+      for (const receivableId of extractReceivableIdsFromText(item.description)) {
+        referenced.add(receivableId);
+      }
+    }
+  }
+  return referenced;
+}
+
 /** OS já referenciadas em algum fechamento (FEC) ainda não totalmente pago. */
 export async function fetchReferencedOrderNumbersInOpenClosures(
   companyId: string,
@@ -77,6 +112,36 @@ export async function fetchReferencedOrderNumbersInOpenClosures(
 
   const referenced = new Set<string>();
   for (const closure of openClosures) {
+    for (const number of getReferencedOrderNumbersFromFecItems(closure.items)) {
+      referenced.add(number);
+    }
+  }
+  return referenced;
+}
+
+/** OS já referenciadas em qualquer fechamento (aberto ou pago). */
+export async function fetchReferencedOrderNumbersInAllClosures(
+  companyId: string,
+  unitId?: string,
+): Promise<Set<string>> {
+  const closures = await prisma.serviceOrder.findMany({
+    where: {
+      companyId,
+      ...(unitId ? { unitId } : {}),
+      number: { startsWith: "FEC-" },
+    },
+    select: {
+      items: {
+        select: {
+          description: true,
+          referencedOrderNumber: true,
+        },
+      },
+    },
+  });
+
+  const referenced = new Set<string>();
+  for (const closure of closures) {
     for (const number of getReferencedOrderNumbersFromFecItems(closure.items)) {
       referenced.add(number);
     }

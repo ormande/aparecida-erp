@@ -1,15 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo } from "react";
 import { FilePlus2, Plus } from "lucide-react";
 
+import { OsBillConfirmDialog } from "@/components/service-orders/os-bill-confirm-dialog";
 import { OsClosureDialog } from "@/components/service-orders/os-closure-dialog";
 import { OsEditDialog } from "@/components/service-orders/os-edit-dialog";
 import { OsSettleDialog } from "@/components/service-orders/os-settle-dialog";
 import { OsStatusModal } from "@/components/service-orders/os-status-modal";
 import { OsViewDialog } from "@/components/service-orders/os-view-dialog";
 import { Button } from "@/components/ui/button";
-import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { DataTable } from "@/components/ui/data-table";
 import { DatePicker } from "@/components/ui/date-picker";
 import { PageHeader } from "@/components/ui/page-header";
@@ -25,6 +26,20 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
   const p = useOsPage({ fixedBillingFilter });
   const statusOpts = [...p.statusFilterOptions];
   const allowClosureGrouping = fixedBillingFilter === "ABERTAS";
+
+  const billConfirmInitial = useMemo(
+    () =>
+      p.billOrder
+        ? {
+            openedAt: p.billOrder.openedAt,
+            dueDate: p.billOrder.dueDate,
+            paymentMethod: p.billOrder.paymentMethod,
+            paymentTerm: p.billOrder.paymentTerm,
+            totalInput: p.billOrder.totalInput,
+          }
+        : null,
+    [p.billOrder],
+  );
 
   return (
     <div className="space-y-8">
@@ -139,7 +154,7 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
           <DataTable
             data={p.groupedOrders}
             pageSize={10}
-            isLoading={p.unitLoading || !p.hydrated}
+            isLoading={p.unitLoading || !p.hydrated || p.groupOrdersLoading}
             searchPlaceholder="Buscar por cliente"
             searchKeys={p.groupedOrdersSearchKeys}
             columns={p.groupedTableColumns.map((col) => ({
@@ -179,6 +194,8 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
         setEditableProducts={p.setEditableProducts}
         customerOptions={p.customerOptions}
         unitOptions={p.unitOptions}
+        installmentPlanRef={p.editInstallmentPlanRef}
+        installmentResetKey={String(p.editInstallmentResetKey)}
         onClose={() => p.setEditOrder(null)}
         onSave={() => void p.handleSaveEdit()}
       />
@@ -189,7 +206,7 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
           await p.handleStatusChange(id, "settle", paymentMethod ? { paymentMethod } : undefined);
         }}
       />
-      <ConfirmModal
+      <OsBillConfirmDialog
         open={Boolean(p.billOrder)}
         onOpenChange={(open) => {
           if (!open) {
@@ -197,15 +214,16 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
           }
         }}
         title="Confirmar faturamento da OS"
-        description={`Deseja faturar ${p.billOrder?.number ?? "esta OS"} e gerar o recebível?`}
-        onConfirm={() => {
-          if (p.billOrder) {
-            void p.handleStatusChange(p.billOrder.id, "bill");
-          }
-        }}
+        description={`Você vai faturar ${p.billOrder?.number ?? "esta OS"} e gerar o recebível. Confira ou altere vencimento e forma de pagamento; os dados da OS serão atualizados.`}
+        initial={billConfirmInitial}
         confirmLabel={p.billOrder ? (p.statusLoadingByOrderId[p.billOrder.id] ? "Faturando..." : "Faturar OS") : "Faturar OS"}
         cancelLabel="Cancelar"
-        confirmDisabled={p.billOrder ? Boolean(p.statusLoadingByOrderId[p.billOrder.id]) : false}
+        isLoading={p.billOrder ? Boolean(p.statusLoadingByOrderId[p.billOrder.id]) : false}
+        onConfirm={(payload) => {
+          if (p.billOrder) {
+            void p.handleStatusChange(p.billOrder.id, "bill", payload);
+          }
+        }}
       />
       <OsStatusModal order={p.statusOrder} onClose={() => p.setStatusOrder(null)} onConfirm={p.handleStatusUpdate} />
       <OsClosureDialog
@@ -215,13 +233,17 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
           p.setSelectedClosureOrderIds([]);
         }}
         onConfirm={p.handleCreateClosure}
-        availableOrders={p.closureAvailableOrders}
+        availableOrders={p.closureDialogOrders}
+        isLoadingOrders={p.closureDialogLoading}
         selectedOrderIds={p.selectedClosureOrderIds}
         onToggleOrder={p.toggleClosureOrderSelection}
         paymentTerm={p.closurePaymentTerm}
         setPaymentTerm={p.setClosurePaymentTerm}
         dueDate={p.closureDueDate}
         setDueDate={p.setClosureDueDate}
+        openedAtFallback={p.closureOpenedAtDay}
+        installmentPlanRef={p.closureInstallmentPlanRef}
+        installmentResetKey={String(p.closureInstallmentResetKey)}
       />
     </div>
   );

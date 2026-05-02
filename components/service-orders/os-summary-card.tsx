@@ -10,7 +10,6 @@ export function OsSummaryCard({
   productsTotal,
   unitName,
   clientName,
-  vehiclePlate,
   paymentTerm,
   dueDate,
   isLoading,
@@ -23,7 +22,6 @@ export function OsSummaryCard({
   productsTotal: number;
   unitName: string;
   clientName: string;
-  vehiclePlate?: string;
   paymentTerm: "A_VISTA" | "A_PRAZO";
   dueDate: string;
   isLoading: boolean;
@@ -56,7 +54,6 @@ export function OsSummaryCard({
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>Unidade: {unitName}</p>
           <p>Cliente: {clientName}</p>
-          {vehiclePlate ? <p>Veículo: {vehiclePlate}</p> : null}
           <p>Pagamento: {paymentTerm === "A_VISTA" ? "À vista" : "À prazo"}</p>
           <p>Vencimento: {paymentTerm === "A_PRAZO" ? dueDate || "-" : "Pagamento imediato"}</p>
         </div>

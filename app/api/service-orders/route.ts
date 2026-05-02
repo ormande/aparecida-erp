@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { Prisma } from "@prisma/client";
 import { z, ZodError } from "zod";
 
@@ -10,8 +11,6 @@ const orderSchema = z.object({
   unitId: z.string().min(1, "Selecione uma unidade."),
   customerId: z.string().optional().nullable(),
   customerNameSnapshot: z.string().max(100).optional().default(""),
-  vehicleId: z.string().optional().nullable(),
-  mileage: z.coerce.number().optional().nullable(),
   dueDate: z.string().optional().nullable(),
   openedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).optional().nullable(),
@@ -43,6 +42,16 @@ const orderSchema = z.object({
     )
     .optional()
     .default([]),
+  installments: z
+    .array(
+      z.object({
+        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        amount: z.coerce.number().positive(),
+      }),
+    )
+    .min(2)
+    .max(12)
+    .optional(),
 }).refine((data) => data.services.length > 0 || data.products.length > 0, {
   message: "Adicione pelo menos um produto ou serviço na OS.",
   path: ["services"],
@@ -65,6 +74,10 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const page = Number(searchParams.get("page") ?? "1");
   const limit = Math.min(Number(searchParams.get("limit") ?? "10"), 100);
+  const minTotalRaw = searchParams.get("minTotal");
+  const maxTotalRaw = searchParams.get("maxTotal");
+  const minTotalNum = minTotalRaw !== null && minTotalRaw !== "" ? Number(minTotalRaw) : undefined;
+  const maxTotalNum = maxTotalRaw !== null && maxTotalRaw !== "" ? Number(maxTotalRaw) : undefined;
 
   try {
     const result = await serviceOrderService.list(
@@ -74,8 +87,20 @@ export async function GET(request: NextRequest) {
         search: searchParams.get("search") ?? undefined,
         status: searchParams.get("status") ?? undefined,
         unitId: searchParams.get("unitId") ?? undefined,
-        vehicleId: searchParams.get("vehicleId") ?? undefined,
         customerId: searchParams.get("customerId") ?? undefined,
+        numberPrefix: searchParams.get("numberPrefix") ?? undefined,
+        excludeFechamentos: searchParams.get("excludeFechamentos") === "true",
+        openedMonth: searchParams.get("openedMonth") ?? undefined,
+        openedFrom: searchParams.get("openedFrom") ?? undefined,
+        openedTo: searchParams.get("openedTo") ?? undefined,
+        minTotal: Number.isFinite(minTotalNum) ? minTotalNum : undefined,
+        maxTotal: Number.isFinite(maxTotalNum) ? maxTotalNum : undefined,
+        paymentStatus: searchParams.get("paymentStatus") ?? undefined,
+        billingScope: (() => {
+          const raw = searchParams.get("billingScope");
+          if (raw === "ABERTAS" || raw === "FATURADAS" || raw === "PAGAS") return raw;
+          return undefined;
+        })(),
       },
       {
         companyId: auth.context.companyId,
@@ -84,6 +109,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (!(error instanceof ServiceError)) {
+      Sentry.captureException(error);
+    }
     return handleServiceError(error);
   }
 }
@@ -128,6 +156,9 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!(error instanceof ServiceError)) {
+      Sentry.captureException(error);
+    }
     return handleServiceError(error);
   }
 }

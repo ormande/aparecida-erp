@@ -1,9 +1,10 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, Ref, RefObject, SetStateAction } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
+import { OsInstallmentPlanFields, type OsInstallmentPlanFieldsHandle } from "@/components/service-orders/os-installment-plan-fields";
 import { ProductCombobox } from "@/components/products/product-combobox";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -38,6 +39,8 @@ export function OsEditDialog({
   setEditableProducts,
   customerOptions,
   unitOptions,
+  installmentPlanRef,
+  installmentResetKey,
   onClose,
   onSave,
 }: {
@@ -50,6 +53,8 @@ export function OsEditDialog({
   setEditableProducts: Dispatch<SetStateAction<OsEditableProductLine[]>>;
   customerOptions: Option[];
   unitOptions: Option[];
+  installmentPlanRef: RefObject<OsInstallmentPlanFieldsHandle | null>;
+  installmentResetKey: string;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -70,13 +75,14 @@ export function OsEditDialog({
       ],
     [employees],
   );
-  const paymentMethodOptions = useMemo(
-    () =>
-      editableData.paymentTerm === "A_PRAZO"
-        ? [...PAYMENT_METHOD_OPTIONS, { value: "Mensal", label: "Mensal" }]
-        : PAYMENT_METHOD_OPTIONS,
-    [editableData.paymentTerm],
-  );
+  const paymentMethodOptions = useMemo(() => {
+    const base = [...PAYMENT_METHOD_OPTIONS];
+    const v = editableData.paymentMethod?.trim();
+    if (v && !base.some((o) => o.value === v)) {
+      base.push({ value: v, label: v });
+    }
+    return base;
+  }, [editableData.paymentMethod]);
 
   useEffect(() => {
     if (!order?.id) {
@@ -106,12 +112,17 @@ export function OsEditDialog({
     setEditableServices((current) => current.map((line) => ({ ...line, executedByUserId: globalEmployeeId })));
   }, [sameEmployeeForAll, globalEmployeeId, setEditableServices]);
 
-  useEffect(() => {
-    if (editableData.paymentTerm !== "A_PRAZO" || editableData.paymentMethod === "Mensal") {
-      return;
-    }
-    setEditableData((current) => ({ ...current, paymentMethod: "Mensal" }));
-  }, [editableData.paymentMethod, editableData.paymentTerm, setEditableData]);
+  const draftTotal = useMemo(() => {
+    const labor = editableServices.reduce(
+      (sum, line) => sum + (line.quantity ?? 1) * Number(line.laborPrice || 0),
+      0,
+    );
+    const prod = editableProducts.reduce((sum, line) => sum + Number(line.quantity) * Number(line.unitPrice || 0), 0);
+    return labor + prod;
+  }, [editableServices, editableProducts]);
+
+  const installmentFirstDue =
+    order && editableData.paymentTerm === "A_PRAZO" ? editableData.dueDate : order?.openedAt ?? "";
 
   function addService() {
     setEditableServices((current) => [
@@ -182,7 +193,7 @@ export function OsEditDialog({
                 <Label>Cliente</Label>
                 <SearchableSelect
                   value={editableData.clientId}
-                  onChange={(value) => setEditableData((current) => ({ ...current, clientId: value, vehicleId: "" }))}
+                  onChange={(value) => setEditableData((current) => ({ ...current, clientId: value }))}
                   options={customerOptions}
                   placeholder="Selecione o cliente"
                 />
@@ -194,7 +205,6 @@ export function OsEditDialog({
                   onChange={(value) => setEditableData((current) => ({ ...current, paymentMethod: value }))}
                   placeholder="Selecione a forma de pagamento"
                   options={paymentMethodOptions}
-                  disabled={editableData.paymentTerm === "A_PRAZO"}
                 />
               </div>
               <div className="grid gap-2">
@@ -214,7 +224,6 @@ export function OsEditDialog({
                     ...current,
                     paymentTerm: "A_VISTA",
                     dueDate: "",
-                    paymentMethod: current.paymentMethod === "Mensal" ? "Pix" : current.paymentMethod,
                   }))
                 }
               >
@@ -222,11 +231,22 @@ export function OsEditDialog({
               </Button>
               <Button
                 variant={editableData.paymentTerm === "A_PRAZO" ? "default" : "outline"}
-                onClick={() => setEditableData((current) => ({ ...current, paymentTerm: "A_PRAZO", paymentMethod: "Mensal" }))}
+                onClick={() => setEditableData((current) => ({ ...current, paymentTerm: "A_PRAZO" }))}
               >
                 À prazo
               </Button>
             </div>
+
+            {order && !order.isBilled && draftTotal > 0 ? (
+              <OsInstallmentPlanFields
+                ref={installmentPlanRef as Ref<OsInstallmentPlanFieldsHandle>}
+                totalAmount={draftTotal}
+                firstDueDate={installmentFirstDue}
+                openedAtFallback={order.openedAt}
+                initialStoredPlan={order.billingInstallmentPlan ?? null}
+                resetKey={`edit-${order.id}-${installmentResetKey}`}
+              />
+            ) : null}
 
             <div className="flex flex-col gap-3 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:flex-wrap sm:items-center">
               <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">

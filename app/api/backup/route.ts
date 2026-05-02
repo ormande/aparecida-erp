@@ -45,15 +45,7 @@ export async function GET() {
     return NextResponse.json({ message: "Empresa não encontrada." }, { status: 404 });
   }
 
-  const [
-    customers,
-    suppliers,
-    vehicles,
-    serviceOrders,
-    receivables,
-    payables,
-    services,
-  ] = await Promise.all([
+  const [customers, suppliers, serviceOrders, receivables, payables, services] = await Promise.all([
     prisma.customer.findMany({
       where: { companyId: auth.context.companyId },
       select: {
@@ -95,21 +87,6 @@ export async function GET() {
         updatedAt: true,
       },
     }),
-    prisma.vehicle.findMany({
-      where: { companyId: auth.context.companyId },
-      select: {
-        id: true,
-        customerId: true,
-        plate: true,
-        model: true,
-        brand: true,
-        year: true,
-        color: true,
-        notes: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    }),
     prisma.serviceOrder.findMany({
       where: { companyId: auth.context.companyId },
       select: {
@@ -117,12 +94,10 @@ export async function GET() {
         unitId: true,
         customerId: true,
         customerNameSnapshot: true,
-        vehicleId: true,
         number: true,
         status: true,
         openedAt: true,
         closedAt: true,
-        mileage: true,
         dueDate: true,
         paymentTerm: true,
         paymentMethod: true,
@@ -213,7 +188,6 @@ export async function GET() {
     data: {
       customers,
       suppliers,
-      vehicles,
       serviceOrders,
       receivables,
       payables,

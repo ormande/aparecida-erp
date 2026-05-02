@@ -155,23 +155,15 @@ export function OsPdf({ order, companyName, unitName }: OsPdfProps) {
         <PdfHeader companyName={companyName} unitName={unitName} title={`Ordem de Serviço ${order.number}`} />
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Dados do cliente e veículo</Text>
+          <Text style={styles.sectionTitle}>Dados do cliente</Text>
           <View style={styles.grid2}>
             <View style={styles.gridItem}>
               <Text style={styles.label}>Cliente</Text>
               <Text style={styles.value}>{order.clientName || "—"}</Text>
             </View>
             <View style={styles.gridItem}>
-              <Text style={styles.label}>Veículo</Text>
-              <Text style={styles.value}>{order.vehicleLabel || "—"}</Text>
-            </View>
-            <View style={styles.gridItem}>
               <Text style={styles.label}>Data de abertura</Text>
               <Text style={styles.value}>{order.openedAt ? formatDate(order.openedAt) : "—"}</Text>
-            </View>
-            <View style={styles.gridItem}>
-              <Text style={styles.label}>Quilometragem</Text>
-              <Text style={styles.value}>{order.mileage != null ? `${order.mileage} km` : "—"}</Text>
             </View>
           </View>
         </View>

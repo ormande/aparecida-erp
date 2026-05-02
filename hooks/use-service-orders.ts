@@ -13,20 +13,19 @@ const fetcher = async (url: string) => {
   return response.json();
 };
 
-type ServiceOrderRow = {
+export type ServiceOrderRow = {
   id: string;
   number: string;
   clientId: string | null;
   unitId?: string | null;
   unitName?: string | null;
-  vehicleId: string | null;
   clientName: string;
-  plate: string;
   servicesLabel: string;
   status: "Aberta" | "Em andamento" | "Aguardando peça" | "Concluída" | "Cancelada";
   paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
   isBilled: boolean;
   isLockedByOpenClosure?: boolean;
+  isLockedByAnyClosure?: boolean;
   total: number;
   openedAt: string;
   dueDate?: string | null;
@@ -36,6 +35,15 @@ type ServiceOrderRow = {
   receivableStatus?: "PAGO" | "PENDENTE" | "VENCIDO" | null;
   receivableCount?: number;
   receivableAmount?: number;
+  receivableLines?: Array<{
+    id: string;
+    amount: number;
+    dueDate: string;
+    status: "PAGO" | "PENDENTE" | "VENCIDO";
+    installmentNumber?: number | null;
+    installmentCount?: number | null;
+    isLockedByAnyClosure?: boolean;
+  }>;
   executedByName?: string | null;
 };
 
@@ -46,10 +54,18 @@ type UseServiceOrdersParams = {
   status?: string;
   unitId?: string;
   customerId?: string;
-  vehicleId?: string;
+  numberPrefix?: string;
+  excludeFechamentos?: boolean;
+  openedMonth?: string;
+  openedFrom?: string;
+  openedTo?: string;
+  minTotal?: number;
+  maxTotal?: number;
+  paymentStatus?: string;
+  billingScope?: "ABERTAS" | "FATURADAS" | "PAGAS";
 };
 
-type ServiceOrdersResponse = {
+export type ServiceOrdersResponse = {
   data?: ServiceOrderRow[];
   meta?: {
     total: number;
@@ -70,17 +86,33 @@ export function useServiceOrders(filters?: UseServiceOrdersParams) {
     if (filters?.status) params.set("status", filters.status);
     if (filters?.unitId) params.set("unitId", filters.unitId);
     if (filters?.customerId) params.set("customerId", filters.customerId);
-    if (filters?.vehicleId) params.set("vehicleId", filters.vehicleId);
+    if (filters?.numberPrefix) params.set("numberPrefix", filters.numberPrefix);
+    if (filters?.excludeFechamentos) params.set("excludeFechamentos", "true");
+    if (filters?.openedMonth) params.set("openedMonth", filters.openedMonth);
+    if (filters?.openedFrom) params.set("openedFrom", filters.openedFrom);
+    if (filters?.openedTo) params.set("openedTo", filters.openedTo);
+    if (filters?.minTotal !== undefined) params.set("minTotal", String(filters.minTotal));
+    if (filters?.maxTotal !== undefined) params.set("maxTotal", String(filters.maxTotal));
+    if (filters?.paymentStatus) params.set("paymentStatus", filters.paymentStatus);
+    if (filters?.billingScope) params.set("billingScope", filters.billingScope);
 
     return `/api/service-orders?${params.toString()}`;
   }, [
+    filters?.billingScope,
     filters?.customerId,
+    filters?.excludeFechamentos,
     filters?.limit,
+    filters?.maxTotal,
+    filters?.minTotal,
+    filters?.openedFrom,
+    filters?.openedMonth,
+    filters?.openedTo,
+    filters?.numberPrefix,
     filters?.page,
+    filters?.paymentStatus,
     filters?.search,
     filters?.status,
     filters?.unitId,
-    filters?.vehicleId,
   ]);
 
   const { data, error, mutate } = useSWR<ServiceOrdersResponse>(key, fetcher);

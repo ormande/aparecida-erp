@@ -117,11 +117,6 @@ export const customerService = {
       prisma.customer.count({ where }),
       prisma.customer.findMany({
         where,
-        include: {
-          _count: {
-            select: { vehicles: true },
-          },
-        },
         orderBy: { createdAt: "asc" },
         skip,
         take: limit,
@@ -148,19 +143,6 @@ export const customerService = {
         companyId: context.companyId,
       },
       include: {
-        _count: {
-          select: { vehicles: true },
-        },
-        vehicles: {
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            plate: true,
-            brand: true,
-            model: true,
-            year: true,
-          },
-        },
         serviceOrders: {
           where: context.unitId ? { unitId: context.unitId } : {},
           orderBy: { openedAt: "desc" },
@@ -171,9 +153,6 @@ export const customerService = {
             status: true,
             totalAmount: true,
             openedAt: true,
-            vehicle: {
-              select: { plate: true },
-            },
           },
         },
       },
@@ -185,20 +164,12 @@ export const customerService = {
 
     return {
       customer: mapCustomerToClient(customer),
-      vehicles: customer.vehicles.map((vehicle) => ({
-        id: vehicle.id,
-        plate: vehicle.plate,
-        brand: vehicle.brand,
-        model: vehicle.model,
-        year: vehicle.year,
-      })),
       latestOrders: customer.serviceOrders.map((order) => ({
         id: order.id,
         number: order.number,
         status: mapServiceOrderStatus(order.status),
         total: Number(order.totalAmount),
         openedAt: order.openedAt.toISOString().slice(0, 10),
-        vehiclePlate: order.vehicle?.plate ?? "-",
       })),
     };
   },
@@ -215,11 +186,6 @@ export const customerService = {
         companyId: context.companyId,
         ...buildCustomerData(payload),
       },
-      include: {
-        _count: {
-          select: { vehicles: true },
-        },
-      },
     });
 
     return { customer: mapCustomerToClient(customer) };
@@ -230,11 +196,6 @@ export const customerService = {
       where: {
         id,
         companyId: context.companyId,
-      },
-      include: {
-        _count: {
-          select: { vehicles: true },
-        },
       },
     });
 
@@ -251,11 +212,6 @@ export const customerService = {
     const customer = await db.customer.update({
       where: { id },
       data: buildCustomerData(payload),
-      include: {
-        _count: {
-          select: { vehicles: true },
-        },
-      },
     });
 
     return { customer: mapCustomerToClient(customer) };

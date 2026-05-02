@@ -30,7 +30,6 @@ export function clientFormValuesToClient(values: CadastroPessoaFormValues, base?
     whatsapp: values.whatsapp,
     email: values.email,
     observacoes: values.observacoes,
-    veiculosCount: base?.veiculosCount ?? 0,
     nomeCompleto: values.tipo === "pf" ? values.nomeCompleto : undefined,
     cpf: values.tipo === "pf" ? values.cpf : undefined,
     dataNascimento: values.tipo === "pf" ? values.dataNascimento : undefined,

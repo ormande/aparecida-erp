@@ -8,11 +8,32 @@ import { ServiceError } from "@/services/service-error";
 const closureSchema = z.object({
   customerId: z.string().min(1),
   month: z.string().regex(/^\d{4}-\d{2}$/),
-  sourceOrderIds: z.array(z.string().min(1)).min(1),
+  sourceOrderIds: z.array(z.string().min(1)).default([]),
+  sourceSelections: z
+    .array(
+      z.object({
+        orderId: z.string().min(1),
+        receivableId: z.string().min(1).optional().nullable(),
+      }),
+    )
+    .optional(),
   dueDate: z.string().optional().nullable(),
   paymentTerm: z.enum(["A_VISTA", "A_PRAZO"]).default("A_PRAZO"),
   paymentMethod: z.string().max(100).default("Fechamento mensal"),
   unitId: z.string().nullable().optional(),
+  installments: z
+    .array(
+      z.object({
+        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        amount: z.coerce.number().positive(),
+      }),
+    )
+    .min(2)
+    .max(12)
+    .optional(),
+}).refine((payload) => payload.sourceOrderIds.length > 0 || (payload.sourceSelections?.length ?? 0) > 0, {
+  message: "Selecione ao menos uma OS/parcela para unificação.",
+  path: ["sourceSelections"],
 });
 
 function handleServiceError(error: unknown) {

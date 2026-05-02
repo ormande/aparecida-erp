@@ -22,7 +22,6 @@ const IGNORED_MODELS = new Set([
 
 const ENTITY_TYPE_BY_MODEL: Record<string, string> = {
   Customer: "customer",
-  Vehicle: "vehicle",
   Supplier: "supplier",
   ServiceCatalog: "service_catalog",
   ServiceOrder: "service_order",

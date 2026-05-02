@@ -1,11 +1,11 @@
 "use client";
 
+import type { Ref } from "react";
 import { Plus } from "lucide-react";
 
 import { ClientForm } from "@/components/clients/client-form";
 import { OsProductsSection } from "@/components/service-orders/os-products-section";
 import { OsServiceItem } from "@/components/service-orders/os-service-item";
-import { VehicleForm } from "@/components/vehicles/vehicle-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,8 +22,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  OsInstallmentPlanFields,
+  type OsInstallmentPlanFieldsHandle,
+} from "@/components/service-orders/os-installment-plan-fields";
 import type { NovaOsController } from "@/hooks/use-nova-os";
-import { VEICULOS_ATIVO } from "@/lib/config";
+import { cn } from "@/lib/utils";
 
 const PAYMENT_METHOD_OPTIONS = [
   { value: "Pix", label: "PIX" },
@@ -32,12 +36,52 @@ const PAYMENT_METHOD_OPTIONS = [
   { value: "Crédito", label: "Crédito" },
 ] as const;
 
-export function OsNovaMainForm({ os }: { os: NovaOsController }) {
-  const paymentMethodOptions =
-    os.paymentTerm === "A_PRAZO"
-      ? [...PAYMENT_METHOD_OPTIONS, { value: "Mensal", label: "Mensal" }]
-      : [...PAYMENT_METHOD_OPTIONS];
+function OsAddItemsSplitButton({
+  onAddService,
+  onAddProduct,
+  className,
+}: {
+  onAddService: () => void;
+  onAddProduct: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex w-full max-w-md overflow-hidden rounded-2xl border border-input bg-background text-foreground transition-[background-color] duration-200",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        className="group relative flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-foreground transition-[background-color,color,transform,box-shadow] duration-200 ease-out hover:bg-accent hover:text-accent-foreground hover:shadow-sm active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        onClick={onAddService}
+      >
+        <Plus
+          className="h-4 w-4 shrink-0 opacity-70 transition-all duration-200 ease-out group-hover:scale-110 group-hover:text-accent-foreground group-hover:opacity-100"
+          aria-hidden
+        />
+        Adicionar serviço
+      </button>
+      <span className="w-px shrink-0 self-stretch bg-border" aria-hidden />
+      <button
+        type="button"
+        className="group relative flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-foreground transition-[background-color,color,transform,box-shadow] duration-200 ease-out hover:bg-accent hover:text-accent-foreground hover:shadow-sm active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        onClick={onAddProduct}
+      >
+        <Plus
+          className="h-4 w-4 shrink-0 opacity-70 transition-all duration-200 ease-out group-hover:scale-110 group-hover:text-accent-foreground group-hover:opacity-100"
+          aria-hidden
+        />
+        Adicionar produto
+      </button>
+    </div>
+  );
+}
 
+export function OsNovaMainForm({ os }: { os: NovaOsController }) {
+  const hasAnyItems = os.services.length > 0 || os.products.length > 0;
+  const installmentFirstDue = os.paymentTerm === "A_PRAZO" ? os.dueDate : os.resolvedOpenedAt;
   return (
     <Card className="surface-card border-none">
       <CardContent className="grid gap-6 p-6">
@@ -107,7 +151,7 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
         </div>
 
         {os.isStandalone ? (
-          <div className={`grid gap-4 ${VEICULOS_ATIVO ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="grid gap-2">
               <div className="flex min-h-9 items-center justify-between gap-3">
                 <Label htmlFor="customerNameSnapshot">Cliente avulso</Label>
@@ -130,28 +174,12 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                 value={os.paymentMethod}
                 onChange={os.setPaymentMethod}
                 placeholder="Selecione a forma de pagamento"
-                options={paymentMethodOptions}
-                disabled={os.paymentTerm === "A_PRAZO"}
+                options={[...PAYMENT_METHOD_OPTIONS]}
               />
             </div>
-
-            {VEICULOS_ATIVO ? (
-              <div className="grid gap-2">
-                <div className="flex min-h-9 items-center justify-between gap-3">
-                  <Label htmlFor="mileage">Quilometragem atual</Label>
-                  <span className="h-9 w-px opacity-0" aria-hidden />
-                </div>
-                <Input
-                  id="mileage"
-                  value={os.mileage}
-                  onChange={(e) => os.setMileage(e.target.value)}
-                  placeholder="Ex: 68420"
-                />
-              </div>
-            ) : null}
           </div>
         ) : (
-          <div className={`grid gap-4 ${VEICULOS_ATIVO ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-3">
                 <Label>Cliente</Label>
@@ -175,10 +203,7 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
               </div>
               <SearchableSelect
                 value={os.clientId}
-                onChange={(value) => {
-                  os.setClientId(value);
-                  os.setVehicleId("");
-                }}
+                onChange={os.setClientId}
                 placeholder="Selecione um cliente"
                 options={os.customerOptions}
                 disabled={!os.customersHydrated}
@@ -194,61 +219,9 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                 value={os.paymentMethod}
                 onChange={os.setPaymentMethod}
                 placeholder="Selecione a forma de pagamento"
-                options={paymentMethodOptions}
-                disabled={os.paymentTerm === "A_PRAZO"}
+                options={[...PAYMENT_METHOD_OPTIONS]}
               />
             </div>
-            {VEICULOS_ATIVO ? (
-              <>
-                <div className="grid gap-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label>Veículo vinculado</Label>
-                    <Dialog open={os.vehicleModalOpen} onOpenChange={os.setVehicleModalOpen}>
-                      <DialogTrigger
-                        render={
-                          <Button variant="outline" size="sm" disabled={!os.clientId}>
-                            <Plus className="mr-1 h-4 w-4" />
-                            Cadastrar veículo
-                          </Button>
-                        }
-                      />
-                      <DialogContent className="sm:max-w-xl">
-                        <DialogHeader>
-                          <DialogTitle>Novo veículo</DialogTitle>
-                          <DialogDescription>Cadastre o veículo do cliente sem sair da abertura da OS.</DialogDescription>
-                        </DialogHeader>
-                        <VehicleForm
-                          customers={os.customers}
-                          lockedClientId={os.clientId}
-                          submitLabel="Salvar veículo"
-                          onSubmit={os.handleCreateVehicle}
-                        />
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  <SearchableSelect
-                    value={os.vehicleId}
-                    onChange={os.setVehicleId}
-                    placeholder={os.clientId ? "Selecione o veículo (opcional)" : "Selecione o cliente primeiro"}
-                    options={os.vehicleOptions}
-                    disabled={!os.clientId}
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <div className="flex min-h-9 items-center justify-between gap-3">
-                    <Label htmlFor="mileage">Quilometragem atual</Label>
-                    <span className="h-9 w-px opacity-0" aria-hidden />
-                  </div>
-                  <Input
-                    id="mileage"
-                    value={os.mileage}
-                    onChange={(e) => os.setMileage(e.target.value)}
-                    placeholder="Ex: 68420"
-                  />
-                </div>
-              </>
-            ) : null}
           </div>
         )}
 
@@ -295,12 +268,7 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                 type="button"
                 size="sm"
                 variant={os.paymentTerm === "A_VISTA" ? "default" : "outline"}
-                onClick={() => {
-                  os.setPaymentTerm("A_VISTA");
-                  if (os.paymentMethod === "Mensal") {
-                    os.setPaymentMethod("Pix");
-                  }
-                }}
+                onClick={() => os.setPaymentTerm("A_VISTA")}
               >
                 À vista
               </Button>
@@ -308,10 +276,7 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                 type="button"
                 size="sm"
                 variant={os.paymentTerm === "A_PRAZO" ? "default" : "outline"}
-                onClick={() => {
-                  os.setPaymentTerm("A_PRAZO");
-                  os.setPaymentMethod("Mensal");
-                }}
+                onClick={() => os.setPaymentTerm("A_PRAZO")}
               >
                 À prazo
               </Button>
@@ -324,74 +289,81 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
           </div>
         </div>
 
+        {hasAnyItems && os.total > 0 ? (
+          <OsInstallmentPlanFields
+            ref={os.installmentPlanRef as Ref<OsInstallmentPlanFieldsHandle>}
+            totalAmount={os.total}
+            firstDueDate={installmentFirstDue}
+            openedAtFallback={os.resolvedOpenedAt}
+            initialStoredPlan={null}
+            resetKey={`nova-${os.installmentResetKey}`}
+          />
+        ) : null}
+
         <div className="space-y-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className="text-xl">Serviços</h2>
-              <p className="text-sm text-muted-foreground">Use o catálogo cadastrado ou descreva o serviço manualmente.</p>
-            </div>
-            <Button variant="outline" onClick={os.addService}>
-              <Plus className="mr-2 h-4 w-4" />
-              Adicionar serviço
-            </Button>
-          </div>
-
-          {os.services.length > 0 ? (
-            <div className="flex flex-col gap-3 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex cursor-pointer items-center gap-2 text-sm font-medium select-none">
-                <Checkbox
-                  checked={os.sameEmployeeForAll}
-                  onCheckedChange={(checked) => os.setSameEmployeeForAll(checked === true)}
-                />
-                <span onClick={() => os.setSameEmployeeForAll(!os.sameEmployeeForAll)}>
-                  Mesmo funcionário para todos os serviços
-                </span>
-              </div>
-              {os.sameEmployeeForAll ? (
-                <div className="min-w-[220px] flex-1 sm:max-w-sm">
-                  <SearchableSelect
-                    value={os.globalEmployeeId}
-                    onChange={os.setGlobalEmployeeId}
-                    placeholder="Funcionário para todos"
-                    options={os.employeeOptions}
-                    disabled={!os.employeeOptions.length}
-                  />
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {os.services.length === 0 ? (
-            <div className="rounded-2xl border border-dashed bg-muted/30 p-4 text-sm text-muted-foreground">
-              Nenhum serviço adicionado. Clique em &quot;Adicionar serviço&quot; para começar.
+          {!hasAnyItems ? (
+            <div className="flex flex-col items-center gap-6 rounded-2xl border border-dashed bg-muted/20 px-6 py-10 text-center">
+              <p className="max-w-sm text-sm text-muted-foreground">
+                Nenhum item adicionado. Inclua serviços ou produtos para compor a OS.
+              </p>
+              <OsAddItemsSplitButton onAddService={os.addService} onAddProduct={os.addProduct} />
             </div>
           ) : (
-            <div className="space-y-4">
-              {os.services.map((service, index) => (
-                <OsServiceItem
-                  key={service.id}
-                  index={index}
-                  service={service}
-                  catalogServices={os.catalogServices}
-                  serviceOptions={os.serviceOptions}
-                  servicesHydrated={os.servicesHydrated}
-                  employeeOptions={os.employeeOptions}
-                  sameEmployeeForAll={os.sameEmployeeForAll}
-                  canRemove
-                  onChange={os.onServiceChange}
-                  onRemove={os.removeService}
+            <>
+              {os.services.length > 0 ? (
+                <div className="flex flex-col gap-3 rounded-2xl border bg-muted/20 p-4 sm:flex-row sm:flex-wrap sm:items-center">
+                  <div className="flex cursor-pointer items-center gap-2 text-sm font-medium select-none">
+                    <Checkbox
+                      checked={os.sameEmployeeForAll}
+                      onCheckedChange={(checked) => os.setSameEmployeeForAll(checked === true)}
+                    />
+                    <span onClick={() => os.setSameEmployeeForAll(!os.sameEmployeeForAll)}>
+                      Mesmo funcionário para todos os serviços
+                    </span>
+                  </div>
+                  {os.sameEmployeeForAll ? (
+                    <div className="min-w-[220px] flex-1 sm:max-w-sm">
+                      <SearchableSelect
+                        value={os.globalEmployeeId}
+                        onChange={os.setGlobalEmployeeId}
+                        placeholder="Funcionário para todos"
+                        options={os.employeeOptions}
+                        disabled={!os.employeeOptions.length}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="space-y-4">
+                {os.services.map((service, index) => (
+                  <OsServiceItem
+                    key={service.id}
+                    index={index}
+                    service={service}
+                    catalogServices={os.catalogServices}
+                    serviceOptions={os.serviceOptions}
+                    servicesHydrated={os.servicesHydrated}
+                    employeeOptions={os.employeeOptions}
+                    sameEmployeeForAll={os.sameEmployeeForAll}
+                    canRemove
+                    onChange={os.onServiceChange}
+                    onRemove={os.removeService}
+                  />
+                ))}
+                <OsProductsSection
+                  products={os.products}
+                  onProductChange={os.onProductChange}
+                  removeProduct={os.removeProduct}
                 />
-              ))}
-            </div>
+              </div>
+
+              <div className="flex justify-center pt-2">
+                <OsAddItemsSplitButton onAddService={os.addService} onAddProduct={os.addProduct} />
+              </div>
+            </>
           )}
         </div>
-
-        <OsProductsSection
-          products={os.products}
-          onProductChange={os.onProductChange}
-          removeProduct={os.removeProduct}
-          addProduct={os.addProduct}
-        />
 
         <div className="grid gap-2">
           <Label htmlFor="notes">Observações / laudo técnico</Label>

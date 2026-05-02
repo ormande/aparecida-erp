@@ -131,7 +131,6 @@ export default function ClientesPage() {
                 </a>
               ),
             },
-            { key: "vehicles", header: "Veículos", render: (row) => row.veiculosCount },
             { key: "situation", header: "Situação", render: (row) => <StatusBadge status={row.situacao} /> },
             {
               key: "actions",
@@ -176,7 +175,7 @@ export default function ClientesPage() {
         open={Boolean(deletingCustomerId)}
         onOpenChange={(nextOpen) => !nextOpen && setDeletingCustomerId(null)}
         title="Excluir cliente"
-        description="Esta ação é irreversível. O cliente será removido do sistema. O nome do cliente será preservado nas ordens de serviço existentes, mas o histórico de veículos vinculados será perdido."
+        description="Esta ação é irreversível. O cliente será removido do sistema. O nome do cliente será preservado nas ordens de serviço existentes."
         confirmLabel="Excluir"
         onConfirm={async () => {
           if (!deletingCustomerId) return;
