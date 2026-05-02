@@ -164,9 +164,10 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
           />
         ) : (
           <DataTable
-            data={p.filteredOrders}
+            data={p.listDisplayRows}
             pageSize={10}
             isLoading={p.unitLoading || !p.hydrated}
+            getRowKey={(row) => row.rowKey}
             totalItems={p.meta?.total}
             searchValue={p.search}
             onSearchChange={(v) => {
@@ -216,6 +217,7 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
         title="Confirmar faturamento da OS"
         description={`Você vai faturar ${p.billOrder?.number ?? "esta OS"} e gerar o recebível. Confira ou altere vencimento e forma de pagamento; os dados da OS serão atualizados.`}
         initial={billConfirmInitial}
+        hasInstallmentPlan={p.billOrder?.hasInstallmentPlan ?? false}
         confirmLabel={p.billOrder ? (p.statusLoadingByOrderId[p.billOrder.id] ? "Faturando..." : "Faturar OS") : "Faturar OS"}
         cancelLabel="Cancelar"
         isLoading={p.billOrder ? Boolean(p.statusLoadingByOrderId[p.billOrder.id]) : false}
@@ -241,9 +243,6 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
         setPaymentTerm={p.setClosurePaymentTerm}
         dueDate={p.closureDueDate}
         setDueDate={p.setClosureDueDate}
-        openedAtFallback={p.closureOpenedAtDay}
-        installmentPlanRef={p.closureInstallmentPlanRef}
-        installmentResetKey={String(p.closureInstallmentResetKey)}
       />
     </div>
   );

@@ -24,6 +24,8 @@ export type ServiceOrderRow = {
   status: "Aberta" | "Em andamento" | "Aguardando peça" | "Concluída" | "Cancelada";
   paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
   isBilled: boolean;
+  hasInstallmentPlan?: boolean;
+  billingInstallmentPlanRows?: Array<{ dueDate: string; amount: number; displayParcelNumber?: number }>;
   isLockedByOpenClosure?: boolean;
   isLockedByAnyClosure?: boolean;
   total: number;
@@ -45,6 +47,9 @@ export type ServiceOrderRow = {
     isLockedByAnyClosure?: boolean;
   }>;
   executedByName?: string | null;
+  parcelGroupId?: string | null;
+  parcelIndex?: number | null;
+  parcelCount?: number | null;
 };
 
 type UseServiceOrdersParams = {

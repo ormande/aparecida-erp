@@ -14,6 +14,8 @@ type ReceivableRow = {
   originType: "SERVICE_ORDER" | "MANUAL";
   installmentNumber?: number;
   installmentCount?: number;
+  /** Texto da coluna Parcela (API; inclui P1/3 da OS ou k/n do faturamento). */
+  parcelDisplay?: string;
   clientName: string;
   unitName: string;
 };

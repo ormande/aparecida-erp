@@ -14,6 +14,7 @@ const closureSchema = z.object({
       z.object({
         orderId: z.string().min(1),
         receivableId: z.string().min(1).optional().nullable(),
+        plannedInstallmentIndex: z.coerce.number().int().min(0).max(11).optional().nullable(),
       }),
     )
     .optional(),

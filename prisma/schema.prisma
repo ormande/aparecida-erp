@@ -275,6 +275,10 @@ model ServiceOrder {
   productsSubtotal     Decimal             @default(0) @db.Decimal(10, 2)
   /// Plano de parcelas definido na abertura (ou na criação do FEC): [{ dueDate: "YYYY-MM-DD", amount }]. Null = parcela única no faturamento.
   billingInstallmentPlan Json?
+  /// Grupo de OS geradas no mesmo parcelamento (uma OS real por parcela). Null = OS avulsa ou legado (plano único).
+  parcelGroupId        String?
+  parcelIndex          Int?
+  parcelCount          Int?
   createdByUserId      String?
   updatedByUserId      String?
   createdAt            DateTime            @default(now())
@@ -291,6 +295,7 @@ model ServiceOrder {
   @@unique([companyId, number])
   @@index([companyId, customerId, openedAt])
   @@index([companyId, unitId, openedAt])
+  @@index([companyId, parcelGroupId])
 }
 
 model ServiceOrderItem {

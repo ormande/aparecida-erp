@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 
 import { mapReceivableToAppReceivable } from "@/lib/db-mappers";
-import { getReferencedOrderNumbersFromFecItems } from "@/lib/service-order-reference";
+import { parcelColumnLabel } from "@/lib/receivable-display";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { ServiceError } from "@/services/service-error";
@@ -46,6 +46,11 @@ function mapReceivableForResponse(
     unit?: {
       name: string;
     } | null;
+    serviceOrder?: {
+      number: string;
+      parcelIndex: number | null;
+      parcelCount: number | null;
+    } | null;
   },
 ) {
   return {
@@ -56,6 +61,12 @@ function mapReceivableForResponse(
         : receivable.customer.tradeName ?? "-"
       : "-",
     unitName: receivable.unit?.name ?? "Geral",
+    parcelDisplay: parcelColumnLabel({
+      originType: receivable.originType,
+      installmentNumber: receivable.installmentNumber,
+      installmentCount: receivable.installmentCount,
+      serviceOrder: receivable.serviceOrder ?? undefined,
+    }),
   };
 }
 
@@ -83,53 +94,10 @@ export const receivableService = {
       periodDueDateRange = { gte: start, lt: end };
     }
 
-    const closureOrders = await prisma.serviceOrder.findMany({
-      where: {
-        companyId: context.companyId,
-        number: { startsWith: "FEC-" },
-      },
-      select: {
-        items: {
-          select: { description: true, referencedOrderNumber: true },
-        },
-      },
-    });
-
-    const referencedNumbers = new Set<string>();
-    for (const closure of closureOrders) {
-      for (const number of getReferencedOrderNumbersFromFecItems(closure.items)) {
-        referencedNumbers.add(number);
-      }
-    }
-
-    const excludedOrderIds =
-      referencedNumbers.size > 0
-        ? (
-            await prisma.serviceOrder.findMany({
-              where: {
-                companyId: context.companyId,
-                number: { in: Array.from(referencedNumbers) },
-              },
-              select: { id: true },
-            })
-          ).map((o) => o.id)
-        : [];
-
+    /** Todos os títulos da empresa (manual + faturamento de OS); sem filtros extras de negócio. */
     const receivables = await prisma.accountReceivable.findMany({
       where: {
         companyId: context.companyId,
-        OR: [
-          { originType: "MANUAL" },
-          {
-            originType: "SERVICE_ORDER",
-            serviceOrder: {
-              isBilled: true,
-              NOT: {
-                number: { startsWith: "FEC-" },
-              },
-            },
-          },
-        ],
         ...(filters.unitId ? { unitId: filters.unitId } : {}),
         status:
           filters.status === "Pago"
@@ -140,16 +108,6 @@ export const receivableService = {
                 ? "PENDENTE"
                 : undefined,
         ...(periodDueDateRange ? { dueDate: periodDueDateRange } : {}),
-        ...(excludedOrderIds.length > 0
-          ? {
-              NOT: {
-                AND: [
-                  { originType: "SERVICE_ORDER" },
-                  { serviceOrderId: { in: excludedOrderIds } },
-                ],
-              },
-            }
-          : {}),
       },
       include: {
         customer: {
@@ -162,6 +120,13 @@ export const receivableService = {
         unit: {
           select: {
             name: true,
+          },
+        },
+        serviceOrder: {
+          select: {
+            number: true,
+            parcelIndex: true,
+            parcelCount: true,
           },
         },
       },
@@ -216,8 +181,37 @@ export const receivableService = {
       return items;
     });
 
+    const enriched = await prisma.accountReceivable.findMany({
+      where: {
+        id: { in: created.map((r) => r.id) },
+        companyId: context.companyId,
+      },
+      include: {
+        customer: {
+          select: {
+            type: true,
+            fullName: true,
+            tradeName: true,
+          },
+        },
+        unit: {
+          select: {
+            name: true,
+          },
+        },
+        serviceOrder: {
+          select: {
+            number: true,
+            parcelIndex: true,
+            parcelCount: true,
+          },
+        },
+      },
+      orderBy: { dueDate: "asc" },
+    });
+
     return {
-      receivables: created.map(mapReceivableToAppReceivable),
+      receivables: enriched.map(mapReceivableForResponse),
     };
   },
 
@@ -276,6 +270,13 @@ export const receivableService = {
         unit: {
           select: {
             name: true,
+          },
+        },
+        serviceOrder: {
+          select: {
+            number: true,
+            parcelIndex: true,
+            parcelCount: true,
           },
         },
       },

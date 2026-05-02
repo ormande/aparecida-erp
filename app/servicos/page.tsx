@@ -45,7 +45,7 @@ export default function ServicosPage() {
                 </Button>
               }
             />
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Novo serviço</DialogTitle>
                 <DialogDescription>Cadastre o serviço sem sair da lista.</DialogDescription>

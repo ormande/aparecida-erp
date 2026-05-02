@@ -355,11 +355,6 @@ export function useNovaOs() {
       return;
     }
 
-    if (paymentTerm === "A_PRAZO" && !dueDate) {
-      toast.error("Informe a data de vencimento.");
-      return;
-    }
-
     if (openedAtPreset === "other" && !/^\d{4}-\d{2}-\d{2}$/.test(openedAtCustom)) {
       toast.error("Informe uma data de lançamento válida.");
       return;
@@ -407,6 +402,19 @@ export function useNovaOs() {
       return;
     }
     const installmentsPayload = installmentPlanRef.current?.getForCreate();
+    const hasMultiInstallments = Boolean(installmentsPayload && installmentsPayload.length >= 2);
+
+    if (paymentTerm === "A_PRAZO" && !hasMultiInstallments && !dueDate) {
+      toast.error("Informe a data de vencimento.");
+      return;
+    }
+
+    const dueDateForApi =
+      paymentTerm === "A_PRAZO"
+        ? hasMultiInstallments
+          ? installmentsPayload![0].dueDate
+          : dueDate || null
+        : null;
 
     const response = await fetch("/api/service-orders", {
       method: "POST",
@@ -420,7 +428,7 @@ export function useNovaOs() {
         paymentMethod,
         paymentTerm,
         customOsNumber: isStandalone ? undefined : Number(customOsNumber),
-        dueDate: paymentTerm === "A_PRAZO" ? dueDate : null,
+        dueDate: dueDateForApi,
         notes,
         openedAt: resolvedOpenedAt,
         services: normalizedServices,
@@ -432,11 +440,16 @@ export function useNovaOs() {
     const data = await response.json();
 
     if (!response.ok) {
-      toast.error(data.message ?? "Não foi possível abrir a OS.");
+      toast.error(data.message ?? data.error ?? "Não foi possível abrir a OS.");
       return;
     }
 
-    toast.success("OS criada com sucesso!");
+    const createdList = Array.isArray(data.orders) ? data.orders : [];
+    if (createdList.length > 1) {
+      toast.success(`${createdList.length} OS parceladas criadas com sucesso.`);
+    } else {
+      toast.success("OS criada com sucesso!");
+    }
     router.push("/ordens-de-servico");
   }
 
@@ -453,11 +466,6 @@ export function useNovaOs() {
 
     if (isStandalone && !customerNameSnapshot.trim()) {
       toast.error("Informe o nome do cliente avulso.");
-      return;
-    }
-
-    if (paymentTerm === "A_PRAZO" && !dueDate) {
-      toast.error("Informe a data de vencimento.");
       return;
     }
 
@@ -508,6 +516,21 @@ export function useNovaOs() {
       return;
     }
     const installmentsPayloadContinue = installmentPlanRef.current?.getForCreate();
+    const hasMultiInstallmentsContinue = Boolean(
+      installmentsPayloadContinue && installmentsPayloadContinue.length >= 2,
+    );
+
+    if (paymentTerm === "A_PRAZO" && !hasMultiInstallmentsContinue && !dueDate) {
+      toast.error("Informe a data de vencimento.");
+      return;
+    }
+
+    const dueDateForApiContinue =
+      paymentTerm === "A_PRAZO"
+        ? hasMultiInstallmentsContinue
+          ? installmentsPayloadContinue![0].dueDate
+          : dueDate || null
+        : null;
 
     const response = await fetch("/api/service-orders", {
       method: "POST",
@@ -519,7 +542,7 @@ export function useNovaOs() {
         paymentMethod,
         paymentTerm,
         customOsNumber: isStandalone ? undefined : Number(customOsNumber),
-        dueDate: paymentTerm === "A_PRAZO" ? dueDate : null,
+        dueDate: dueDateForApiContinue,
         notes,
         openedAt: resolvedOpenedAt,
         services: normalizedServices,
@@ -537,7 +560,12 @@ export function useNovaOs() {
       return;
     }
 
-    toast.success("OS criada! Formulário pronto para nova OS.");
+    const createdListContinue = Array.isArray(data.orders) ? data.orders : [];
+    if (createdListContinue.length > 1) {
+      toast.success(`${createdListContinue.length} OS parceladas criadas! Formulário pronto para nova OS.`);
+    } else {
+      toast.success("OS criada! Formulário pronto para nova OS.");
+    }
     resetFormForContinue();
   }
 

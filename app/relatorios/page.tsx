@@ -26,7 +26,7 @@ import { usePdfDownload } from "@/hooks/use-pdf-download";
 import { TABLE_PAGE_SIZE_OPTIONS, type TablePageSize, useTablePagination } from "@/hooks/use-table-pagination";
 import { useUnits } from "@/hooks/use-units";
 import { currency, date } from "@/lib/formatters";
-import { defaultMonthToTodayRange, formatReportLocalDate } from "@/lib/report-dates";
+import { defaultMonthToTodayRange, previousCalendarMonthRange } from "@/lib/report-dates";
 
 export type EmployeeReportRow = {
   id: string;
@@ -77,14 +77,6 @@ export type UnsettledSummary = {
 const EMPTY_EMPLOYEE_SERVICES: EmployeeReportRow["services"] = [];
 const EMPTY_COMPANY_BY_UNIT: CompanyReport["byUnit"] = [];
 
-function monthToTodayBounds() {
-  const now = new Date();
-  return {
-    startDate: formatReportLocalDate(new Date(now.getFullYear(), now.getMonth(), 1)),
-    endDate: formatReportLocalDate(now),
-  };
-}
-
 export default function RelatoriosPage() {
   const { employees } = useEmployees();
   const { units } = useUnits();
@@ -94,14 +86,14 @@ export default function RelatoriosPage() {
 
   const [mainTab, setMainTab] = useState<"employees" | "company" | "unsettled">("employees");
 
-  const [empPeriodMode, setEmpPeriodMode] = useState<"month" | "custom">("month");
-  const [empStart, setEmpStart] = useState(() => defaultMonthToTodayRange().startDate);
-  const [empEnd, setEmpEnd] = useState(() => defaultMonthToTodayRange().endDate);
+  const [empPeriodMode, setEmpPeriodMode] = useState<"month" | "previousMonth" | "custom">("previousMonth");
+  const [empStart, setEmpStart] = useState(() => previousCalendarMonthRange().startDate);
+  const [empEnd, setEmpEnd] = useState(() => previousCalendarMonthRange().endDate);
   const [empEmployeeId, setEmpEmployeeId] = useState("");
 
-  const [coPeriodMode, setCoPeriodMode] = useState<"month" | "custom">("month");
-  const [coStart, setCoStart] = useState(() => defaultMonthToTodayRange().startDate);
-  const [coEnd, setCoEnd] = useState(() => defaultMonthToTodayRange().endDate);
+  const [coPeriodMode, setCoPeriodMode] = useState<"month" | "previousMonth" | "custom">("previousMonth");
+  const [coStart, setCoStart] = useState(() => previousCalendarMonthRange().startDate);
+  const [coEnd, setCoEnd] = useState(() => previousCalendarMonthRange().endDate);
   const [coUnitId, setCoUnitId] = useState("");
 
   const [empRows, setEmpRows] = useState<EmployeeReportRow[]>([]);
@@ -133,7 +125,11 @@ export default function RelatoriosPage() {
 
   useEffect(() => {
     if (empPeriodMode === "month") {
-      const b = monthToTodayBounds();
+      const b = defaultMonthToTodayRange();
+      setEmpStart(b.startDate);
+      setEmpEnd(b.endDate);
+    } else if (empPeriodMode === "previousMonth") {
+      const b = previousCalendarMonthRange();
       setEmpStart(b.startDate);
       setEmpEnd(b.endDate);
     }
@@ -141,7 +137,11 @@ export default function RelatoriosPage() {
 
   useEffect(() => {
     if (coPeriodMode === "month") {
-      const b = monthToTodayBounds();
+      const b = defaultMonthToTodayRange();
+      setCoStart(b.startDate);
+      setCoEnd(b.endDate);
+    } else if (coPeriodMode === "previousMonth") {
+      const b = previousCalendarMonthRange();
       setCoStart(b.startDate);
       setCoEnd(b.endDate);
     }
@@ -357,7 +357,14 @@ export default function RelatoriosPage() {
                   variant={empPeriodMode === "month" ? "default" : "outline"}
                   onClick={() => setEmpPeriodMode("month")}
                 >
-                  Mês atual
+                  Mês atual (até hoje)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={empPeriodMode === "previousMonth" ? "default" : "outline"}
+                  onClick={() => setEmpPeriodMode("previousMonth")}
+                >
+                  Mês passado (fechado)
                 </Button>
                 <Button
                   size="sm"
@@ -479,7 +486,14 @@ export default function RelatoriosPage() {
                   variant={coPeriodMode === "month" ? "default" : "outline"}
                   onClick={() => setCoPeriodMode("month")}
                 >
-                  Mês atual
+                  Mês atual (até hoje)
+                </Button>
+                <Button
+                  size="sm"
+                  variant={coPeriodMode === "previousMonth" ? "default" : "outline"}
+                  onClick={() => setCoPeriodMode("previousMonth")}
+                >
+                  Mês passado (fechado)
                 </Button>
                 <Button
                   size="sm"
@@ -760,7 +774,7 @@ export default function RelatoriosPage() {
       )}
 
       <Dialog open={detailRow !== null} onOpenChange={(open) => !open && setDetailRow(null)}>
-        <DialogContent className="max-h-[90vh] w-full max-w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-4xl">
+        <DialogContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>Serviços executados — {detailRow?.name}</DialogTitle>
             <DialogDescription>Itens vinculados ao funcionário no período filtrado.</DialogDescription>

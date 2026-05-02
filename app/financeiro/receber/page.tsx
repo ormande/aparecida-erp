@@ -9,6 +9,7 @@ import { ReceivablesSummaryCards } from "@/components/financeiro/receivables-sum
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import { MonthPeriodPresetButtons } from "@/components/financeiro/month-period-preset";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -71,9 +72,9 @@ export default function FinanceiroReceberPage() {
       </div>
       <ReceivablesSummaryCards totalPendente={p.totalPendente} totalVencido={p.totalVencido} totalRecebidoMes={p.totalRecebidoMes} />
       <div className="surface-card space-y-5 p-6">
-        <div className="grid gap-3 md:grid-cols-3">
+        <MonthPeriodPresetButtons value={p.periodFilter} onChange={p.setPeriodFilter} />
+        <div className="grid gap-3 md:grid-cols-2">
           <Input value={p.statusFilter} onChange={(e) => p.setStatusFilter(e.target.value)} placeholder="Filtrar por status" />
-          <Input value={p.periodFilter} onChange={(e) => p.setPeriodFilter(e.target.value)} placeholder="Filtrar por período (AAAA-MM)" />
           <SearchableSelect value={p.unitFilter} onChange={p.setUnitFilter} placeholder="Filtrar por unidade" options={p.unitOptions} />
         </div>
         <DataTable

@@ -17,6 +17,8 @@ import { usePdfDownload } from "@/hooks/use-pdf-download";
 import { useServiceOrders, type ServiceOrderRow, type ServiceOrdersResponse } from "@/hooks/use-service-orders";
 import { useServices } from "@/hooks/use-services";
 import { useUnits } from "@/hooks/use-units";
+import { parsePlannedInstallmentSelectionKey, plannedInstallmentSelectionKey } from "@/lib/closure-selection-keys";
+import { extractOsManualSequence, serviceOrderFriendlyNumberLabel } from "@/lib/service-order-reference";
 import { currency, date, formatCurrencyInput } from "@/lib/formatters";
 import { getPersonName } from "@/lib/person-helpers";
 
@@ -65,6 +67,9 @@ export type OrderDetails = {
   receivableStatus: ReceivableStatus;
   receivableAmount?: number;
   billingInstallmentPlan?: Array<{ dueDate: string; amount: number }> | null;
+  parcelGroupId?: string | null;
+  parcelIndex?: number | null;
+  parcelCount?: number | null;
 };
 
 export type ClosureRow = {
@@ -81,6 +86,8 @@ export type ClosureRow = {
 export type ClosureSelectableOrder = {
   id: string;
   number: string;
+  /** Número amigável na UI (ex.: “… — 2ª parcela”); `number` permanece o valor do banco. */
+  displayLabel: string;
   openedAt: string;
   total: number;
   paymentStatus: "PENDENTE" | "PAGO_PARCIAL" | "PAGO";
@@ -95,6 +102,72 @@ export type ClosureSelectableOrder = {
   disabled?: boolean;
   disabledReason?: string;
 };
+
+/** Linha da tabela de OS (uma entrada por parcela quando aplicável). */
+export type ServiceOrderListDisplayRow = {
+  order: ServiceOrderRow;
+  rowKey: string;
+  displayNumber: string;
+  displayTotal: number;
+  receivableLineStatus?: "PAGO" | "PENDENTE" | "VENCIDO";
+};
+
+function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrderListDisplayRow[] {
+  const out: ServiceOrderListDisplayRow[] = [];
+  for (const order of orders) {
+    const recv = order.receivableLines ?? [];
+    const plan = order.billingInstallmentPlanRows;
+    const friendly = serviceOrderFriendlyNumberLabel(order);
+    const slices: ServiceOrderListDisplayRow[] = [];
+
+    if (recv.length > 1) {
+      for (let i = 0; i < recv.length; i++) {
+        const line = recv[i];
+        const n = line.installmentNumber ?? i + 1;
+        slices.push({
+          order,
+          rowKey: `${order.id}-rcv-${line.id}`,
+          displayNumber: `${friendly} - ${n}ª parcela`,
+          displayTotal: line.amount,
+          receivableLineStatus: line.status,
+        });
+      }
+    } else if (recv.length === 1) {
+      slices.push({
+        order,
+        rowKey: `${order.id}-rcv-${recv[0].id}`,
+        displayNumber: friendly,
+        displayTotal: recv[0].amount,
+        receivableLineStatus: recv[0].status,
+      });
+    }
+
+    if (slices.length === 0 && !order.isBilled && plan && plan.length >= 2) {
+      for (let idx = 0; idx < plan.length; idx++) {
+        const part = plan[idx];
+        const ord = part.displayParcelNumber ?? idx + 1;
+        slices.push({
+          order,
+          rowKey: `${order.id}-plan-${idx}-${ord}`,
+          displayNumber: `${friendly} - ${ord}ª parcela`,
+          displayTotal: part.amount,
+        });
+      }
+    }
+
+    if (slices.length > 0) {
+      out.push(...slices);
+    } else {
+      out.push({
+        order,
+        rowKey: order.id,
+        displayNumber: friendly,
+        displayTotal: order.total,
+      });
+    }
+  }
+  return out;
+}
 
 export type OsEditableData = {
   unitId: string;
@@ -187,7 +260,14 @@ function applyOrderClientFilters(
   const { serviceFilter, billingFilter, datePreset, customFrom, customTo } = opts;
   if (serviceFilter && !order.servicesLabel.toLowerCase().includes(serviceFilter.toLowerCase())) return false;
   if (billingFilter === "ABERTAS" && order.isBilled) return false;
-  if (billingFilter === "FATURADAS" && (!order.isBilled || order.paymentStatus === "PAGO")) return false;
+  if (billingFilter === "FATURADAS") {
+    if (order.paymentStatus === "PAGO") return false;
+    const hasPendingReceivable = (order.receivableLines ?? []).some(
+      (l) => l.status === "PENDENTE" || l.status === "VENCIDO",
+    );
+    if (!order.isBilled && !hasPendingReceivable) return false;
+    return true;
+  }
   if (billingFilter === "PAGAS" && order.paymentStatus !== "PAGO") return false;
   const today = new Date();
   const yesterday = new Date();
@@ -237,9 +317,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const [groupOrdersLoading, setGroupOrdersLoading] = useState(false);
   const [closurePaymentTerm, setClosurePaymentTerm] = useState<"A_VISTA" | "A_PRAZO">("A_PRAZO");
   const [closureDueDate, setClosureDueDate] = useState("");
-  const [closureOpenedAtDay, setClosureOpenedAtDay] = useState("");
-  const [closureInstallmentResetKey, setClosureInstallmentResetKey] = useState(0);
-  const closureInstallmentPlanRef = useRef<OsInstallmentPlanFieldsHandle>(null);
   const [editInstallmentResetKey, setEditInstallmentResetKey] = useState(0);
   const editInstallmentPlanRef = useRef<OsInstallmentPlanFieldsHandle>(null);
   const [editOrder, setEditOrder] = useState<OrderDetails | null>(null);
@@ -253,6 +330,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     paymentMethod: string;
     paymentTerm: "A_VISTA" | "A_PRAZO";
     totalInput: string;
+    hasInstallmentPlan: boolean;
   } | null>(null);
   const [statusOrder, setStatusOrder] = useState<{ id: string; number: string; status: string } | null>(null);
   const [editableData, setEditableData] = useState<OsEditableData>({
@@ -374,6 +452,19 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     serviceFilter,
   ]);
 
+  const listDisplayRows = useMemo(() => {
+    let rows = expandServiceOrdersForListTable(filteredOrders);
+    if (!groupByCustomer && billingFilter === "FATURADAS") {
+      rows = rows.filter((r) => r.receivableLineStatus != null);
+    }
+    if (!groupByCustomer && billingFilter === "ABERTAS") {
+      rows = rows.filter(
+        (r) => r.receivableLineStatus == null || r.receivableLineStatus !== "PAGO",
+      );
+    }
+    return rows;
+  }, [filteredOrders, billingFilter, groupByCustomer]);
+
   const groupedOrders = useMemo(() => {
     const grouped = new Map<string, ClosureRow>();
     for (const order of filteredOrders) {
@@ -416,8 +507,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         toast.error("Selecione um cliente válido.");
         return;
       }
-      setClosureOpenedAtDay(new Date().toISOString().slice(0, 10));
-      setClosureInstallmentResetKey((k) => k + 1);
       setClosureRow(row);
       setClosureDialogOrders([]);
       setSelectedClosureOrderIds([]);
@@ -449,13 +538,27 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               amount: line.amount,
               label:
                 line.installmentNumber && line.installmentCount
-                  ? `Parcela ${line.installmentNumber}/${line.installmentCount}`
-                  : "Parcela",
+                  ? `Parcela ${line.installmentNumber}/${line.installmentCount} — ${currency(line.amount)}`
+                  : `Parcela — ${currency(line.amount)}`,
               disabled: Boolean(line.isLockedByAnyClosure),
               disabledReason: line.isLockedByAnyClosure
                 ? "Esta parcela já foi vinculada a outro fechamento."
                 : undefined,
             }));
+          const planRows = order.billingInstallmentPlanRows;
+          const plannedOptions =
+            !order.isBilled && planRows && planRows.length >= 2
+              ? planRows.map((row, idx) => ({
+                  key: plannedInstallmentSelectionKey(order.id, idx),
+                  dueDate: row.dueDate,
+                  amount: row.amount,
+                  label: `Parcela ${idx + 1}/${planRows.length} — ${currency(row.amount)}`,
+                  disabled: Boolean(order.isLockedByAnyClosure),
+                  disabledReason: order.isLockedByAnyClosure
+                    ? "Esta OS já foi vinculada a outro fechamento."
+                    : undefined,
+                }))
+              : [];
           const fallbackOption = {
             key: `order:${order.id}`,
             dueDate: order.dueDate ?? order.openedAt,
@@ -468,10 +571,12 @@ export function useOsPage(options: UseOsPageOptions = {}) {
                 ? "OS faturada sem parcelas elegíveis para fechamento."
                 : undefined,
           };
-          const selectionOptions = receivableOptions.length > 0 ? receivableOptions : [fallbackOption];
+          const selectionOptions =
+            receivableOptions.length > 0 ? receivableOptions : plannedOptions.length > 0 ? plannedOptions : [fallbackOption];
           return {
             id: order.id,
             number: order.number,
+            displayLabel: serviceOrderFriendlyNumberLabel(order),
             openedAt: order.openedAt,
             total: order.total,
             paymentStatus: order.paymentStatus,
@@ -500,12 +605,14 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     () => [(row) => row.customerName, (row) => row.month],
     [],
   );
-  const filteredOrdersSearchKeys = useMemo<Array<(row: (typeof filteredOrders)[number]) => string>>(
+  const filteredOrdersSearchKeys = useMemo<Array<(row: ServiceOrderListDisplayRow) => string>>(
     () => [
-      (row) => row.number,
-      (row) => row.clientName,
-      (row) => row.servicesLabel,
-      (row) => row.executedByName ?? "",
+      (row) => row.displayNumber,
+      (row) => row.order.number,
+      (row) => serviceOrderFriendlyNumberLabel(row.order),
+      (row) => row.order.clientName,
+      (row) => row.order.servicesLabel,
+      (row) => row.order.executedByName ?? "",
     ],
     [],
   );
@@ -513,19 +620,27 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const fetchOrder = useCallback(async (id: string) => {
     const response = await fetch(`/api/service-orders/${id}`, { cache: "no-store" });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message ?? "Nao foi possivel carregar a OS.");
+    if (!response.ok) {
+      throw new Error(data.message ?? data.error ?? "Não foi possível carregar a OS.");
+    }
     return data.order as OrderDetails;
   }, []);
 
   const openEditDialog = useCallback(async (id: string) => {
-    const order = await fetchOrder(id);
+    let order: OrderDetails;
+    try {
+      order = await fetchOrder(id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Não foi possível carregar a OS.");
+      return;
+    }
     setEditOrder(order);
     setEditInstallmentResetKey((k) => k + 1);
     setEditableData({
       unitId: order.unitId,
       clientId: order.clientId ?? "",
       customerNameSnapshot: order.customerNameSnapshot ?? order.clientName,
-      customOsNumber: (order.number.split("-").at(-1) ?? "").padStart(5, "0"),
+      customOsNumber: (extractOsManualSequence(order.number) ?? "").padStart(5, "0"),
       dueDate: order.dueDate ?? "",
       paymentTerm: order.paymentTerm ?? "A_VISTA",
       paymentMethod: order.paymentMethod ?? "",
@@ -835,20 +950,24 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       toast.error("Selecione ao menos duas OS/parcela para gerar o fechamento.");
       return;
     }
-    const sourceSelections = selectedClosureOrderIds.map((key) => {
-      if (key.startsWith("receivable:")) {
-        const receivableId = key.replace("receivable:", "");
-        const owner = closureDialogOrders.find((order) => order.selectionOptions.some((item) => item.key === key));
-        return { orderId: owner?.id ?? "", receivableId };
-      }
-      return { orderId: key.replace("order:", ""), receivableId: null };
-    }).filter((item) => item.orderId);
-    if (closureRow.totalSpent > 0) {
-      if (!closureInstallmentPlanRef.current?.validate()) {
-        return;
-      }
-    }
-    const closureInstallments = closureInstallmentPlanRef.current?.getForCreate();
+    const sourceSelections = selectedClosureOrderIds
+      .map((key) => {
+        if (key.startsWith("receivable:")) {
+          const receivableId = key.replace("receivable:", "");
+          const owner = closureDialogOrders.find((order) => order.selectionOptions.some((item) => item.key === key));
+          return { orderId: owner?.id ?? "", receivableId, plannedInstallmentIndex: null as number | null };
+        }
+        const planned = parsePlannedInstallmentSelectionKey(key);
+        if (planned) {
+          return {
+            orderId: planned.orderId,
+            receivableId: null,
+            plannedInstallmentIndex: planned.index,
+          };
+        }
+        return { orderId: key.replace("order:", ""), receivableId: null, plannedInstallmentIndex: null as number | null };
+      })
+      .filter((item) => item.orderId);
     const response = await fetch("/api/service-orders/closures", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -860,7 +979,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         sourceSelections,
         paymentTerm: closurePaymentTerm,
         dueDate: closurePaymentTerm === "A_PRAZO" ? closureDueDate : null,
-        ...(closureInstallments && closureInstallments.length >= 2 ? { installments: closureInstallments } : {}),
       }),
     });
     const data = await response.json();
@@ -907,8 +1025,13 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       const receivableEligible = (order.receivableLines ?? []).filter(
         (line) => line.status !== "PAGO" && !line.isLockedByAnyClosure,
       ).length;
-      const orderEligible = !order.isBilled && !order.isLockedByAnyClosure ? 1 : 0;
-      const eligibleCount = receivableEligible > 0 ? receivableEligible : orderEligible;
+      const plan = order.billingInstallmentPlanRows;
+      const plannedEligible =
+        !order.isBilled && !order.isLockedByAnyClosure && plan && plan.length >= 2 ? plan.length : 0;
+      const orderEligible =
+        !order.isBilled && !order.isLockedByAnyClosure && (!plan || plan.length < 2) ? 1 : 0;
+      const eligibleCount =
+        receivableEligible > 0 ? receivableEligible : plannedEligible > 0 ? plannedEligible : orderEligible;
       if (eligibleCount <= 0) continue;
       byRow.set(key, (byRow.get(key) ?? 0) + eligibleCount);
     }
@@ -949,54 +1072,79 @@ export function useOsPage(options: UseOsPageOptions = {}) {
 
   const filteredTableColumns = useMemo(
     () => [
-      { key: "number", header: "Numero OS", render: (row: (typeof filteredOrders)[number]) => <span className="font-medium">{row.number}</span> },
-      { key: "unit", header: "Unidade", render: (row: (typeof filteredOrders)[number]) => row.unitName ?? "Geral" },
-      { key: "client", header: "Cliente", render: (row: (typeof filteredOrders)[number]) => row.clientName },
+      {
+        key: "number",
+        header: "Numero OS",
+        render: (row: ServiceOrderListDisplayRow) => <span className="font-medium">{row.displayNumber}</span>,
+      },
+      { key: "unit", header: "Unidade", render: (row: ServiceOrderListDisplayRow) => row.order.unitName ?? "Geral" },
+      { key: "client", header: "Cliente", render: (row: ServiceOrderListDisplayRow) => row.order.clientName },
       {
         key: "employee",
         header: "Funcionário",
-        render: (row: (typeof filteredOrders)[number]) => row.executedByName ?? "-",
+        render: (row: ServiceOrderListDisplayRow) => row.order.executedByName ?? "-",
       },
       {
         key: "status",
         header: "Status",
-        render: (row: (typeof filteredOrders)[number]) =>
-          row.number.startsWith("FEC-") ? (
-            <StatusBadge status={row.status} />
+        render: (row: ServiceOrderListDisplayRow) =>
+          row.order.number.startsWith("FEC-") ? (
+            <StatusBadge status={row.order.status} />
           ) : (
             <button
               type="button"
               className="cursor-pointer rounded-full border-0 bg-transparent p-0 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-              onClick={() => setStatusOrder({ id: row.id, number: row.number, status: row.status })}
+              onClick={() =>
+                setStatusOrder({ id: row.order.id, number: row.displayNumber, status: row.order.status })
+              }
             >
-              <StatusBadge status={row.status} />
+              <StatusBadge status={row.order.status} />
             </button>
           ),
       },
       {
         key: "paymentStatus",
         header: "Pagamento",
-        render: (row: (typeof filteredOrders)[number]) => {
-          const label =
-            row.paymentStatus === "PAGO"
+        render: (row: ServiceOrderListDisplayRow) => {
+          const label = row.receivableLineStatus
+            ? row.receivableLineStatus === "PAGO"
               ? "Pago"
-              : row.paymentStatus === "PAGO_PARCIAL"
+              : row.receivableLineStatus === "VENCIDO"
+                ? "Vencido"
+                : "Pendente"
+            : row.order.paymentStatus === "PAGO"
+              ? "Pago"
+              : row.order.paymentStatus === "PAGO_PARCIAL"
                 ? "Pago parcialmente"
                 : "Pendente";
           return <StatusBadge status={label} />;
         },
       },
-      { key: "total", header: "Valor total", render: (row: (typeof filteredOrders)[number]) => currency(row.total) },
+      {
+        key: "total",
+        header: "Valor total",
+        render: (row: ServiceOrderListDisplayRow) => currency(row.displayTotal),
+      },
       {
         key: "actions",
         header: "Ações",
-        render: (row: (typeof filteredOrders)[number]) => (
+        render: (row: ServiceOrderListDisplayRow) => (
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={async () => setViewOrder(await fetchOrder(row.id))}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                try {
+                  setViewOrder(await fetchOrder(row.order.id));
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Não foi possível carregar a OS.");
+                }
+              }}
+            >
               <Eye className="mr-1 h-4 w-4" />
               Ver
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void openEditDialog(row.id)}>
+            <Button variant="outline" size="sm" onClick={() => void openEditDialog(row.order.id)}>
               <Pencil className="mr-1 h-4 w-4" />
               Editar
             </Button>
@@ -1004,43 +1152,48 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               variant="outline"
               size="sm"
               disabled={
-                Boolean(statusLoadingByOrderId[row.id]) ||
-                (!row.isBilled && Boolean(row.isLockedByOpenClosure)) ||
-                (row.isBilled && row.paymentStatus !== "PAGO" && Boolean(row.isLockedByOpenClosure))
+                Boolean(statusLoadingByOrderId[row.order.id]) ||
+                (!row.order.isBilled && Boolean(row.order.isLockedByOpenClosure)) ||
+                (row.order.isBilled &&
+                  row.order.paymentStatus !== "PAGO" &&
+                  Boolean(row.order.isLockedByOpenClosure))
               }
               onClick={() =>
-                row.paymentStatus === "PAGO"
-                  ? void handleStatusChange(row.id, "reopen")
-                  : row.isBilled
-                    ? setSettleOrder({ id: row.id, number: row.number })
+                row.order.paymentStatus === "PAGO"
+                  ? void handleStatusChange(row.order.id, "reopen")
+                  : row.order.isBilled
+                    ? setSettleOrder({ id: row.order.id, number: row.displayNumber })
                     : setBillOrder({
-                        id: row.id,
-                        number: row.number,
-                        openedAt: row.openedAt,
-                        dueDate: row.dueDate ?? "",
-                        paymentMethod: row.paymentMethod ?? "",
-                        paymentTerm: row.paymentTerm === "A_PRAZO" ? "A_PRAZO" : "A_VISTA",
-                        totalInput: formatCurrencyInput(String(Math.round(row.total * 100))),
+                        id: row.order.id,
+                        number: row.displayNumber,
+                        openedAt: row.order.openedAt,
+                        dueDate: row.order.dueDate ?? "",
+                        paymentMethod: row.order.paymentMethod ?? "",
+                        paymentTerm: row.order.paymentTerm === "A_PRAZO" ? "A_PRAZO" : "A_VISTA",
+                        totalInput: formatCurrencyInput(String(Math.round(row.order.total * 100))),
+                        hasInstallmentPlan: row.order.hasInstallmentPlan ?? false,
                       })
               }
               title={
-                !row.isBilled && row.isLockedByOpenClosure
+                !row.order.isBilled && row.order.isLockedByOpenClosure
                   ? "Fature a OS de fechamento vinculada antes de faturar esta OS."
-                  : row.isBilled && row.paymentStatus !== "PAGO" && row.isLockedByOpenClosure
+                  : row.order.isBilled && row.order.paymentStatus !== "PAGO" && row.order.isLockedByOpenClosure
                     ? "Baixe o fechamento vinculado antes de baixar esta OS."
                     : undefined
               }
             >
-              {row.paymentStatus === "PAGO" ? "Reabrir" : row.isBilled ? "Baixar" : "Faturar"}
+              {row.order.paymentStatus === "PAGO" ? "Reabrir" : row.order.isBilled ? "Baixar" : "Faturar"}
             </Button>
-            {row.isBilled && row.paymentStatus !== "PAGO" ? (
+            {row.order.isBilled && row.order.paymentStatus !== "PAGO" ? (
               <Button
                 variant="outline"
                 size="sm"
-                disabled={Boolean(statusLoadingByOrderId[row.id]) || Boolean(row.isLockedByOpenClosure)}
-                onClick={() => void handleStatusChange(row.id, "unbill")}
+                disabled={
+                  Boolean(statusLoadingByOrderId[row.order.id]) || Boolean(row.order.isLockedByOpenClosure)
+                }
+                onClick={() => void handleStatusChange(row.order.id, "unbill")}
                 title={
-                  row.isLockedByOpenClosure
+                  row.order.isLockedByOpenClosure
                     ? "Exclua ou baixe o fechamento vinculado antes de cancelar o faturamento."
                     : undefined
                 }
@@ -1051,11 +1204,11 @@ export function useOsPage(options: UseOsPageOptions = {}) {
             <Button
               variant="outline"
               size="sm"
-              disabled={downloadingPdfId === row.id}
-              onClick={() => void handleOsPdfDownload(row.id, row.number)}
+              disabled={downloadingPdfId === row.order.id}
+              onClick={() => void handleOsPdfDownload(row.order.id, row.order.number)}
             >
               <FileDown className="mr-1 h-4 w-4" />
-              {downloadingPdfId === row.id ? "..." : "PDF"}
+              {downloadingPdfId === row.order.id ? "..." : "PDF"}
             </Button>
             <ConfirmModal
               trigger={
@@ -1067,7 +1220,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               title="Excluir ordem de serviço"
               description="Deseja realmente excluir esta OS?"
               onConfirm={() => {
-                void executeDelete(row.id);
+                void executeDelete(row.order.id);
               }}
               confirmLabel="Excluir"
             />
@@ -1131,9 +1284,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     setClosurePaymentTerm,
     closureDueDate,
     setClosureDueDate,
-    closureOpenedAtDay,
-    closureInstallmentPlanRef,
-    closureInstallmentResetKey,
     editInstallmentPlanRef,
     editInstallmentResetKey,
     editOrder,
@@ -1160,6 +1310,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     serviceOptions,
     unitOptions,
     filteredOrders,
+    listDisplayRows,
     groupedOrders,
     groupedOrdersSearchKeys,
     filteredOrdersSearchKeys,

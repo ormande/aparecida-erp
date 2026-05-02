@@ -10,12 +10,15 @@ import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { usePayables } from "@/hooks/use-payables";
 import { useReceivables } from "@/hooks/use-receivables";
 import { useUnits } from "@/hooks/use-units";
+import { MonthPeriodPresetButtons } from "@/components/financeiro/month-period-preset";
 import { currency, date } from "@/lib/formatters";
+import { getPreviousMonthPrefix } from "@/lib/month-period";
 
 export default function FinanceiroHistoricoPage() {
   const { unitId } = useCurrentUnit();
   const { units } = useUnits();
   const [selectedUnitId, setSelectedUnitId] = useState("");
+  const [periodFilter, setPeriodFilter] = useState(() => getPreviousMonthPrefix());
 
   useEffect(() => {
     if (unitId) {
@@ -23,8 +26,14 @@ export default function FinanceiroHistoricoPage() {
     }
   }, [unitId]);
 
-  const { receivables, hydrated: receivablesHydrated } = useReceivables({ unitId: selectedUnitId || undefined });
-  const { payables, hydrated: payablesHydrated } = usePayables({ unitId: selectedUnitId || undefined });
+  const { receivables, hydrated: receivablesHydrated } = useReceivables({
+    unitId: selectedUnitId || undefined,
+    period: periodFilter,
+  });
+  const { payables, hydrated: payablesHydrated } = usePayables({
+    unitId: selectedUnitId || undefined,
+    period: periodFilter,
+  });
 
   const rows = useMemo(() => {
     const incoming = receivables.map((item) => ({
@@ -81,6 +90,8 @@ export default function FinanceiroHistoricoPage() {
           </Button>
         ))}
       </div>
+
+      <MonthPeriodPresetButtons value={periodFilter} onChange={setPeriodFilter} />
 
       <Card className="surface-card border-none">
         <CardHeader>

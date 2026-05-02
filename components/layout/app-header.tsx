@@ -34,7 +34,7 @@ export function AppHeader() {
               </Button>
             }
           />
-          <SheetContent side="left" className="w-64 border-none bg-transparent p-0">
+          <SheetContent side="left" className="w-64 border-none bg-transparent p-0" bodyClassName="p-0 gap-0">
             <AppSidebar mobile onNavigate={() => undefined} />
           </SheetContent>
         </Sheet>

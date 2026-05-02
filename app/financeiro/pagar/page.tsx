@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/ui/date-picker";
+import { MonthPeriodPresetButtons } from "@/components/financeiro/month-period-preset";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
@@ -325,9 +326,9 @@ export default function FinanceiroPagarPage() {
       </section>
 
       <div className="surface-card space-y-5 p-6">
-        <div className="grid gap-3 md:grid-cols-3">
+        <MonthPeriodPresetButtons value={periodFilter} onChange={setPeriodFilter} />
+        <div className="grid gap-3 md:grid-cols-2">
           <Input value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} placeholder="Filtrar por status" />
-          <Input value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)} placeholder="Filtrar por período (AAAA-MM)" />
           <SearchableSelect value={unitFilter} onChange={setUnitFilter} placeholder="Filtrar por unidade" options={unitOptions} />
         </div>
         <DataTable

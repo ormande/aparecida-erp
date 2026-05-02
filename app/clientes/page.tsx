@@ -61,7 +61,7 @@ export default function ClientesPage() {
                 </Button>
               }
             />
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Novo cliente</DialogTitle>
                 <DialogDescription>Os dados agora são persistidos no banco de dados do sistema.</DialogDescription>

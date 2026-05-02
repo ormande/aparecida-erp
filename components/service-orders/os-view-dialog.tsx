@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { OrderDetails } from "@/hooks/use-os-page";
 import { usePdfDownload } from "@/hooks/use-pdf-download";
 import { currency, date } from "@/lib/formatters";
+import { serviceOrderFriendlyNumberLabel } from "@/lib/service-order-reference";
 
 function paymentSummary(order: OrderDetails) {
   const term = order.paymentTerm === "A_PRAZO" ? "A prazo" : "À vista";
@@ -152,7 +153,9 @@ export function OsViewDialog({ order, onClose }: { order: OrderDetails | null; o
     <Dialog open={Boolean(order)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{order?.number}</DialogTitle>
+          <DialogTitle>
+            {order ? serviceOrderFriendlyNumberLabel(order) : null}
+          </DialogTitle>
           <DialogDescription>{"Visualiza\u00e7\u00e3o da OS preenchida."}</DialogDescription>
         </DialogHeader>
         {order ? (

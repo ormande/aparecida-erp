@@ -11,17 +11,13 @@ import { usePayables } from "@/hooks/use-payables";
 import { useReceivables } from "@/hooks/use-receivables";
 import { useUnits } from "@/hooks/use-units";
 import { currency } from "@/lib/formatters";
-
-function getMonthPrefix() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
+import { getCurrentMonthPrefix, getPreviousMonthPrefix } from "@/lib/month-period";
 
 export default function FluxoCaixaPage() {
   const { unitId, currentUnit } = useCurrentUnit();
   const { units } = useUnits();
   const [selectedUnitId, setSelectedUnitId] = useState("");
-  const period = getMonthPrefix();
+  const [period, setPeriod] = useState(() => getPreviousMonthPrefix());
 
   useEffect(() => {
     if (unitId) {
@@ -87,6 +83,26 @@ export default function FluxoCaixaPage() {
             {unit.name}
           </Button>
         ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Mês da visão (vencimento)</span>
+        <Button
+          size="sm"
+          type="button"
+          variant={period === getPreviousMonthPrefix() ? "default" : "outline"}
+          onClick={() => setPeriod(getPreviousMonthPrefix())}
+        >
+          Mês passado
+        </Button>
+        <Button
+          size="sm"
+          type="button"
+          variant={period === getCurrentMonthPrefix() ? "default" : "outline"}
+          onClick={() => setPeriod(getCurrentMonthPrefix())}
+        >
+          Mês atual
+        </Button>
       </div>
 
       <Card className="surface-card border-none">

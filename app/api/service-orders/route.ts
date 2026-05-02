@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as Sentry from "@sentry/nextjs";
 import { Prisma } from "@prisma/client";
 import { z, ZodError } from "zod";
 
@@ -109,9 +108,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    if (!(error instanceof ServiceError)) {
-      Sentry.captureException(error);
-    }
     return handleServiceError(error);
   }
 }
@@ -156,9 +152,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!(error instanceof ServiceError)) {
-      Sentry.captureException(error);
-    }
     return handleServiceError(error);
   }
 }

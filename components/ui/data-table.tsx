@@ -37,6 +37,7 @@ export function DataTable<T>({
   onSearchChange,
   manualPagination,
   totalItems,
+  getRowKey,
 }: {
   data: T[];
   columns: Column<T>[];
@@ -54,6 +55,7 @@ export function DataTable<T>({
     onPageChange: (page: number) => void;
   };
   totalItems?: number;
+  getRowKey?: (row: T, index: number) => string;
 }) {
   const [internalQuery, setInternalQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -129,7 +131,7 @@ export function DataTable<T>({
                     </TableRow>
                   ))
                 : paginated.map((row, index) => (
-                    <TableRow key={index}>
+                    <TableRow key={getRowKey ? getRowKey(row, index) : index}>
                       {columns.map((column) => (
                         <TableCell key={column.key} className={cn("px-4", column.className)}>
                           {column.render(row)}

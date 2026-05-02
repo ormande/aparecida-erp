@@ -121,7 +121,7 @@ export default function ProdutosPage() {
                 </Button>
               }
             />
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogContent className="sm:max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Novo produto</DialogTitle>
                 <DialogDescription>Cadastre o produto sem sair da lista.</DialogDescription>

@@ -36,6 +36,19 @@ export function defaultMonthToTodayRange(): { startDate: string; endDate: string
   };
 }
 
+/** Primeiro e último dia do mês civil anterior (horário local). */
+export function previousCalendarMonthRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  const firstThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastPrevMonth = new Date(firstThisMonth);
+  lastPrevMonth.setDate(0);
+  const firstPrevMonth = new Date(lastPrevMonth.getFullYear(), lastPrevMonth.getMonth(), 1);
+  return {
+    startDate: formatReportLocalDate(firstPrevMonth),
+    endDate: formatReportLocalDate(lastPrevMonth),
+  };
+}
+
 export function isFirstSevenDaysOfMonth(date = new Date()): boolean {
   const day = date.getDate();
   return day >= 1 && day <= 7;

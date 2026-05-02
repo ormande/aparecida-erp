@@ -73,7 +73,7 @@ export function OsStatusModal({ order, onClose, onConfirm }: OsStatusModalProps)
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-lg px-6 pb-6" showCloseButton>
+      <DialogContent className="sm:max-w-lg" bodyClassName="px-6 pb-6 pt-5" showCloseButton>
         <DialogHeader>
           <DialogTitle className="text-slate-950 dark:text-foreground">Alterar status do trabalho</DialogTitle>
           <DialogDescription className="text-slate-700 dark:text-muted-foreground">

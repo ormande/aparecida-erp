@@ -10,8 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
 import type { OrderInstallmentPayload } from "@/lib/os-installments";
-import { cn } from "@/lib/utils";
-
 const installmentPanelTransition = {
   duration: 0.28,
   ease: [0.16, 1, 0.3, 1] as const,
@@ -40,22 +38,24 @@ export type OsInstallmentPlanFieldsHandle = {
 
 export type OsInstallmentPlanFieldsProps = {
   totalAmount: number;
-  firstDueDate: string;
+  /** Data de lançamento: só sugere a 1ª parcela quando ainda não existe nenhuma linha. */
   openedAtFallback: string;
   initialStoredPlan?: OrderInstallmentPayload[] | null;
   resetKey: string;
   disabled?: boolean;
+  /** Chamado ao alternar entre Parcelado e Parcela única (ex.: desativar vencimento global no formulário). */
+  onParceladoModeChange?: (parcelado: boolean) => void;
 };
 
 export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle, OsInstallmentPlanFieldsProps>(
   function OsInstallmentPlanFields(
     {
       totalAmount,
-      firstDueDate,
       openedAtFallback,
       initialStoredPlan,
       resetKey,
       disabled = false,
+      onParceladoModeChange,
     },
     ref,
   ) {
@@ -75,6 +75,13 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
 
     const prevResetKeyRef = useRef<string | null>(null);
     const skipNextAutoGenerateRef = useRef(false);
+    const prevCountRef = useRef(installmentCount);
+    const prevDaysRef = useRef(installmentDays);
+    const prevCustomRef = useRef(customAmounts);
+    const onParceladoModeChangeRef = useRef(onParceladoModeChange);
+    onParceladoModeChangeRef.current = onParceladoModeChange;
+
+    const validYmd = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
     useEffect(() => {
       if (prevResetKeyRef.current === resetKey) {
@@ -91,15 +98,25 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
       setInstallmentDaysDraft(null);
       if (hasStored) {
         skipNextAutoGenerateRef.current = true;
+        const n = initialStoredPlan!.length;
+        setInstallmentCount(n);
+        prevCountRef.current = n;
+        prevDaysRef.current = 30;
+        prevCustomRef.current = true;
         setInstallments(
           initialStoredPlan!.map((row) => ({
             dueDate: row.dueDate,
             amountInput: formatCurrencyInput(String(Math.round(row.amount * 100))),
           })),
         );
+        onParceladoModeChangeRef.current?.(true);
       } else {
         skipNextAutoGenerateRef.current = false;
+        prevCountRef.current = 2;
+        prevDaysRef.current = 30;
+        prevCustomRef.current = false;
         setInstallments([]);
+        onParceladoModeChangeRef.current?.(false);
       }
     }, [resetKey, initialStoredPlan]);
 
@@ -109,39 +126,133 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
         skipNextAutoGenerateRef.current = false;
         return;
       }
-      const base = firstDueDate || openedAtFallback;
-      if (!base || !/^\d{4}-\d{2}-\d{2}$/.test(base)) return;
-      const parts = base.split("-").map(Number);
-      const baseDate = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
-      const count = clampParcelCount(installmentCount);
-      const days = clampIntervalDays(installmentDays);
-      const totalCents = Math.round(totalAmount * 100);
-      const evenCents = Math.floor(totalCents / count);
-      const remainder = totalCents - evenCents * count;
 
-      setInstallments(
-        Array.from({ length: count }).map((_, index) => {
+      const countChanged = prevCountRef.current !== installmentCount;
+      const daysChanged = prevDaysRef.current !== installmentDays;
+      const customChanged = prevCustomRef.current !== customAmounts;
+      prevCountRef.current = installmentCount;
+      prevDaysRef.current = installmentDays;
+      prevCustomRef.current = customAmounts;
+
+      setInstallments((prev) => {
+        const count = clampParcelCount(installmentCount);
+        const days = clampIntervalDays(installmentDays);
+        const totalCents = Math.round(totalAmount * 100);
+        const evenCents = count > 0 ? Math.floor(totalCents / count) : 0;
+        const remainder = count > 0 ? totalCents - evenCents * count : 0;
+
+        if (
+          !countChanged &&
+          !daysChanged &&
+          !customChanged &&
+          prev.length === count &&
+          prev.length > 0
+        ) {
+          if (customAmounts) {
+            return prev;
+          }
+          return prev.map((row, index) => ({
+            dueDate: row.dueDate,
+            amountInput: formatCurrencyInput(String(evenCents + (index < remainder ? 1 : 0))),
+          }));
+        }
+
+        if (!countChanged && !daysChanged && customChanged) {
+          if (!customAmounts) {
+            return prev.map((row, index) => ({
+              dueDate: row.dueDate,
+              amountInput: formatCurrencyInput(String(evenCents + (index < remainder ? 1 : 0))),
+            }));
+          }
+          return prev;
+        }
+
+        if (!countChanged && daysChanged && prev.length === count && prev.length > 0 && validYmd(prev[0].dueDate)) {
+          const parts = prev[0].dueDate.split("-").map(Number);
+          const baseDate = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+          return prev.map((row, index) => {
+            const due = new Date(baseDate);
+            due.setDate(baseDate.getDate() + index * days);
+            const y = due.getFullYear();
+            const m = String(due.getMonth() + 1).padStart(2, "0");
+            const d = String(due.getDate()).padStart(2, "0");
+            const amountInput = customAmounts
+              ? row.amountInput
+              : formatCurrencyInput(String(evenCents + (index < remainder ? 1 : 0)));
+            return { dueDate: `${y}-${m}-${d}`, amountInput };
+          });
+        }
+
+        if (countChanged && prev.length > count) {
+          const kept = prev.slice(0, count);
+          if (!customAmounts) {
+            return kept.map((row, index) => ({
+              dueDate: row.dueDate,
+              amountInput: formatCurrencyInput(String(evenCents + (index < remainder ? 1 : 0))),
+            }));
+          }
+          return kept;
+        }
+
+        if (
+          countChanged &&
+          prev.length < count &&
+          prev.length > 0 &&
+          validYmd(prev[prev.length - 1].dueDate)
+        ) {
+          const lastParts = prev[prev.length - 1].dueDate.split("-").map(Number);
+          let cursor = new Date(lastParts[0], lastParts[1] - 1, lastParts[2], 0, 0, 0, 0);
+          const extra: Array<{ dueDate: string; amountInput: string }> = [];
+          for (let i = prev.length; i < count; i++) {
+            cursor = new Date(cursor);
+            cursor.setDate(cursor.getDate() + days);
+            const y = cursor.getFullYear();
+            const m = String(cursor.getMonth() + 1).padStart(2, "0");
+            const d = String(cursor.getDate()).padStart(2, "0");
+            extra.push({ dueDate: `${y}-${m}-${d}`, amountInput: formatCurrencyInput("0") });
+          }
+          const merged = [...prev, ...extra];
+          if (!customAmounts) {
+            return merged.map((row, index) => ({
+              dueDate: row.dueDate,
+              amountInput: formatCurrencyInput(String(evenCents + (index < remainder ? 1 : 0))),
+            }));
+          }
+          return merged;
+        }
+
+        const baseStr =
+          prev.length > 0 && validYmd(prev[0].dueDate)
+            ? prev[0].dueDate
+            : validYmd(openedAtFallback)
+              ? openedAtFallback
+              : "";
+
+        if (!baseStr || count < 1) {
+          return prev;
+        }
+
+        const parts = baseStr.split("-").map(Number);
+        const baseDate = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+
+        return Array.from({ length: count }).map((_, index) => {
           const due = new Date(baseDate);
           due.setDate(baseDate.getDate() + index * days);
           const y = due.getFullYear();
           const m = String(due.getMonth() + 1).padStart(2, "0");
           const d = String(due.getDate()).padStart(2, "0");
-          const cents = customAmounts ? undefined : evenCents + (index < remainder ? 1 : 0);
+          const amountInput = customAmounts
+            ? index < prev.length
+              ? prev[index].amountInput
+              : formatCurrencyInput("0")
+            : formatCurrencyInput(String(evenCents + (index < remainder ? 1 : 0)));
           return {
             dueDate: `${y}-${m}-${d}`,
-            amountInput: customAmounts ? formatCurrencyInput("0") : formatCurrencyInput(String(cents ?? 0)),
+            amountInput,
           };
-        }),
-      );
-    }, [
-      customAmounts,
-      enableInstallments,
-      firstDueDate,
-      installmentCount,
-      installmentDays,
-      openedAtFallback,
-      totalAmount,
-    ]);
+        });
+      });
+    }, [enableInstallments, installmentCount, installmentDays, customAmounts, totalAmount, openedAtFallback]);
 
     function validate(): boolean {
       if (!enableInstallments) {
@@ -179,18 +290,23 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
       getForEditSave: () => (enableInstallments ? rowsForApi() : []),
     }));
 
-    const installmentListScroll = enableInstallments && installments.length > 2;
-
     return (
       <motion.div className="grid min-w-0 gap-3 overflow-hidden rounded-xl border bg-muted/20 p-3 sm:p-4">
         <p className="text-xs font-medium text-muted-foreground">Parcelamento (definido na abertura da OS)</p>
+        <p className="text-xs text-muted-foreground">
+          Cada parcela usa o vencimento que você escolher abaixo. Só na primeira vez (sem linhas ainda) a 1ª data é
+          sugerida pela data de lançamento; mudar a data de abertura depois não altera parcelas já definidas.
+        </p>
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             size="sm"
             variant={enableInstallments ? "default" : "outline"}
             disabled={disabled}
-            onClick={() => setEnableInstallments(true)}
+            onClick={() => {
+              setEnableInstallments(true);
+              onParceladoModeChange?.(true);
+            }}
           >
             Parcelado
           </Button>
@@ -199,7 +315,10 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
             size="sm"
             variant={!enableInstallments ? "default" : "outline"}
             disabled={disabled}
-            onClick={() => setEnableInstallments(false)}
+            onClick={() => {
+              setEnableInstallments(false);
+              onParceladoModeChange?.(false);
+            }}
           >
             Parcela única
           </Button>
@@ -300,12 +419,7 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
                   </div>
                 </div>
               </div>
-              <motion.div
-                className={cn(
-                  "space-y-3 overflow-x-hidden rounded-lg border bg-background p-2 sm:p-3",
-                  installmentListScroll && "max-h-[min(16rem,34dvh)] overflow-y-auto overscroll-y-contain",
-                )}
-              >
+              <motion.div className="space-y-3 overflow-x-hidden rounded-lg border bg-background p-2 sm:p-3">
                 {installments.map((item, index) => (
                   <div
                     key={`${index}-${item.dueDate}`}
@@ -316,11 +430,28 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
                       <DatePicker
                         value={item.dueDate}
                         disabled={disabled}
-                        onChange={(v) =>
-                          setInstallments((current) =>
-                            current.map((it, idx) => (idx === index ? { ...it, dueDate: v } : it)),
-                          )
-                        }
+                        onChange={(v) => {
+                          if (index === 0 && v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+                            const parts = v.split("-").map(Number);
+                            const baseDate = new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+                            const days = clampIntervalDays(installmentDays);
+                            setInstallments((current) =>
+                              current.map((it, idx) => {
+                                if (idx === 0) return { ...it, dueDate: v };
+                                const due = new Date(baseDate);
+                                due.setDate(baseDate.getDate() + idx * days);
+                                const y = due.getFullYear();
+                                const m = String(due.getMonth() + 1).padStart(2, "0");
+                                const d = String(due.getDate()).padStart(2, "0");
+                                return { ...it, dueDate: `${y}-${m}-${d}` };
+                              }),
+                            );
+                          } else {
+                            setInstallments((current) =>
+                              current.map((it, idx) => (idx === index ? { ...it, dueDate: v } : it)),
+                            );
+                          }
+                        }}
                       />
                     </div>
                     <div className="grid min-w-0 gap-1.5">
@@ -357,7 +488,8 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
               transition={installmentPanelTransition}
               className="text-xs text-muted-foreground"
             >
-              No faturamento será gerado um único recebível com o valor total no vencimento informado acima.
+              No faturamento será gerado um único recebível com o valor total no vencimento do campo &quot;Condição de
+              pagamento&quot; (quando à prazo) ou na data de lançamento (à vista).
             </motion.p>
           )}
         </AnimatePresence>

@@ -1,4 +1,9 @@
-import { buildInstallmentsForBilling, installmentPlanToJson, type OrderInstallmentPayload } from "@/lib/os-installments";
+import {
+  buildInstallmentsForBilling,
+  installmentPlanToJson,
+  parseStoredBillingPlan,
+  type OrderInstallmentPayload,
+} from "@/lib/os-installments";
 import { fetchReferencedOrderNumbersInAllClosures } from "@/lib/service-order-reference";
 import { fetchReferencedReceivableIdsInAllClosures } from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
@@ -10,7 +15,11 @@ type ClosurePayload = {
   customerId: string;
   month: string;
   sourceOrderIds: string[];
-  sourceSelections?: Array<{ orderId: string; receivableId?: string | null }>;
+  sourceSelections?: Array<{
+    orderId: string;
+    receivableId?: string | null;
+    plannedInstallmentIndex?: number | null;
+  }>;
   dueDate?: string | null;
   paymentTerm: "A_VISTA" | "A_PRAZO";
   paymentMethod: string;
@@ -84,7 +93,11 @@ export const closureService = {
     const start = new Date(Date.UTC(year, month - 1, 1));
     const end = new Date(Date.UTC(year, month, 1));
 
-    const selectionRows = payload.sourceSelections?.length
+    const selectionRows: Array<{
+      orderId: string;
+      receivableId?: string | null;
+      plannedInstallmentIndex?: number | null;
+    }> = payload.sourceSelections?.length
       ? payload.sourceSelections
       : payload.sourceOrderIds.map((orderId) => ({ orderId, receivableId: null }));
     const sourceOrderIds = Array.from(new Set(selectionRows.map((item) => item.orderId)));
@@ -177,13 +190,48 @@ export const closureService = {
           .map((r) => ({
             serviceId: null,
             description: `Parcela ${r.installmentNumber ?? 1}/${r.installmentCount ?? 1} da ${order.number} [RCV:${r.id}]`,
-            referencedOrderNumber: null,
+            referencedOrderNumber: order.number,
             laborPrice: Number(r.amount),
             lineTotal: Number(r.amount),
             originalLineTotal: Number(r.amount),
             quantity: 1,
             previousOrderStatus: order.status,
           }));
+      }
+
+      const plannedIndices = orderSelections
+        .map((item) => item.plannedInstallmentIndex)
+        .filter((v): v is number => typeof v === "number" && Number.isInteger(v) && !Number.isNaN(v));
+      if (plannedIndices.length > 0) {
+        if (order.isBilled) {
+          throw new ServiceError(
+            "Parcelas do plano de abertura só podem ser usadas em OS ainda não faturadas.",
+            400,
+          );
+        }
+        const plan = parseStoredBillingPlan(order.billingInstallmentPlan);
+        if (!plan || plan.length < 2) {
+          throw new ServiceError(`A OS ${order.number} não possui plano de parcelamento válido na abertura.`, 400);
+        }
+        const uniqueSorted = Array.from(new Set(plannedIndices))
+          .filter((i) => i >= 0 && i < plan.length)
+          .sort((a, b) => a - b);
+        if (uniqueSorted.length === 0) {
+          throw new ServiceError("Seleção de parcelas planejadas inválida.", 400);
+        }
+        return uniqueSorted.map((idx) => {
+          const part = plan[idx];
+          return {
+            serviceId: null,
+            description: `Parcela ${idx + 1}/${plan.length} da ${order.number} (planejada)`,
+            referencedOrderNumber: null,
+            laborPrice: part.amount,
+            lineTotal: part.amount,
+            originalLineTotal: part.amount,
+            quantity: 1,
+            previousOrderStatus: order.status,
+          };
+        });
       }
 
       const receivable = order.receivables[0];

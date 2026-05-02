@@ -1,17 +1,24 @@
+import { randomUUID } from "crypto";
+
 import { mapServiceOrderStatus } from "@/lib/db-mappers";
 import {
   buildInstallmentsForBilling,
   installmentPlanToJson,
+  orderInstallmentPayloadsToJson,
   parseStoredBillingPlan,
+  trimBillingPlanRemovingParcelIndices,
+  type NormalizedInstallmentRow,
   type OrderInstallmentPayload,
 } from "@/lib/os-installments";
 import {
+  aggregateFecLineContributionsByOrderNumber,
   fecLineReferencedOrderNumbers,
   fecOutstandingFromItems,
   fetchReferencedOrderNumbersInAllClosures,
   fetchReferencedOrderNumbersInOpenClosures,
   fetchReferencedReceivableIdsInAllClosures,
   getReferencedOrderNumbersFromFecItems,
+  plannedParcelIndicesFromFecItems,
 } from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +26,7 @@ import { normalizeSearch } from "@/lib/search-helpers";
 import { ServiceError } from "@/services/service-error";
 import { Prisma, type PaymentStatus, type ProductUnit, type ServiceOrderStatus } from "@prisma/client";
 
-/** Default do Prisma é 5s; faturamento com parcelas / FEC + auditoria pode levar mais. */
+/** Default do Prisma é 5s; faturamento, FEC e criação de várias OS parceladas + auditoria pode levar mais. */
 const BILLING_INTERACTIVE_TX = { maxWait: 15_000, timeout: 60_000 } as const;
 
 type OrderServiceItemPayload = {
@@ -134,6 +141,55 @@ async function getManualOrderNumber(
   return formatted;
 }
 
+/** Ano da OS manual/auto no formato OS-AAAA-#####(-Pk)?; null se não casar. */
+function parseManualOsYearFromNumber(number: string): number | null {
+  const m = /^OS-(\d{4})-\d{5}(?:-P\d+)?$/i.exec(number.trim());
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Número completo ao editar OS com número manual: mantém ano e sufixo -Pk do grupo parcelado.
+ * Evita falso conflito com a 1ª parcela (mesmo ##### sem sufixo).
+ */
+async function resolveOrderNumberForManualEdit(
+  tx: any,
+  companyId: string,
+  customNumber: number,
+  existing: {
+    id: string;
+    number: string;
+    parcelGroupId: string | null;
+    parcelIndex: number | null;
+  },
+) {
+  if (!Number.isInteger(customNumber) || customNumber < 1 || customNumber > 99999) {
+    throw new ServiceError("Número da OS inválido. Use um valor entre 1 e 99999.", 400);
+  }
+
+  const year = parseManualOsYearFromNumber(existing.number) ?? new Date().getFullYear();
+  const formattedBase = buildOrderNumber(year, customNumber);
+  const idx = existing.parcelIndex;
+  const desired =
+    idx != null && idx >= 2 && existing.parcelGroupId ? `${formattedBase}-P${idx}` : formattedBase;
+
+  if (desired === existing.number) {
+    return existing.number;
+  }
+
+  const lockKey = `${companyId}-os-number`;
+  await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
+
+  const conflict = await tx.serviceOrder.findFirst({
+    where: { companyId, number: desired },
+    select: { id: true },
+  });
+  if (conflict && conflict.id !== existing.id) {
+    throw new ServiceError(`Já existe uma OS com o número ${desired}.`, 409);
+  }
+
+  return desired;
+}
+
 async function getNextAutoOrderNumber(tx: any, companyId: string) {
   const lockKey = `${companyId}-os-number`;
   await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock(hashtext($1::text))", lockKey);
@@ -152,7 +208,10 @@ async function getNextAutoOrderNumber(tx: any, companyId: string) {
 
   const used = new Set(
     orders
-      .map((order: { number: string }) => Number(order.number.split("-").at(-1)))
+      .map((order: { number: string }) => {
+        const m = /^OS-\d{4}-(\d{5})$/.exec(order.number);
+        return m ? Number(m[1]) : NaN;
+      })
       .filter((value: number) => Number.isFinite(value) && value > 0),
   );
 
@@ -339,6 +398,9 @@ function mapOrder(order: NonNullable<Awaited<ReturnType<typeof getOrder>>>) {
   return {
     id: order.id,
     number: order.number,
+    parcelGroupId: order.parcelGroupId,
+    parcelIndex: order.parcelIndex,
+    parcelCount: order.parcelCount,
     clientId: order.customerId,
     clientName: getCustomerDisplayName(order),
     customerNameSnapshot: order.customerNameSnapshot,
@@ -437,6 +499,87 @@ function calcOrderTotals(
   };
 }
 
+function splitLaborProductsAcrossParcels(
+  laborSubtotal: number,
+  productsSubtotal: number,
+  totalAmount: number,
+  normalized: NormalizedInstallmentRow[],
+): Array<{ labor: number; products: number }> {
+  const n = normalized.length;
+  if (n === 0) {
+    return [];
+  }
+  let sumLabor = 0;
+  const out: Array<{ labor: number; products: number }> = [];
+  for (let i = 0; i < n - 1; i++) {
+    const A = normalized[i].amount;
+    const labor = receivableAmount2((laborSubtotal * A) / totalAmount);
+    const products = receivableAmount2(A - labor);
+    out.push({ labor, products });
+    sumLabor += labor;
+  }
+  const ALast = normalized[n - 1].amount;
+  const laborLast = receivableAmount2(laborSubtotal - sumLabor);
+  const productsLast = receivableAmount2(ALast - laborLast);
+  out.push({ labor: laborLast, products: productsLast });
+  return out;
+}
+
+function scaleServiceItemsForParcel(
+  services: OrderServiceItemPayload[],
+  targetLabor: number,
+): OrderServiceItemPayload[] {
+  const sourceLabor = services.reduce((s, x) => s + (x.quantity ?? 1) * x.laborPrice, 0);
+  if (sourceLabor <= 0) {
+    return services.map((x) => ({ ...x, laborPrice: 0 }));
+  }
+  const factor = targetLabor / sourceLabor;
+  const scaled = services.map((service) => ({
+    ...service,
+    laborPrice: receivableAmount2(service.laborPrice * factor),
+  }));
+  const sumScaled = scaled.reduce((s, x) => s + (x.quantity ?? 1) * x.laborPrice, 0);
+  const drift = receivableAmount2(targetLabor - sumScaled);
+  if (drift !== 0 && scaled.length > 0) {
+    const last = scaled[scaled.length - 1];
+    const q = last.quantity ?? 1;
+    last.laborPrice = receivableAmount2(last.laborPrice + drift / q);
+  }
+  return scaled;
+}
+
+function scaleProductItemsForParcel(
+  products: OrderProductPayload[],
+  targetProducts: number,
+): OrderProductPayload[] {
+  const source = products.reduce((s, p) => s + p.quantity * p.unitPrice, 0);
+  if (source <= 0) {
+    return products.map((p) => ({ ...p, unitPrice: 0 }));
+  }
+  const factor = targetProducts / source;
+  const scaled = products.map((p) => ({
+    ...p,
+    unitPrice: receivableAmount2(p.unitPrice * factor),
+  }));
+  const sumScaled = scaled.reduce((s, p) => s + p.quantity * p.unitPrice, 0);
+  const drift = receivableAmount2(targetProducts - sumScaled);
+  if (drift !== 0 && scaled.length > 0) {
+    const last = scaled[scaled.length - 1];
+    last.unitPrice = receivableAmount2(last.unitPrice + drift / last.quantity);
+  }
+  return scaled;
+}
+
+async function assertOrderNumberFree(tx: any, companyId: string, number: string) {
+  const exists = await tx.serviceOrder.findFirst({
+    where: { companyId, number },
+    select: { id: true },
+  });
+  if (exists) {
+    throw new ServiceError(`Já existe uma OS com o número ${number}.`, 409);
+  }
+}
+
 function resolveInstallmentPayloadForBill(
   storedRaw: unknown,
   body: OrderInstallmentPayload[] | null | undefined,
@@ -513,8 +656,20 @@ export const serviceOrderService = {
     if (bs === "ABERTAS") {
       extraAnd.push({ isBilled: false });
     } else if (bs === "FATURADAS") {
-      extraAnd.push({ isBilled: true });
       extraAnd.push({ NOT: { paymentStatus: "PAGO" } });
+      extraAnd.push({
+        OR: [
+          { isBilled: true },
+          {
+            isBilled: false,
+            receivables: {
+              some: {
+                status: { in: ["PENDENTE", "VENCIDO"] },
+              },
+            },
+          },
+        ],
+      });
     } else if (bs === "PAGAS") {
       extraAnd.push({ paymentStatus: "PAGO" });
     }
@@ -547,10 +702,30 @@ export const serviceOrderService = {
       prisma.serviceOrder.count({ where }),
       prisma.serviceOrder.findMany({
         where,
-        orderBy: { openedAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { number: "asc" }],
         skip,
         take: limit,
-        include: {
+        select: {
+          id: true,
+          number: true,
+          customerId: true,
+          unitId: true,
+          customerNameSnapshot: true,
+          totalAmount: true,
+          laborSubtotal: true,
+          productsSubtotal: true,
+          openedAt: true,
+          dueDate: true,
+          paymentTerm: true,
+          paymentMethod: true,
+          isStandalone: true,
+          paymentStatus: true,
+          isBilled: true,
+          status: true,
+          billingInstallmentPlan: true,
+          parcelGroupId: true,
+          parcelIndex: true,
+          parcelCount: true,
           customer: {
             select: {
               type: true,
@@ -633,6 +808,11 @@ export const serviceOrderService = {
         })),
         paymentStatus: order.paymentStatus,
         isBilled: order.isBilled,
+        hasInstallmentPlan: order.billingInstallmentPlan !== null,
+        billingInstallmentPlanRows: (() => {
+          const parsed = parseStoredBillingPlan(order.billingInstallmentPlan);
+          return parsed && parsed.length > 0 ? parsed : undefined;
+        })(),
         isLockedByOpenClosure:
           !order.number.startsWith("FEC-") &&
           order.paymentStatus !== "PAGO" &&
@@ -643,6 +823,9 @@ export const serviceOrderService = {
         receivableAmount: order.receivables
           .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
           .reduce((sum, r) => sum + Number(r.amount), 0),
+        parcelGroupId: order.parcelGroupId,
+        parcelIndex: order.parcelIndex,
+        parcelCount: order.parcelCount,
         };
       }),
       meta: {
@@ -685,10 +868,118 @@ export const serviceOrderService = {
         ? new Date(`${payload.dueDate}T00:00:00`)
         : openedAtDate;
 
-    let billingInstallmentPlan: Prisma.InputJsonValue | undefined;
-    if (payload.installments && payload.installments.length >= 2) {
+    const multiParcel = Boolean(payload.installments && payload.installments.length >= 2);
+
+    if (multiParcel) {
       const normalized = buildInstallmentsForBilling(totalAmount, dueDate, payload.installments);
-      billingInstallmentPlan = installmentPlanToJson(normalized);
+      const parcelGroupId = randomUUID();
+      const n = normalized.length;
+      const splits = splitLaborProductsAcrossParcels(laborSubtotal, productsSubtotal, totalAmount, normalized);
+
+      const ordersOut = await prisma.$transaction(async (tx) => {
+        const results: { id: string; number: string }[] = [];
+        let manualBase: string | null = null;
+
+        for (let k = 0; k < n; k++) {
+          const { labor: parcelLabor, products: parcelProducts } = splits[k];
+          const parcelTotal = receivableAmount2(parcelLabor + parcelProducts);
+          const scaledServices = scaleServiceItemsForParcel(payload.services, parcelLabor);
+          const scaledProducts = scaleProductItemsForParcel(productsList, parcelProducts);
+
+          let number: string;
+          if (isStandalone) {
+            number = await getNextAutoOrderNumber(tx, context.companyId);
+          } else {
+            if (!payload.customOsNumber) {
+              throw new ServiceError("Informe um número de OS válido.", 400);
+            }
+            if (k === 0) {
+              manualBase = await getManualOrderNumber(tx, context.companyId, payload.customOsNumber);
+              number = manualBase;
+            } else {
+              number = `${manualBase}-P${k + 1}`;
+              await assertOrderNumberFree(tx, context.companyId, number);
+            }
+          }
+
+          const orderRow = await tx.serviceOrder.create({
+            data: {
+              companyId: context.companyId,
+              unitId: payload.unitId,
+              customerId: payload.customerId || null,
+              customerNameSnapshot: payload.customerId ? null : payload.customerNameSnapshot || "Cliente avulso",
+              number,
+              openedAt: payload.openedAt ? new Date(`${payload.openedAt}T00:00:00`) : new Date(),
+              dueDate: normalized[k].dueDate,
+              paymentTerm,
+              paymentMethod,
+              notes: payload.notes || null,
+              isStandalone,
+              isBilled: false,
+              totalAmount: parcelTotal,
+              laborSubtotal: parcelLabor,
+              productsSubtotal: parcelProducts,
+              paymentStatus: "PENDENTE",
+              createdByUserId: context.userId,
+              updatedByUserId: context.userId,
+              parcelGroupId,
+              parcelIndex: k + 1,
+              parcelCount: n,
+              items: {
+                create: scaledServices.map((service) => ({
+                  serviceId: service.serviceId || null,
+                  description: service.description,
+                  quantity: service.quantity ?? 1,
+                  laborPrice: service.laborPrice,
+                  lineTotal: (service.quantity ?? 1) * service.laborPrice,
+                  executedByUserId: service.executedByUserId?.trim() ? service.executedByUserId : null,
+                  commissionRate: service.commissionRate ?? 12,
+                })),
+              },
+            },
+          });
+
+          if (scaledProducts.length > 0) {
+            await tx.serviceOrderProduct.createMany({
+              data: scaledProducts.map((p, index) => ({
+                companyId: context.companyId,
+                serviceOrderId: orderRow.id,
+                productId: p.productId || null,
+                description: p.description,
+                unit: (p.unit as ProductUnit) ?? "UN",
+                quantity: p.quantity,
+                unitPrice: p.unitPrice,
+                totalPrice: p.quantity * p.unitPrice,
+                sortOrder: index,
+              })),
+            });
+          }
+
+          await tx.auditLog.create({
+            data: {
+              companyId: context.companyId,
+              unitId: orderRow.unitId,
+              userId: context.userId,
+              entityType: "service_order",
+              entityId: orderRow.id,
+              action: "CREATE",
+              afterData: serviceOrderAfterDataForAudit(orderRow),
+            },
+          });
+
+          results.push({ id: orderRow.id, number: orderRow.number });
+        }
+
+        return results;
+      }, BILLING_INTERACTIVE_TX);
+
+      const first = ordersOut[0];
+      return {
+        orderId: first.id,
+        number: first.number,
+        orders: ordersOut,
+        parcelGroupId,
+      };
     }
 
     const order = await prisma.$transaction(async (tx) => {
@@ -722,7 +1013,6 @@ export const serviceOrderService = {
           paymentStatus: "PENDENTE",
           createdByUserId: context.userId,
           updatedByUserId: context.userId,
-          ...(billingInstallmentPlan !== undefined ? { billingInstallmentPlan } : {}),
           items: {
             create: payload.services.map((service) => ({
               serviceId: service.serviceId || null,
@@ -768,7 +1058,11 @@ export const serviceOrderService = {
       },
     });
 
-    return { orderId: order.id, number: order.number };
+    return {
+      orderId: order.id,
+      number: order.number,
+      orders: [{ id: order.id, number: order.number }],
+    };
   },
 
   async updateStatus(id: string, statusLabel: string, context: ServiceOrderContext) {
@@ -848,7 +1142,12 @@ export const serviceOrderService = {
       const updated = await db.$transaction(async (tx) => {
         const nextOrderNumber =
           payload.customOsNumber && payload.customOsNumber > 0
-            ? await getManualOrderNumber(tx, context.companyId, payload.customOsNumber, existing.id)
+            ? await resolveOrderNumberForManualEdit(tx, context.companyId, payload.customOsNumber, {
+                id: existing.id,
+                number: existing.number,
+                parcelGroupId: existing.parcelGroupId,
+                parcelIndex: existing.parcelIndex,
+              })
             : existing.number;
 
         await tx.serviceOrderItem.deleteMany({
@@ -1038,6 +1337,8 @@ export const serviceOrderService = {
         }
 
         const uniqueNumbers = Array.from(new Set(sourceNumbers));
+        const fecContributionByOrder = aggregateFecLineContributionsByOrderNumber(existing.items);
+        const plannedIncludedByOrder = plannedParcelIndicesFromFecItems(existing.items);
         let updated;
         try {
           updated = await db.$transaction(async (tx) => {
@@ -1056,6 +1357,7 @@ export const serviceOrderService = {
               dueDate: true,
               totalAmount: true,
               isBilled: true,
+              billingInstallmentPlan: true,
             },
           });
 
@@ -1095,11 +1397,16 @@ export const serviceOrderService = {
               dueDate: true,
               totalAmount: true,
               isBilled: true,
+              billingInstallmentPlan: true,
             },
           });
 
           for (const child of sourceOrdersAfterLock) {
             if (child.isBilled) {
+              continue;
+            }
+            const childShare = fecContributionByOrder.get(child.number) ?? 0;
+            if (childShare <= 0) {
               continue;
             }
             const childPreBill = await tx.accountReceivable.findMany({
@@ -1132,9 +1439,7 @@ export const serviceOrderService = {
                       installmentPlan.length > 1
                         ? `${child.number} (${index + 1}/${installmentPlan.length})`
                         : child.number,
-                    amount: receivableAmount2(
-                      (Number(child.totalAmount) * part.amount) / fecTotalAmount,
-                    ),
+                    amount: receivableAmount2((childShare * part.amount) / fecTotalAmount),
                     dueDate: part.dueDate,
                     status: "PENDENTE",
                     paidAt: null,
@@ -1146,13 +1451,49 @@ export const serviceOrderService = {
               );
             }
 
+            const orderTotalCents = Math.round(Number(child.totalAmount) * 100);
+            const receivableRows = await tx.accountReceivable.findMany({
+              where: {
+                serviceOrderId: child.id,
+                originType: "SERVICE_ORDER",
+              },
+              select: { amount: true },
+            });
+            const receivableSumCents = receivableRows.reduce(
+              (sum, r) => sum + Math.round(Number(r.amount) * 100),
+              0,
+            );
+            const isFullyBilled = receivableSumCents >= orderTotalCents - 1;
+
+            const rawPlan = parseStoredBillingPlan(child.billingInstallmentPlan);
+            const includedPlanned = plannedIncludedByOrder.get(child.number);
+            let nextPlan: OrderInstallmentPayload[] | null = null;
+            if (isFullyBilled) {
+              nextPlan = null;
+            } else if (rawPlan && includedPlanned && includedPlanned.size > 0) {
+              nextPlan = trimBillingPlanRemovingParcelIndices(rawPlan, includedPlanned);
+              if (nextPlan.length === 0) {
+                nextPlan = null;
+              }
+            } else if (rawPlan && childShare + 1e-6 < Number(child.totalAmount)) {
+              nextPlan = null;
+            } else if (rawPlan) {
+              nextPlan = rawPlan;
+            }
+
             await tx.serviceOrder.update({
               where: { id: child.id },
               data: {
-                isBilled: true,
-                dueDate: orderDueDate,
-                paymentTerm: effectivePaymentTerm,
-                paymentMethod: effectivePaymentMethod || null,
+                isBilled: isFullyBilled,
+                billingInstallmentPlan:
+                  isFullyBilled || !nextPlan?.length ? Prisma.JsonNull : orderInstallmentPayloadsToJson(nextPlan),
+                ...(isFullyBilled
+                  ? {
+                      dueDate: orderDueDate,
+                      paymentTerm: effectivePaymentTerm,
+                      paymentMethod: effectivePaymentMethod || null,
+                    }
+                  : {}),
                 updatedByUserId: context.userId,
               },
             });

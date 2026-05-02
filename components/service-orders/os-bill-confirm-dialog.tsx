@@ -46,6 +46,7 @@ type OsBillConfirmDialogProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   isLoading?: boolean;
+  hasInstallmentPlan?: boolean;
   paymentMethodOptions?: ReadonlyArray<{ value: string; label: string }>;
   onConfirm: (payload: OsBillConfirmPayload) => void;
 };
@@ -59,6 +60,7 @@ export function OsBillConfirmDialog({
   confirmLabel = "Faturar OS",
   cancelLabel = "Cancelar",
   isLoading = false,
+  hasInstallmentPlan = false,
   paymentMethodOptions = [...DEFAULT_PAYMENT_OPTIONS],
   onConfirm,
 }: OsBillConfirmDialogProps) {
@@ -147,7 +149,7 @@ export function OsBillConfirmDialog({
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="grid min-w-0 gap-2">
-                    <Label>Vencimento da 1ª parcela</Label>
+                    <Label>{hasInstallmentPlan ? "Vencimento da 1ª parcela" : "Vencimento"}</Label>
                     <DatePicker value={firstDueDate} onChange={setFirstDueDate} />
                   </div>
 
@@ -163,10 +165,12 @@ export function OsBillConfirmDialog({
                 </div>
               </div>
 
-              <p className="text-xs text-muted-foreground">
-                O parcelamento desta OS foi definido na abertura. Aqui você confere apenas condição, vencimento e forma
-                de pagamento para gerar os recebíveis.
-              </p>
+              {hasInstallmentPlan ? (
+                <p className="text-xs text-muted-foreground">
+                  O parcelamento desta OS foi definido na abertura. Aqui você confere apenas condição, vencimento e forma
+                  de pagamento para gerar os recebíveis.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>

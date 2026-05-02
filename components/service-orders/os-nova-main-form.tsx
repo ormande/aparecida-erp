@@ -1,6 +1,7 @@
 "use client";
 
 import type { Ref } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { ClientForm } from "@/components/clients/client-form";
@@ -81,7 +82,12 @@ function OsAddItemsSplitButton({
 
 export function OsNovaMainForm({ os }: { os: NovaOsController }) {
   const hasAnyItems = os.services.length > 0 || os.products.length > 0;
-  const installmentFirstDue = os.paymentTerm === "A_PRAZO" ? os.dueDate : os.resolvedOpenedAt;
+  const [parceladoEnabled, setParceladoEnabled] = useState(false);
+
+  useEffect(() => {
+    setParceladoEnabled(false);
+  }, [os.installmentResetKey]);
+
   return (
     <Card className="surface-card border-none">
       <CardContent className="grid gap-6 p-6">
@@ -192,7 +198,7 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                       </Button>
                     }
                   />
-                  <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+                  <DialogContent className="sm:max-w-2xl">
                     <DialogHeader>
                       <DialogTitle>Novo cliente</DialogTitle>
                       <DialogDescription>Cadastre o cliente sem sair da abertura da OS.</DialogDescription>
@@ -281,24 +287,19 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
                 À prazo
               </Button>
             </div>
+            {parceladoEnabled ? (
+              <p className="text-xs text-muted-foreground">
+                Com parcelamento, use só os vencimentos de cada parcela abaixo. À vista ou à prazo seguem como condição
+                cadastral; este calendário não altera as parcelas.
+              </p>
+            ) : null}
             <DatePicker
               value={os.dueDate}
-              disabled={os.paymentTerm !== "A_PRAZO"}
+              disabled={os.paymentTerm !== "A_PRAZO" || parceladoEnabled}
               onChange={os.setDueDate}
             />
           </div>
         </div>
-
-        {hasAnyItems && os.total > 0 ? (
-          <OsInstallmentPlanFields
-            ref={os.installmentPlanRef as Ref<OsInstallmentPlanFieldsHandle>}
-            totalAmount={os.total}
-            firstDueDate={installmentFirstDue}
-            openedAtFallback={os.resolvedOpenedAt}
-            initialStoredPlan={null}
-            resetKey={`nova-${os.installmentResetKey}`}
-          />
-        ) : null}
 
         <div className="space-y-4">
           {!hasAnyItems ? (
@@ -364,6 +365,17 @@ export function OsNovaMainForm({ os }: { os: NovaOsController }) {
             </>
           )}
         </div>
+
+        {hasAnyItems && os.total > 0 ? (
+          <OsInstallmentPlanFields
+            ref={os.installmentPlanRef as Ref<OsInstallmentPlanFieldsHandle>}
+            totalAmount={os.total}
+            openedAtFallback={os.resolvedOpenedAt}
+            initialStoredPlan={null}
+            resetKey={`nova-${os.installmentResetKey}`}
+            onParceladoModeChange={setParceladoEnabled}
+          />
+        ) : null}
 
         <div className="grid gap-2">
           <Label htmlFor="notes">Observações / laudo técnico</Label>

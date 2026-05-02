@@ -97,9 +97,10 @@ export function useReceivablesPage() {
         ...item,
         originLabel: item.originType === "SERVICE_ORDER" ? "OS" : "Avulso",
         installmentLabel:
-          item.installmentNumber && item.installmentCount
+          item.parcelDisplay ??
+          (item.installmentNumber && item.installmentCount
             ? `${item.installmentNumber}/${item.installmentCount}`
-            : "-",
+            : "-"),
       })),
     [receivables],
   );

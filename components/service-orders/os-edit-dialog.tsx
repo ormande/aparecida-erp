@@ -121,9 +121,6 @@ export function OsEditDialog({
     return labor + prod;
   }, [editableServices, editableProducts]);
 
-  const installmentFirstDue =
-    order && editableData.paymentTerm === "A_PRAZO" ? editableData.dueDate : order?.openedAt ?? "";
-
   function addService() {
     setEditableServices((current) => [
       ...current,
@@ -156,13 +153,13 @@ export function OsEditDialog({
 
   return (
     <Dialog open={Boolean(order)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[90vh] w-[calc(100%-1rem)] flex-col overflow-hidden sm:max-w-3xl">
+      <DialogContent className="w-[calc(100%-1rem)] sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{order?.number}</DialogTitle>
           <DialogDescription>Edite a OS sem sair da listagem.</DialogDescription>
         </DialogHeader>
         {order ? (
-          <div className="grid flex-1 gap-4 overflow-y-auto pr-1">
+          <div className="grid gap-4 pr-1">
             <div className="grid gap-2">
               <Label>Unidade</Label>
               <SearchableSelect
@@ -241,7 +238,6 @@ export function OsEditDialog({
               <OsInstallmentPlanFields
                 ref={installmentPlanRef as Ref<OsInstallmentPlanFieldsHandle>}
                 totalAmount={draftTotal}
-                firstDueDate={installmentFirstDue}
                 openedAtFallback={order.openedAt}
                 initialStoredPlan={order.billingInstallmentPlan ?? null}
                 resetKey={`edit-${order.id}-${installmentResetKey}`}

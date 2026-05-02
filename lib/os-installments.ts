@@ -5,6 +5,8 @@ import { ServiceError } from "@/services/service-error";
 export type OrderInstallmentPayload = {
   dueDate: string;
   amount: number;
+  /** Ordinal 1-based na OS original (ex.: 3ª parcela restante após fechamento parcial). */
+  displayParcelNumber?: number;
 };
 
 /** Linhas normalizadas com Date local (meia-noite) para gravar recebíveis. */
@@ -63,6 +65,30 @@ export function installmentPlanToJson(plan: NormalizedInstallmentRow[]): Prisma.
   }));
 }
 
+/** Persiste plano já em formato de payload (ex.: após recorte de parcelas). */
+export function orderInstallmentPayloadsToJson(plan: OrderInstallmentPayload[]): Prisma.InputJsonValue {
+  return plan.map((p) => ({
+    dueDate: p.dueDate,
+    amount: p.amount,
+    ...(p.displayParcelNumber != null ? { displayParcelNumber: p.displayParcelNumber } : {}),
+  }));
+}
+
+/** Remove parcelas já faturadas via fechamento; mantém ordinal original em `displayParcelNumber`. */
+export function trimBillingPlanRemovingParcelIndices(
+  plan: OrderInstallmentPayload[],
+  includedZeroBasedIndices: Set<number>,
+): OrderInstallmentPayload[] {
+  return plan
+    .map((entry, idx) => ({ entry, idx }))
+    .filter(({ idx }) => !includedZeroBasedIndices.has(idx))
+    .map(({ entry, idx }) => ({
+      dueDate: entry.dueDate,
+      amount: entry.amount,
+      displayParcelNumber: idx + 1,
+    }));
+}
+
 export function parseStoredBillingPlan(value: unknown): OrderInstallmentPayload[] | undefined {
   if (!value || !Array.isArray(value)) {
     return undefined;
@@ -82,7 +108,12 @@ export function parseStoredBillingPlan(value: unknown): OrderInstallmentPayload[
     if (!Number.isFinite(amount) || amount <= 0) {
       return undefined;
     }
-    out.push({ dueDate, amount });
+    const dpn = rec.displayParcelNumber;
+    out.push({
+      dueDate,
+      amount,
+      ...(typeof dpn === "number" && Number.isInteger(dpn) && dpn > 0 ? { displayParcelNumber: dpn } : {}),
+    });
   }
   return out.length ? out : undefined;
 }

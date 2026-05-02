@@ -1,8 +1,5 @@
 "use client";
 
-import type { Ref, RefObject } from "react";
-
-import { OsInstallmentPlanFields, type OsInstallmentPlanFieldsHandle } from "@/components/service-orders/os-installment-plan-fields";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,9 +21,6 @@ export function OsClosureDialog({
   setPaymentTerm,
   dueDate,
   setDueDate,
-  openedAtFallback,
-  installmentPlanRef,
-  installmentResetKey,
 }: {
   row: ClosureRow | null;
   onClose: () => void;
@@ -39,11 +33,7 @@ export function OsClosureDialog({
   setPaymentTerm: (value: "A_VISTA" | "A_PRAZO") => void;
   dueDate: string;
   setDueDate: (value: string) => void;
-  openedAtFallback: string;
-  installmentPlanRef: RefObject<OsInstallmentPlanFieldsHandle | null>;
-  installmentResetKey: string;
 }) {
-  const installmentFirstDue = paymentTerm === "A_PRAZO" ? dueDate : openedAtFallback;
   return (
     <Dialog open={Boolean(row)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-xl">
@@ -91,7 +81,7 @@ export function OsClosureDialog({
                     <summary className="cursor-pointer list-none px-3 py-2">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-sm">
-                          <p className="font-medium">{order.number}</p>
+                          <p className="font-medium">{order.displayLabel}</p>
                           <p className="text-muted-foreground">
                             {date(order.openedAt)} - {currency(order.total)}
                           </p>
@@ -154,16 +144,6 @@ export function OsClosureDialog({
                 onChange={setDueDate}
               />
             </div>
-            {row.totalSpent > 0 ? (
-              <OsInstallmentPlanFields
-                ref={installmentPlanRef as Ref<OsInstallmentPlanFieldsHandle>}
-                totalAmount={row.totalSpent}
-                firstDueDate={installmentFirstDue}
-                openedAtFallback={openedAtFallback}
-                initialStoredPlan={null}
-                resetKey={`closure-${installmentResetKey}`}
-              />
-            ) : null}
             <div className="flex justify-end">
               <Button
                 disabled={isLoadingOrders || selectedOrderIds.length <= 1}
