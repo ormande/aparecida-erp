@@ -322,6 +322,88 @@ function receivableAfterDataForAudit(receivable: {
   };
 }
 
+/**
+ * Desfaz na mesma transação o efeito do faturamento do FEC nas OS citadas nos itens:
+ * remove recebíveis SERVICE_ORDER das filhas e zera faturamento (igual ao fluxo de “cancelar faturamento” do FEC).
+ * Cliente Prisma transacional (incl. getAuditPrisma) não alinha com Prisma.TransactionClient — aceitar delegações usadas.
+ */
+async function revertFecBillingOnReferencedChildren(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: any,
+  context: { companyId: string; userId: string },
+  fecItems: {
+    description: string;
+    referencedOrderNumber: string | null;
+  }[],
+  options?: {
+    childPaidMessage?: string;
+  },
+) {
+  const childNumbers = Array.from(new Set(getReferencedOrderNumbersFromFecItems(fecItems)));
+  if (childNumbers.length === 0) {
+    return;
+  }
+
+  const children = await tx.serviceOrder.findMany({
+    where: {
+      companyId: context.companyId,
+      number: { in: childNumbers },
+    },
+    include: {
+      receivables: {
+        select: { status: true },
+      },
+    },
+  });
+
+  for (const ch of children) {
+    if (ch.receivables.some((r: { status: string }) => r.status === "PAGO")) {
+      throw new ServiceError(
+        options?.childPaidMessage ??
+          "Não é possível concluir a operação: há OS filha com recebimento já baixado. Reabra o pagamento na OS filha antes.",
+        409,
+      );
+    }
+  }
+
+  const childIds = children.map((c: { id: string }) => c.id);
+  const childReceivables = await tx.accountReceivable.findMany({
+    where: {
+      serviceOrderId: { in: childIds },
+      originType: "SERVICE_ORDER",
+    },
+  });
+  for (const rec of childReceivables) {
+    await tx.auditLog.create({
+      data: {
+        companyId: context.companyId,
+        unitId: rec.unitId,
+        userId: context.userId,
+        entityType: "receivable",
+        entityId: rec.id,
+        action: "DELETE",
+        beforeData: receivableAfterDataForAudit(rec),
+      },
+    });
+  }
+  for (const ch of children) {
+    await tx.accountReceivable.deleteMany({
+      where: {
+        serviceOrderId: ch.id,
+        originType: "SERVICE_ORDER",
+      },
+    });
+    await tx.serviceOrder.update({
+      where: { id: ch.id },
+      data: {
+        isBilled: false,
+        paymentStatus: "PENDENTE",
+        updatedByUserId: context.userId,
+      },
+    });
+  }
+}
+
 function getCustomerDisplayName(order: {
   customer: { type: "PF" | "PJ"; fullName: string | null; tradeName: string | null } | null;
   customerNameSnapshot: string | null;
@@ -1796,68 +1878,9 @@ export const serviceOrderService = {
 
       const updated = await db.$transaction(async (tx) => {
         if (existing.number.startsWith("FEC-")) {
-          const childNumbers = Array.from(
-            new Set(getReferencedOrderNumbersFromFecItems(existing.items)),
-          );
-          if (childNumbers.length) {
-            const children = await tx.serviceOrder.findMany({
-              where: {
-                companyId: context.companyId,
-                number: { in: childNumbers },
-              },
-              include: {
-                receivables: {
-                  select: { status: true },
-                },
-              },
-            });
-
-            for (const ch of children) {
-              if (ch.receivables.some((r) => r.status === "PAGO")) {
-                throw new ServiceError(
-                  "Não é possível cancelar o faturamento do fechamento com OS filha já paga.",
-                  400,
-                );
-              }
-            }
-
-            const childIds = children.map((c) => c.id);
-            const childReceivables = await tx.accountReceivable.findMany({
-              where: {
-                serviceOrderId: { in: childIds },
-                originType: "SERVICE_ORDER",
-              },
-            });
-            for (const rec of childReceivables) {
-              await tx.auditLog.create({
-                data: {
-                  companyId: context.companyId,
-                  unitId: rec.unitId,
-                  userId: context.userId,
-                  entityType: "receivable",
-                  entityId: rec.id,
-                  action: "DELETE",
-                  beforeData: receivableAfterDataForAudit(rec),
-                },
-              });
-            }
-            for (const ch of children) {
-              await tx.accountReceivable.deleteMany({
-                where: {
-                  serviceOrderId: ch.id,
-                  originType: "SERVICE_ORDER",
-                },
-              });
-              await tx.serviceOrder.update({
-                where: { id: ch.id },
-                data: {
-                  isBilled: false,
-                  paymentStatus: "PENDENTE",
-                  updatedByUserId: context.userId,
-                },
-              });
-            }
-          }
+          await revertFecBillingOnReferencedChildren(tx, context, existing.items, {
+            childPaidMessage: "Não é possível cancelar o faturamento do fechamento com OS filha já paga.",
+          });
         }
 
         const ownReceivables = await tx.accountReceivable.findMany({
@@ -2398,6 +2421,12 @@ export const serviceOrderService = {
     });
 
     await db.$transaction(async (tx) => {
+      if (existing.number.startsWith("FEC-") && existing.isBilled) {
+        await revertFecBillingOnReferencedChildren(tx, context, existing.items, {
+          childPaidMessage: "Não é possível excluir o fechamento: há OS filha com recebimento já baixado.",
+        });
+      }
+
       await tx.accountReceivable.deleteMany({
         where: { serviceOrderId: existing.id },
       });
