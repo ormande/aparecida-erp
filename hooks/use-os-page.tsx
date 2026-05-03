@@ -259,7 +259,10 @@ function applyOrderClientFilters(
   if (order.number.startsWith("FEC-")) return false;
   const { serviceFilter, billingFilter, datePreset, customFrom, customTo } = opts;
   if (serviceFilter && !order.servicesLabel.toLowerCase().includes(serviceFilter.toLowerCase())) return false;
-  if (billingFilter === "ABERTAS" && order.isBilled) return false;
+  if (billingFilter === "ABERTAS") {
+    if (order.isBilled) return false;
+    if (order.paymentStatus === "PAGO") return false;
+  }
   if (billingFilter === "FATURADAS") {
     if (order.paymentStatus === "PAGO") return false;
     const hasPendingReceivable = (order.receivableLines ?? []).some(
@@ -368,7 +371,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     setPage(1);
   }, [customerFilter, selectedUnitId, statusFilter]);
 
-  const { orders, meta, hydrated, setOrders } = useServiceOrders({
+  const { orders, meta, hydrated, setOrders, refresh: refreshOrders } = useServiceOrders({
     page,
     limit: 10,
     search,
@@ -397,6 +400,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
           unitId: selectedUnitId || undefined,
           customerId: customerFilter || undefined,
           excludeFechamentos: "true",
+          billingScope: fixedBillingFilter,
         };
         const all = await fetchAllServiceOrderPages(query);
         if (!cancelled) setFullOrdersForGroup(all);
@@ -413,7 +417,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       cancelled = true;
       setGroupOrdersLoading(false);
     };
-  }, [groupByCustomer, search, statusFilter, selectedUnitId, customerFilter]);
+  }, [groupByCustomer, search, statusFilter, selectedUnitId, customerFilter, fixedBillingFilter]);
 
   const customerOptions = useMemo(
     () =>
@@ -429,7 +433,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const filteredOrders = useMemo(() => {
     const filterOpts = {
       serviceFilter,
-      billingFilter: groupByCustomer ? "" : billingFilter,
+      billingFilter: fixedBillingFilter ?? billingFilter,
       datePreset,
       customFrom,
       customTo,
@@ -443,6 +447,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     return orders.filter((order) => applyOrderClientFilters(order, filterOpts));
   }, [
     billingFilter,
+    fixedBillingFilter,
     customFrom,
     customTo,
     datePreset,
@@ -453,17 +458,16 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   ]);
 
   const listDisplayRows = useMemo(() => {
+    const scope = fixedBillingFilter ?? billingFilter;
     let rows = expandServiceOrdersForListTable(filteredOrders);
-    if (!groupByCustomer && billingFilter === "FATURADAS") {
+    if (!groupByCustomer && scope === "FATURADAS") {
       rows = rows.filter((r) => r.receivableLineStatus != null);
     }
-    if (!groupByCustomer && billingFilter === "ABERTAS") {
-      rows = rows.filter(
-        (r) => r.receivableLineStatus == null || r.receivableLineStatus !== "PAGO",
-      );
+    if (!groupByCustomer && scope === "ABERTAS") {
+      rows = rows.filter((r) => !r.order.isBilled && r.order.paymentStatus !== "PAGO");
     }
     return rows;
-  }, [filteredOrders, billingFilter, groupByCustomer]);
+  }, [filteredOrders, billingFilter, fixedBillingFilter, groupByCustomer]);
 
   const groupedOrders = useMemo(() => {
     const grouped = new Map<string, ClosureRow>();
@@ -529,7 +533,15 @@ export function useOsPage(options: UseOsPageOptions = {}) {
           customTo,
         };
         const filtered = all.filter((order) => applyOrderClientFilters(order, filterOpts));
-        const mapped = filtered.map((order) => {
+        /** OS já faturadas só entram se houver parcela de recebível em aberto (senão o faturamento da FEC conflita). */
+        const eligibleForClosure = filtered.filter((order) => {
+          if (!order.isBilled) return true;
+          return (order.receivableLines ?? []).some(
+            (line) =>
+              (line.status === "PENDENTE" || line.status === "VENCIDO") && !line.isLockedByAnyClosure,
+          );
+        });
+        const mapped = eligibleForClosure.map((order) => {
           const receivableOptions = (order.receivableLines ?? [])
             .filter((line) => line.status !== "PAGO")
             .map((line) => ({
@@ -906,6 +918,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               : item,
           ),
         );
+        void refreshOrders();
         const successMessage =
           mode === "settle"
             ? "OS baixada com sucesso!"
@@ -924,7 +937,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         setStatusLoadingByOrderId((current) => ({ ...current, [id]: false }));
       }
     },
-    [setOrders, statusLoadingByOrderId],
+    [refreshOrders, setOrders, statusLoadingByOrderId],
   );
 
   const executeDelete = useCallback(
@@ -986,11 +999,18 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       toast.error(data.message ?? "Nao foi possivel gerar o fechamento.");
       return;
     }
-    setOrders((current) => [data.order, ...current]);
+    void refreshOrders();
     setClosureRow(null);
     setSelectedClosureOrderIds([]);
     void toast.success("OS de fechamento gerada com sucesso!");
-  }, [closureDialogOrders, closureDueDate, closurePaymentTerm, closureRow, selectedClosureOrderIds, setOrders]);
+  }, [
+    closureDialogOrders,
+    closureDueDate,
+    closurePaymentTerm,
+    closureRow,
+    refreshOrders,
+    selectedClosureOrderIds,
+  ]);
 
   const handleOsPdfDownload = useCallback(
     async (orderId: string, orderNumber: string) => {

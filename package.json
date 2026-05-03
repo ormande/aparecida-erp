@@ -15,6 +15,7 @@
     "db:repair:billing-column": "prisma db execute --file prisma/repair-billing-installment-column.sql --schema prisma/schema.prisma",
     "db:studio": "prisma studio",
     "db:reset:prod": "node scripts/reset-prod-db.mjs",
+    "db:migrate:deploy:test": "dotenv -e .env.test -- prisma migrate deploy",
     "db:reset:test": "dotenv -e .env.test -- node scripts/reset-test-db.mjs",
     "db:seed:test": "dotenv -e .env.test -- node scripts/seed-test-db.mjs",
     "db:fresh:test": "dotenv -e .env.test -- npx prisma migrate deploy && dotenv -e .env.test -- node scripts/reset-test-db.mjs && dotenv -e .env.test -- node scripts/seed-test-db.mjs",

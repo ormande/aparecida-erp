@@ -655,6 +655,8 @@ export const serviceOrderService = {
     const bs = filters.billingScope;
     if (bs === "ABERTAS") {
       extraAnd.push({ isBilled: false });
+      /** Evita OS já quitadas na aba errada e duplicação com “Pagas”; aberta = ainda não faturada e não totalmente paga. */
+      extraAnd.push({ paymentStatus: { not: "PAGO" } });
     } else if (bs === "FATURADAS") {
       extraAnd.push({ NOT: { paymentStatus: "PAGO" } });
       extraAnd.push({
@@ -680,6 +682,16 @@ export const serviceOrderService = {
 
     if (normalizedSearch) {
       const pattern = `%${normalizeSearch(normalizedSearch)}%`;
+      /** Mesmos critérios da listagem por aba — evita IDs “largos” na busca textual divergirem do esperado em produção. */
+      const fecSql = filters.excludeFechamentos
+        ? Prisma.sql` AND so."number" NOT LIKE 'FEC-%'`
+        : Prisma.sql``;
+      const billingScopeSql =
+        bs === "ABERTAS"
+          ? Prisma.sql` AND so."isBilled" = false AND so."paymentStatus"::text <> 'PAGO'`
+          : bs === "PAGAS"
+            ? Prisma.sql` AND so."paymentStatus"::text = 'PAGO'`
+            : Prisma.sql``;
       const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
         SELECT DISTINCT so."id"
         FROM "ServiceOrder" so
@@ -693,6 +705,8 @@ export const serviceOrderService = {
             OR unaccent(LOWER(COALESCE(c."tradeName", ''))) LIKE unaccent(LOWER(${pattern}::text))
             OR unaccent(LOWER(COALESCE(soi."description", ''))) LIKE unaccent(LOWER(${pattern}::text))
           )
+          ${fecSql}
+          ${billingScopeSql}
       `);
       const ids = rows.map((row) => row.id);
       where.id = { in: ids.length > 0 ? ids : [] };

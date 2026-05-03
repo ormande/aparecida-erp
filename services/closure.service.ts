@@ -143,12 +143,15 @@ export const closureService = {
       throw new ServiceError("Algumas OS selecionadas não pertencem ao cliente/período informado.", 400);
     }
 
-    const notOpen = sourceOrders.filter((o) => {
+    const billedWithoutParcelChoice = sourceOrders.filter((o) => {
       if (!o.isBilled) return false;
       return !selectionRows.some((s) => s.orderId === o.id && s.receivableId);
     });
-    if (notOpen.length > 0) {
-      throw new ServiceError("Só é possível incluir OS ainda não faturadas no fechamento.", 400);
+    if (billedWithoutParcelChoice.length > 0) {
+      throw new ServiceError(
+        "OS já faturadas só podem entrar no fechamento pela seleção explícita de uma parcela em aberto no recebível. Retire OS já quitadas ou marque só parcelas pendentes.",
+        400,
+      );
     }
 
     const lockedInOtherFec = await fetchReferencedOrderNumbersInAllClosures(
