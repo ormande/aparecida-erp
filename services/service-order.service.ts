@@ -334,6 +334,7 @@ async function revertFecBillingOnReferencedChildren(
   fecItems: {
     description: string;
     referencedOrderNumber: string | null;
+    previousOrderStatus?: ServiceOrderStatus | null;
   }[],
   options?: {
     childPaidMessage?: string;
@@ -342,6 +343,15 @@ async function revertFecBillingOnReferencedChildren(
   const childNumbers = Array.from(new Set(getReferencedOrderNumbersFromFecItems(fecItems)));
   if (childNumbers.length === 0) {
     return;
+  }
+
+  const previousStatusByNumber = new Map<string, ServiceOrderStatus>();
+  for (const item of fecItems) {
+    for (const number of fecLineReferencedOrderNumbers(item)) {
+      if (!previousStatusByNumber.has(number)) {
+        previousStatusByNumber.set(number, item.previousOrderStatus ?? "ABERTA");
+      }
+    }
   }
 
   const children = await tx.serviceOrder.findMany({
@@ -396,8 +406,10 @@ async function revertFecBillingOnReferencedChildren(
     await tx.serviceOrder.update({
       where: { id: ch.id },
       data: {
+        status: previousStatusByNumber.get(ch.number) ?? "ABERTA",
         isBilled: false,
         paymentStatus: "PENDENTE",
+        closedAt: null,
         updatedByUserId: context.userId,
       },
     });
@@ -737,6 +749,13 @@ export const serviceOrderService = {
     const bs = filters.billingScope;
     if (bs === "ABERTAS") {
       extraAnd.push({ isBilled: false });
+      extraAnd.push({
+        receivables: {
+          none: {
+            originType: "SERVICE_ORDER",
+          },
+        },
+      });
       /** Evita OS já quitadas na aba errada e duplicação com “Pagas”; aberta = ainda não faturada e não totalmente paga. */
       extraAnd.push({ paymentStatus: { not: "PAGO" } });
     } else if (bs === "FATURADAS") {
@@ -748,6 +767,7 @@ export const serviceOrderService = {
             isBilled: false,
             receivables: {
               some: {
+                originType: "SERVICE_ORDER",
                 status: { in: ["PENDENTE", "VENCIDO"] },
               },
             },
@@ -770,7 +790,16 @@ export const serviceOrderService = {
         : Prisma.sql``;
       const billingScopeSql =
         bs === "ABERTAS"
-          ? Prisma.sql` AND so."isBilled" = false AND so."paymentStatus"::text <> 'PAGO'`
+          ? Prisma.sql`
+              AND so."isBilled" = false
+              AND so."paymentStatus"::text <> 'PAGO'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM "AccountReceivable" ar_open
+                WHERE ar_open."serviceOrderId" = so."id"
+                  AND ar_open."originType"::text = 'SERVICE_ORDER'
+              )
+            `
           : bs === "PAGAS"
             ? Prisma.sql` AND so."paymentStatus"::text = 'PAGO'`
             : Prisma.sql``;
@@ -2439,5 +2468,3 @@ export const serviceOrderService = {
     return { ok: true };
   },
 };
-
-
