@@ -1882,8 +1882,17 @@ export const serviceOrderService = {
       return { order: mapOrder(updated) };
     }
 
+    const hasServiceOrderReceivable =
+      (await prisma.accountReceivable.count({
+        where: {
+          serviceOrderId: existing.id,
+          originType: "SERVICE_ORDER",
+        },
+      })) > 0;
+    const hasActiveBilling = existing.isBilled || hasServiceOrderReceivable;
+
     if (payload.mode === "unbill") {
-      if (!existing.isBilled) {
+      if (!hasActiveBilling) {
         throw new ServiceError("Esta OS ainda não foi faturada.", 400);
       }
 
@@ -2017,7 +2026,7 @@ export const serviceOrderService = {
       return { order: mapOrder(updated) };
     }
 
-    if (!existing.isBilled && payload.mode === "settle") {
+    if (!hasActiveBilling && payload.mode === "settle") {
       throw new ServiceError("Fature a OS antes de registrar o pagamento.", 400);
     }
 
@@ -2039,7 +2048,7 @@ export const serviceOrderService = {
           400,
         );
       }
-      if (!existing.isBilled) {
+      if (!hasActiveBilling) {
         throw new ServiceError("Não há faturamento registrado para reabrir o pagamento.", 400);
       }
       if (existing.paymentStatus === "PAGO_PARCIAL") {

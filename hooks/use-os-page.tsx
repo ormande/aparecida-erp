@@ -112,6 +112,10 @@ export type ServiceOrderListDisplayRow = {
   receivableLineStatus?: "PAGO" | "PENDENTE" | "VENCIDO";
 };
 
+function hasActiveBilling(order: ServiceOrderRow) {
+  return order.isBilled || (order.receivableLines ?? []).length > 0;
+}
+
 function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrderListDisplayRow[] {
   const out: ServiceOrderListDisplayRow[] = [];
   for (const order of orders) {
@@ -260,7 +264,7 @@ function applyOrderClientFilters(
   const { serviceFilter, billingFilter, datePreset, customFrom, customTo } = opts;
   if (serviceFilter && !order.servicesLabel.toLowerCase().includes(serviceFilter.toLowerCase())) return false;
   if (billingFilter === "ABERTAS") {
-    if (order.isBilled) return false;
+    if (hasActiveBilling(order)) return false;
     if (order.paymentStatus === "PAGO") return false;
   }
   if (billingFilter === "FATURADAS") {
@@ -268,7 +272,7 @@ function applyOrderClientFilters(
     const hasPendingReceivable = (order.receivableLines ?? []).some(
       (l) => l.status === "PENDENTE" || l.status === "VENCIDO",
     );
-    if (!order.isBilled && !hasPendingReceivable) return false;
+    if (!hasActiveBilling(order) && !hasPendingReceivable) return false;
     return true;
   }
   if (billingFilter === "PAGAS" && order.paymentStatus !== "PAGO") return false;
@@ -1148,7 +1152,10 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       {
         key: "actions",
         header: "Ações",
-        render: (row: ServiceOrderListDisplayRow) => (
+        render: (row: ServiceOrderListDisplayRow) => {
+          const activeBilling = hasActiveBilling(row.order);
+
+          return (
           <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
@@ -1173,15 +1180,15 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               size="sm"
               disabled={
                 Boolean(statusLoadingByOrderId[row.order.id]) ||
-                (!row.order.isBilled && Boolean(row.order.isLockedByOpenClosure)) ||
-                (row.order.isBilled &&
+                (!activeBilling && Boolean(row.order.isLockedByOpenClosure)) ||
+                (activeBilling &&
                   row.order.paymentStatus !== "PAGO" &&
                   Boolean(row.order.isLockedByOpenClosure))
               }
               onClick={() =>
                 row.order.paymentStatus === "PAGO"
                   ? void handleStatusChange(row.order.id, "reopen")
-                  : row.order.isBilled
+                  : activeBilling
                     ? setSettleOrder({ id: row.order.id, number: row.displayNumber })
                     : setBillOrder({
                         id: row.order.id,
@@ -1195,16 +1202,16 @@ export function useOsPage(options: UseOsPageOptions = {}) {
                       })
               }
               title={
-                !row.order.isBilled && row.order.isLockedByOpenClosure
+                !activeBilling && row.order.isLockedByOpenClosure
                   ? "Fature a OS de fechamento vinculada antes de faturar esta OS."
-                  : row.order.isBilled && row.order.paymentStatus !== "PAGO" && row.order.isLockedByOpenClosure
+                  : activeBilling && row.order.paymentStatus !== "PAGO" && row.order.isLockedByOpenClosure
                     ? "Baixe o fechamento vinculado antes de baixar esta OS."
                     : undefined
               }
             >
-              {row.order.paymentStatus === "PAGO" ? "Reabrir" : row.order.isBilled ? "Baixar" : "Faturar"}
+              {row.order.paymentStatus === "PAGO" ? "Reabrir" : activeBilling ? "Baixar" : "Faturar"}
             </Button>
-            {row.order.isBilled && row.order.paymentStatus !== "PAGO" ? (
+            {activeBilling && row.order.paymentStatus !== "PAGO" ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -1245,7 +1252,8 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               confirmLabel="Excluir"
             />
           </div>
-        ),
+          );
+        },
       },
     ],
     [downloadingPdfId, executeDelete, fetchOrder, handleOsPdfDownload, handleStatusChange, openEditDialog, setStatusOrder],
