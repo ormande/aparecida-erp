@@ -109,6 +109,7 @@ export type ServiceOrderListDisplayRow = {
   rowKey: string;
   displayNumber: string;
   displayTotal: number;
+  receivableLineId?: string;
   receivableLineStatus?: "PAGO" | "PENDENTE" | "VENCIDO";
 };
 
@@ -133,6 +134,7 @@ function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrde
           rowKey: `${order.id}-rcv-${line.id}`,
           displayNumber: `${friendly} - ${n}ª parcela`,
           displayTotal: line.amount,
+          receivableLineId: line.id,
           receivableLineStatus: line.status,
         });
       }
@@ -142,6 +144,7 @@ function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrde
         rowKey: `${order.id}-rcv-${recv[0].id}`,
         displayNumber: friendly,
         displayTotal: recv[0].amount,
+        receivableLineId: recv[0].id,
         receivableLineStatus: recv[0].status,
       });
     }
@@ -328,7 +331,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const editInstallmentPlanRef = useRef<OsInstallmentPlanFieldsHandle>(null);
   const [editOrder, setEditOrder] = useState<OrderDetails | null>(null);
   const [viewOrder, setViewOrder] = useState<OrderDetails | null>(null);
-  const [settleOrder, setSettleOrder] = useState<{ id: string; number: string } | null>(null);
+  const [settleOrder, setSettleOrder] = useState<{ id: string; number: string; receivableId?: string } | null>(null);
   const [billOrder, setBillOrder] = useState<{
     id: string;
     number: string;
@@ -944,6 +947,41 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     [refreshOrders, setOrders, statusLoadingByOrderId],
   );
 
+  const handleReceivableStatusChange = useCallback(
+    async (receivableId: string, mode: "settle" | "reopen", orderId?: string): Promise<void> => {
+      const loadingKey = orderId ?? receivableId;
+      if (statusLoadingByOrderId[loadingKey]) {
+        return;
+      }
+      setStatusLoadingByOrderId((current) => ({ ...current, [loadingKey]: true }));
+      try {
+        const response = await fetch(`/api/receivables/${receivableId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const errText =
+            typeof data?.message === "string"
+              ? data.message
+              : typeof data?.error === "string"
+                ? data.error
+                : null;
+          toast.error(errText ?? "Nao foi possivel alterar o recebivel.");
+          return;
+        }
+        void refreshOrders();
+        void toast.success(mode === "settle" ? "Parcela baixada com sucesso!" : "Parcela reaberta com sucesso!");
+      } catch {
+        toast.error("Nao foi possivel alterar o recebivel.");
+      } finally {
+        setStatusLoadingByOrderId((current) => ({ ...current, [loadingKey]: false }));
+      }
+    },
+    [refreshOrders, statusLoadingByOrderId],
+  );
+
   const executeDelete = useCallback(
     async (id: string): Promise<void> => {
       const response = await fetch(`/api/service-orders/${id}`, { method: "DELETE" });
@@ -1187,9 +1225,11 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               }
               onClick={() =>
                 row.order.paymentStatus === "PAGO"
-                  ? void handleStatusChange(row.order.id, "reopen")
+                  ? row.receivableLineId
+                    ? void handleReceivableStatusChange(row.receivableLineId, "reopen", row.order.id)
+                    : void handleStatusChange(row.order.id, "reopen")
                   : activeBilling
-                    ? setSettleOrder({ id: row.order.id, number: row.displayNumber })
+                    ? setSettleOrder({ id: row.order.id, number: row.displayNumber, receivableId: row.receivableLineId })
                     : setBillOrder({
                         id: row.order.id,
                         number: row.displayNumber,
@@ -1256,7 +1296,16 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         },
       },
     ],
-    [downloadingPdfId, executeDelete, fetchOrder, handleOsPdfDownload, handleStatusChange, openEditDialog, setStatusOrder],
+    [
+      downloadingPdfId,
+      executeDelete,
+      fetchOrder,
+      handleOsPdfDownload,
+      handleReceivableStatusChange,
+      handleStatusChange,
+      openEditDialog,
+      setStatusOrder,
+    ],
   );
 
   const clearFilters = useCallback(() => {
@@ -1349,6 +1398,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     fetchOrder,
     openEditDialog,
     handleSaveEdit,
+    handleReceivableStatusChange,
     handleStatusChange,
     handleStatusUpdate,
     executeDelete,

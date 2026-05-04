@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:repair:billing-column": "prisma db execute --file prisma/repair-billing-installment-column.sql --schema prisma/schema.prisma",
+    "db:repair:fec-receivables": "node scripts/backfill-fec-receivables.mjs",
     "db:studio": "prisma studio",
     "db:reset:prod": "node scripts/reset-prod-db.mjs",
     "db:migrate:deploy:test": "dotenv -e .env.test -- prisma migrate deploy",

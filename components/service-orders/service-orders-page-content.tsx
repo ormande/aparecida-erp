@@ -204,6 +204,11 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
         order={p.settleOrder}
         onClose={() => p.setSettleOrder(null)}
         onConfirm={async (id, paymentMethod) => {
+          if (p.settleOrder?.receivableId) {
+            await p.handleReceivableStatusChange(p.settleOrder.receivableId, "settle", id);
+            return;
+          }
+
           await p.handleStatusChange(id, "settle", paymentMethod ? { paymentMethod } : undefined);
         }}
       />

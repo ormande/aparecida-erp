@@ -1463,6 +1463,10 @@ export const serviceOrderService = {
 
         const uniqueNumbers = Array.from(new Set(sourceNumbers));
         const fecContributionByOrder = aggregateFecLineContributionsByOrderNumber(existing.items);
+        const fecOutstandingAmount = fecOutstandingFromItems(existing.items);
+        if (!Number.isFinite(fecOutstandingAmount) || fecOutstandingAmount <= 0) {
+          throw new ServiceError("Saldo do fechamento inválido para faturamento.", 400);
+        }
         const plannedIncludedByOrder = plannedParcelIndicesFromFecItems(existing.items);
         let updated;
         try {
@@ -1526,6 +1530,58 @@ export const serviceOrderService = {
             },
           });
 
+          const existingFecReceivables = await tx.accountReceivable.findMany({
+            where: {
+              serviceOrderId: existing.id,
+              originType: "SERVICE_ORDER",
+            },
+            select: { id: true },
+          });
+          if (existingFecReceivables.length > 0) {
+            throw new ServiceError("Este fechamento já possui recebível de faturamento registrado.", 409);
+          }
+
+          const fecInstallmentGroupId = installmentPlan.length > 1 ? crypto.randomUUID() : null;
+          const fecReceivables = [];
+          for (let index = 0; index < installmentPlan.length; index += 1) {
+            const part = installmentPlan[index];
+            fecReceivables.push(
+              await tx.accountReceivable.create({
+                data: {
+                  companyId: context.companyId,
+                  unitId: existing.unitId,
+                  customerId: existing.customerId || null,
+                  serviceOrderId: existing.id,
+                  lineSlot: index,
+                  originType: "SERVICE_ORDER",
+                  description:
+                    installmentPlan.length > 1
+                      ? `${existing.number} (${index + 1}/${installmentPlan.length})`
+                      : existing.number,
+                  amount: receivableAmount2((fecOutstandingAmount * part.amount) / fecTotalAmount),
+                  dueDate: part.dueDate,
+                  status: "PENDENTE",
+                  paidAt: null,
+                  installmentGroupId: fecInstallmentGroupId,
+                  installmentNumber: installmentPlan.length > 1 ? index + 1 : null,
+                  installmentCount: installmentPlan.length > 1 ? installmentPlan.length : null,
+                },
+              }),
+            );
+          }
+
+          await tx.auditLog.create({
+            data: {
+              companyId: context.companyId,
+              unitId: existing.unitId,
+              userId: context.userId,
+              entityType: "receivable",
+              entityId: fecReceivables[0]?.id ?? existing.id,
+              action: "CREATE",
+              afterData: receivableAfterDataForAudit(fecReceivables[0]),
+            },
+          });
+
           for (const child of sourceOrdersAfterLock) {
             if (child.isBilled) {
               continue;
@@ -1534,61 +1590,8 @@ export const serviceOrderService = {
             if (childShare <= 0) {
               continue;
             }
-            const childPreBill = await tx.accountReceivable.findMany({
-              where: {
-                serviceOrderId: child.id,
-                originType: "SERVICE_ORDER",
-              },
-              select: { id: true },
-            });
-            if (childPreBill.length > 0) {
-              throw new ServiceError(
-                `A OS ${child.number} já possui recebível de faturamento. Atualize a página antes de faturar o fechamento.`,
-                409,
-              );
-            }
-            const installmentGroupId = installmentPlan.length > 1 ? crypto.randomUUID() : null;
-            const childReceivables = [];
-            for (let index = 0; index < installmentPlan.length; index += 1) {
-              const part = installmentPlan[index];
-              childReceivables.push(
-                await tx.accountReceivable.create({
-                  data: {
-                    companyId: context.companyId,
-                    unitId: child.unitId,
-                    customerId: child.customerId || null,
-                    serviceOrderId: child.id,
-                    lineSlot: index,
-                    originType: "SERVICE_ORDER",
-                    description:
-                      installmentPlan.length > 1
-                        ? `${child.number} (${index + 1}/${installmentPlan.length})`
-                        : child.number,
-                    amount: receivableAmount2((childShare * part.amount) / fecTotalAmount),
-                    dueDate: part.dueDate,
-                    status: "PENDENTE",
-                    paidAt: null,
-                    installmentGroupId,
-                    installmentNumber: installmentPlan.length > 1 ? index + 1 : null,
-                    installmentCount: installmentPlan.length > 1 ? installmentPlan.length : null,
-                  },
-                }),
-              );
-            }
-
             const orderTotalCents = Math.round(Number(child.totalAmount) * 100);
-            const receivableRows = await tx.accountReceivable.findMany({
-              where: {
-                serviceOrderId: child.id,
-                originType: "SERVICE_ORDER",
-              },
-              select: { amount: true },
-            });
-            const receivableSumCents = receivableRows.reduce(
-              (sum, r) => sum + Math.round(Number(r.amount) * 100),
-              0,
-            );
-            const isFullyBilled = receivableSumCents >= orderTotalCents - 1;
+            const isFullyBilled = Math.round(childShare * 100) >= orderTotalCents - 1;
 
             const rawPlan = parseStoredBillingPlan(child.billingInstallmentPlan);
             const includedPlanned = plannedIncludedByOrder.get(child.number);
@@ -1620,18 +1623,6 @@ export const serviceOrderService = {
                     }
                   : {}),
                 updatedByUserId: context.userId,
-              },
-            });
-
-            await tx.auditLog.create({
-              data: {
-                companyId: context.companyId,
-                unitId: child.unitId,
-                userId: context.userId,
-                entityType: "receivable",
-                entityId: childReceivables[0]?.id ?? child.id,
-                action: "CREATE",
-                afterData: receivableAfterDataForAudit(childReceivables[0]),
               },
             });
           }
@@ -2156,19 +2147,32 @@ export const serviceOrderService = {
           });
         }
       } else if (receivable) {
-        await tx.accountReceivable.update({
-          where: { id: receivable.id },
-          data: {
-            amount:
-              existing.number.startsWith("FEC-")
-                ? payload.mode === "settle"
-                  ? closureSettledAmount
-                  : closureOutstandingAmount
-                : receivable.amount,
-            status: targetStatus,
-            paidAt: payload.mode === "settle" ? new Date() : null,
-          },
-        });
+        if (existing.number.startsWith("FEC-") && !isPartialPayment) {
+          await tx.accountReceivable.updateMany({
+            where: {
+              serviceOrderId: existing.id,
+              originType: "SERVICE_ORDER",
+            },
+            data: {
+              status: targetStatus,
+              paidAt: payload.mode === "settle" ? new Date() : null,
+            },
+          });
+        } else {
+          await tx.accountReceivable.update({
+            where: { id: receivable.id },
+            data: {
+              amount:
+                existing.number.startsWith("FEC-")
+                  ? payload.mode === "settle"
+                    ? closureSettledAmount
+                    : closureOutstandingAmount
+                  : receivable.amount,
+              status: targetStatus,
+              paidAt: payload.mode === "settle" ? new Date() : null,
+            },
+          });
+        }
 
         if (isPartialPayment && remainingAmount > 0) {
           await tx.accountReceivable.create({

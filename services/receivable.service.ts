@@ -1,9 +1,14 @@
 import { randomUUID } from "crypto";
 
-import type { Prisma } from "@prisma/client";
+import type { Prisma, ServiceOrderStatus } from "@prisma/client";
 
 import { mapReceivableToAppReceivable } from "@/lib/db-mappers";
 import { parcelColumnLabel } from "@/lib/receivable-display";
+import {
+  extractReceivableIdsFromText,
+  fecLineReferencedOrderNumbers,
+  getReferencedOrderNumbersFromFecItems,
+} from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
 import { prisma } from "@/lib/prisma";
 import { ServiceError } from "@/services/service-error";
@@ -29,6 +34,21 @@ type ReceivableContext = {
   unitId?: string | null;
   userId: string;
 };
+
+type ServiceOrderReceivableRow = {
+  status: "PAGO" | "PENDENTE" | "VENCIDO";
+};
+
+function paymentStatusFromReceivables(receivables: ServiceOrderReceivableRow[]) {
+  const hasReceivables = receivables.length > 0;
+  const allPaid = hasReceivables && receivables.every((item) => item.status === "PAGO");
+  const hasPaid = receivables.some((item) => item.status === "PAGO");
+
+  return {
+    allPaid,
+    paymentStatus: allPaid ? "PAGO" : hasPaid ? "PAGO_PARCIAL" : "PENDENTE",
+  } as const;
+}
 
 function addMonths(base: Date, months: number) {
   const next = new Date(base);
@@ -95,48 +115,92 @@ export const receivableService = {
     }
 
     /** Todos os títulos da empresa (manual + faturamento de OS); sem filtros extras de negócio. */
-    const receivables = await prisma.accountReceivable.findMany({
-      where: {
-        companyId: context.companyId,
-        ...(filters.unitId ? { unitId: filters.unitId } : {}),
-        status:
-          filters.status === "Pago"
-            ? "PAGO"
-            : filters.status === "Vencido"
-              ? "VENCIDO"
-              : filters.status === "Pendente"
-                ? "PENDENTE"
-                : undefined,
-        ...(periodDueDateRange ? { dueDate: periodDueDateRange } : {}),
-      },
-      include: {
-        customer: {
-          select: {
-            type: true,
-            fullName: true,
-            tradeName: true,
+    const [receivables, billedClosures] = await Promise.all([
+      prisma.accountReceivable.findMany({
+        where: {
+          companyId: context.companyId,
+          ...(filters.unitId ? { unitId: filters.unitId } : {}),
+          status:
+            filters.status === "Pago"
+              ? "PAGO"
+              : filters.status === "Vencido"
+                ? "VENCIDO"
+                : filters.status === "Pendente"
+                  ? "PENDENTE"
+                  : undefined,
+          ...(periodDueDateRange ? { dueDate: periodDueDateRange } : {}),
+        },
+        include: {
+          customer: {
+            select: {
+              type: true,
+              fullName: true,
+              tradeName: true,
+            },
+          },
+          unit: {
+            select: {
+              name: true,
+            },
+          },
+          serviceOrder: {
+            select: {
+              number: true,
+              parcelIndex: true,
+              parcelCount: true,
+            },
           },
         },
-        unit: {
-          select: {
-            name: true,
+        orderBy: {
+          dueDate: "asc",
+        },
+      }),
+      prisma.serviceOrder.findMany({
+        where: {
+          companyId: context.companyId,
+          ...(filters.unitId ? { unitId: filters.unitId } : {}),
+          number: { startsWith: "FEC-" },
+          isBilled: true,
+          receivables: {
+            some: {
+              originType: "SERVICE_ORDER",
+            },
           },
         },
-        serviceOrder: {
-          select: {
-            number: true,
-            parcelIndex: true,
-            parcelCount: true,
+        select: {
+          items: {
+            select: {
+              description: true,
+              referencedOrderNumber: true,
+            },
           },
         },
-      },
-      orderBy: {
-        dueDate: "asc",
-      },
+      }),
+    ]);
+
+    const hiddenSourceReceivableIds = new Set<string>();
+    const hiddenSourceOrderNumbers = new Set<string>();
+    for (const closure of billedClosures) {
+      for (const item of closure.items) {
+        for (const receivableId of extractReceivableIdsFromText(item.description)) {
+          hiddenSourceReceivableIds.add(receivableId);
+        }
+      }
+      for (const number of getReferencedOrderNumbersFromFecItems(closure.items)) {
+        hiddenSourceOrderNumbers.add(number);
+      }
+    }
+
+    const visibleReceivables = receivables.filter((receivable) => {
+      if (receivable.originType !== "SERVICE_ORDER") return true;
+      if (receivable.serviceOrder?.number.startsWith("FEC-")) return true;
+      if (hiddenSourceReceivableIds.has(receivable.id)) return false;
+      const orderNumber = receivable.serviceOrder?.number;
+      return !orderNumber || !hiddenSourceOrderNumbers.has(orderNumber);
     });
 
     return {
-      receivables: receivables.map(mapReceivableForResponse),
+      receivables: visibleReceivables.map(mapReceivableForResponse),
     };
   },
 
@@ -222,10 +286,191 @@ export const receivableService = {
         companyId: context.companyId,
         ...(context.unitId ? { unitId: context.unitId } : {}),
       },
+      include: {
+        serviceOrder: {
+          select: {
+            id: true,
+            number: true,
+          },
+        },
+      },
     });
 
     if (!existing) {
       throw new ServiceError("Recebível não encontrado.", 404);
+    }
+
+    if (
+      existing.originType === "SERVICE_ORDER" &&
+      existing.serviceOrder &&
+      (payload.mode === "settle" || payload.mode === "reopen")
+    ) {
+      const db = getAuditPrisma({
+        userId: context.userId,
+        companyId: context.companyId,
+        activeUnitId: context.unitId ?? undefined,
+      });
+
+      await db.$transaction(async (tx) => {
+        await tx.accountReceivable.update({
+          where: { id: existing.id },
+          data:
+            payload.mode === "settle"
+              ? { status: "PAGO", paidAt: new Date() }
+              : { status: "PENDENTE", paidAt: null },
+        });
+
+        const orderReceivables = await tx.accountReceivable.findMany({
+          where: {
+            serviceOrderId: existing.serviceOrder!.id,
+            originType: "SERVICE_ORDER",
+          },
+          select: { status: true },
+        });
+        const { allPaid, paymentStatus } = paymentStatusFromReceivables(orderReceivables);
+
+        if (existing.serviceOrder!.number.startsWith("FEC-")) {
+          const closure = await tx.serviceOrder.findFirst({
+            where: {
+              id: existing.serviceOrder!.id,
+              companyId: context.companyId,
+              ...(context.unitId ? { unitId: context.unitId } : {}),
+            },
+            select: {
+              id: true,
+              status: true,
+              items: {
+                select: {
+                  description: true,
+                  referencedOrderNumber: true,
+                  previousOrderStatus: true,
+                },
+              },
+            },
+          });
+
+          if (!closure) {
+            throw new ServiceError("Ordem de serviÃ§o nÃ£o encontrada.", 404);
+          }
+
+          const sourceNumbers = getReferencedOrderNumbersFromFecItems(closure.items);
+          if (sourceNumbers.length > 0) {
+            const sourceOrders = await tx.serviceOrder.findMany({
+              where: {
+                companyId: context.companyId,
+                ...(context.unitId ? { unitId: context.unitId } : {}),
+                number: { in: sourceNumbers },
+              },
+              select: {
+                id: true,
+                number: true,
+                receivables: {
+                  select: { id: true },
+                },
+              },
+            });
+
+            const sourceOrderIds = sourceOrders.map((order) => order.id);
+            const sourceReceivableIds = sourceOrders.flatMap((order) => order.receivables.map((item) => item.id));
+
+            if (sourceReceivableIds.length > 0) {
+              await tx.accountReceivable.updateMany({
+                where: { id: { in: sourceReceivableIds } },
+                data: {
+                  status: allPaid ? "PAGO" : "PENDENTE",
+                  paidAt: allPaid ? new Date() : null,
+                },
+              });
+            }
+
+            if (sourceOrderIds.length > 0) {
+              if (allPaid) {
+                await tx.serviceOrder.updateMany({
+                  where: { id: { in: sourceOrderIds } },
+                  data: {
+                    status: "CONCLUIDA",
+                    paymentStatus: "PAGO",
+                    closedAt: new Date(),
+                    updatedByUserId: context.userId,
+                  },
+                });
+              } else {
+                const previousStatusByNumber = new Map<string, ServiceOrderStatus>();
+                for (const item of closure.items) {
+                  for (const number of fecLineReferencedOrderNumbers(item)) {
+                    if (!previousStatusByNumber.has(number)) {
+                      previousStatusByNumber.set(number, item.previousOrderStatus ?? "ABERTA");
+                    }
+                  }
+                }
+
+                for (const sourceOrder of sourceOrders) {
+                  await tx.serviceOrder.update({
+                    where: { id: sourceOrder.id },
+                    data: {
+                      status: previousStatusByNumber.get(sourceOrder.number) ?? "ABERTA",
+                      paymentStatus: "PENDENTE",
+                      closedAt: null,
+                      updatedByUserId: context.userId,
+                    },
+                  });
+                }
+              }
+            }
+          }
+
+          await tx.serviceOrder.update({
+            where: { id: existing.serviceOrder!.id },
+            data: {
+              status: allPaid ? closure.status : paymentStatus === "PENDENTE" ? "ABERTA" : closure.status,
+              paymentStatus,
+              closedAt: allPaid ? new Date() : null,
+              updatedByUserId: context.userId,
+            },
+          });
+        } else {
+          await tx.serviceOrder.update({
+            where: { id: existing.serviceOrder!.id },
+            data: {
+              paymentStatus,
+              closedAt: allPaid ? new Date() : null,
+              updatedByUserId: context.userId,
+            },
+          });
+        }
+      });
+
+      const refreshed = await prisma.accountReceivable.findFirstOrThrow({
+        where: {
+          id: existing.id,
+          companyId: context.companyId,
+        },
+        include: {
+          customer: {
+            select: {
+              type: true,
+              fullName: true,
+              tradeName: true,
+            },
+          },
+          unit: {
+            select: {
+              name: true,
+            },
+          },
+          serviceOrder: {
+            select: {
+              number: true,
+              parcelIndex: true,
+              parcelCount: true,
+            },
+          },
+        },
+      });
+
+      return {
+        receivable: mapReceivableForResponse(refreshed),
+      };
     }
 
     if (payload.mode === "edit" && existing.originType === "SERVICE_ORDER") {
