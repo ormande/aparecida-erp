@@ -12,12 +12,19 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-4 md:flex-row md:items-end md:justify-between", className)}>
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">{title}</h1>
-        {subtitle ? <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p> : null}
-      </div>
-      {actions ? <div className="flex flex-wrap items-center gap-3">{actions}</div> : null}
+    <div className={className}>
+      <div
+        data-page-header-meta="true"
+        data-page-title={title}
+        data-page-subtitle={subtitle ?? ""}
+        className="hidden"
+        aria-hidden="true"
+      />
+      {actions ? (
+        <div className={cn("flex flex-wrap items-center justify-end gap-3", className)}>
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

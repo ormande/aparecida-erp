@@ -116,6 +116,7 @@ export function aggregateFecLineContributionsByOrderNumber(
 }
 
 const PLANNED_PARCEL_FEC_RE = /Parcela\s+(\d+)\/(\d+)\s+da\s+(OS-\d{4}-\d{5})\s+\(planejada\)/i;
+const PLANNED_PARCEL_MARKER_RE = /\[PLAN:(OS-\d{4}-\d{5}(?:-P\d+)?):(\d+):(\d+)\]/i;
 
 /** Índices 0-based das parcelas planejadas incluídas na FEC, por número da OS. */
 export function plannedParcelIndicesFromFecItems(
@@ -126,9 +127,10 @@ export function plannedParcelIndicesFromFecItems(
     const n = Number(item.lineTotal);
     if (!Number.isFinite(n) || n <= 0) continue;
     const m = item.description.match(PLANNED_PARCEL_FEC_RE);
-    if (!m) continue;
-    const parcelIndex = Number(m[1]) - 1;
-    const osNumber = m[3];
+    const marker = item.description.match(PLANNED_PARCEL_MARKER_RE);
+    const parcelIndex = marker ? Number(marker[2]) - 1 : m ? Number(m[1]) - 1 : Number.NaN;
+    const osNumber = marker ? marker[1] : m?.[3];
+    if (!osNumber) continue;
     if (!Number.isInteger(parcelIndex) || parcelIndex < 0) continue;
     if (!result.has(osNumber)) {
       result.set(osNumber, new Set());

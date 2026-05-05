@@ -36,7 +36,7 @@ function handleServiceError(error: unknown) {
       hint =
         " Violação de unicidade (provavelmente já existe recebível para esta OS). Atualize a página; se persistir, verifique duplicidade no banco.";
     } else if (error.code === "P2003") {
-      hint = " Referência inválida (FK) — registro relacionado ausente ou inconsistente.";
+      hint = " Referência inválida (FK) - registro relacionado ausente ou inconsistente.";
     } else if (error.code === "P2028") {
       hint =
         " Transação expirou no banco (operação demorou demais). Tente de novo; se for FEC ou muitas parcelas, o servidor já usa timeout maior.";

@@ -8,8 +8,14 @@ function translateEntity(entityType: string) {
   switch (entityType) {
     case "service_order":
       return "ordem de serviço";
+    case "service_order_item":
+      return "item de OS";
     case "service_catalog":
       return "serviço";
+    case "customer":
+      return "cliente";
+    case "supplier":
+      return "fornecedor";
     case "receivable":
       return "conta a receber";
     case "payable":
@@ -44,6 +50,50 @@ function translateAction(action: string) {
   }
 }
 
+/** Texto identificador no payload (número, nome, descrição, etc.), sem cair no rótulo da entidade. */
+function extractIdentifier(payload: Record<string, unknown>): string | null {
+  const keys = [
+    "number",
+    "name",
+    "referencedOrderNumber",
+    "fullName",
+    "tradeName",
+    "legalName",
+    "description",
+    "email",
+  ] as const;
+  for (const key of keys) {
+    const v = payload[key];
+    if (typeof v === "string" && v.trim().length > 0) {
+      return v.trim();
+    }
+  }
+  return null;
+}
+
+function entityAndIdAreRedundant(entity: string, id: string): boolean {
+  const e = entity.trim().toLowerCase();
+  const i = id.trim().toLowerCase();
+  if (i === e) {
+    return true;
+  }
+  // Ex.: descrição já vem como "ordem de serviço OS-123" e a entidade é "ordem de serviço"
+  if (i.startsWith(`${e} `) || i.startsWith(`${e}(`)) {
+    return true;
+  }
+  return false;
+}
+
+function formatActionWithEntity(actionPhrase: string, entity: string, id: string | null): string {
+  if (!id) {
+    return `${actionPhrase} ${entity}.`;
+  }
+  if (entityAndIdAreRedundant(entity, id)) {
+    return `${actionPhrase} ${id}.`;
+  }
+  return `${actionPhrase} ${entity} ${id}.`;
+}
+
 function buildSummary(log: {
   entityType: string;
   action: string;
@@ -52,21 +102,23 @@ function buildSummary(log: {
 }) {
   const entity = translateEntity(log.entityType);
   const payload = (log.afterData ?? log.beforeData ?? {}) as Record<string, unknown>;
-  const number = typeof payload.number === "string" ? payload.number : null;
-  const name = typeof payload.name === "string" ? payload.name : null;
-  const description = typeof payload.description === "string" ? payload.description : null;
-  const target = number ?? name ?? description ?? entity;
+  const id = extractIdentifier(payload);
 
   if (log.action === "LOGIN" || log.action === "LOGOUT") {
     return entity === "primeiro acesso" ? "Concluiu o primeiro acesso do sistema." : `Usuário ${translateAction(log.action)}.`;
   }
 
   if (log.action === "STATUS_CHANGE") {
-    const label = target !== entity ? `${entity} ${target}` : entity;
-    return `Alterou o status da ${label}.`;
+    if (!id || id.toLowerCase() === entity.toLowerCase()) {
+      return `Alterou o status da ${entity}.`;
+    }
+    if (entityAndIdAreRedundant(entity, id)) {
+      return `Alterou o status da ${id}.`;
+    }
+    return `Alterou o status da ${entity} ${id}.`;
   }
 
-  return `${translateAction(log.action)} ${entity} ${target}.`;
+  return formatActionWithEntity(translateAction(log.action), entity, id);
 }
 
 export async function GET() {

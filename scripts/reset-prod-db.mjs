@@ -72,7 +72,7 @@ async function main() {
   ]);
 
   console.log("✓ Dados de negócio apagados.");
-  console.log("✓ AppSetup resetado — o fluxo de primeiro acesso está desbloqueado.");
+console.log("✓ AppSetup resetado - o fluxo de primeiro acesso está desbloqueado.");
   console.log("  Acesse a aplicação para realizar o cadastro inicial.");
 }
 

@@ -38,7 +38,7 @@ function OsViewDialogBody({
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <span className="text-sm text-muted-foreground">Unidade</span>
-          <p>{order.unitName ?? "—"}</p>
+              <p>{order.unitName ?? "-"}</p>
         </div>
         <div>
           <span className="text-sm text-muted-foreground">Cliente</span>
@@ -100,7 +100,7 @@ function OsViewDialogBody({
       ) : null}
       <div>
         <span className="text-sm text-muted-foreground">Data de emissão</span>
-        <p>{order.openedAt ? date(order.openedAt) : "—"}</p>
+              <p>{order.openedAt ? date(order.openedAt) : "-"}</p>
       </div>
       {order.notes?.trim() ? (
         <div className="rounded-2xl border bg-muted/20 p-4">

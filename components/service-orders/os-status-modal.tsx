@@ -83,7 +83,7 @@ export function OsStatusModal({ order, onClose, onConfirm }: OsStatusModalProps)
                 <span className="font-semibold text-slate-900 dark:font-medium dark:text-foreground">
                   {order.number}
                 </span>{" "}
-                — escolha o novo status.
+            - escolha o novo status.
               </>
             ) : null}
           </DialogDescription>

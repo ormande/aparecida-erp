@@ -78,7 +78,7 @@ export default function EditarFornecedorPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`Editar — ${getSupplierDisplayName(supplier)}`}
+      title={`Editar - ${getSupplierDisplayName(supplier)}`}
         subtitle={`${supplier.tipo === "pf" ? "Pessoa Física" : "Pessoa Jurídica"} • ${getSupplierDocument(supplier)}`}
         actions={
           <Button type="button" variant="outline" onClick={() => handleNavigate(`/fornecedores/${supplier.id}`)}>

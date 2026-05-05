@@ -71,7 +71,7 @@ export default function FinanceiroReceberPage() {
         ))}
       </div>
       <ReceivablesSummaryCards totalPendente={p.totalPendente} totalVencido={p.totalVencido} totalRecebidoMes={p.totalRecebidoMes} />
-      <div className="surface-card space-y-5 p-6">
+      <div className="surface-card space-y-5 overflow-x-auto p-6 [&_td:last-child>div]:flex-nowrap [&_td:last-child]:whitespace-nowrap">
         <MonthPeriodPresetButtons value={p.periodFilter} onChange={p.setPeriodFilter} />
         <div className="grid gap-3 md:grid-cols-2">
           <Input value={p.statusFilter} onChange={(e) => p.setStatusFilter(e.target.value)} placeholder="Filtrar por status" />

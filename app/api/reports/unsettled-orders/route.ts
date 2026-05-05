@@ -3,7 +3,11 @@ import { z, ZodError } from "zod";
 
 import { getRequiredSessionContext } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getReferencedOrderNumbersFromFecItems } from "@/lib/service-order-reference";
+import { formatReportLocalDate } from "@/lib/report-dates";
+import {
+  fecOutstandingFromItems,
+  getReferencedOrderNumbersFromFecItems,
+} from "@/lib/service-order-reference";
 
 const querySchema = z.object({
   unitId: z.string().min(1).optional(),
@@ -79,58 +83,105 @@ export async function GET(request: NextRequest) {
       companyId,
       paymentStatus: { not: "PAGO" },
       status: { not: "CANCELADA" },
+      OR: [{ number: { startsWith: "FEC-" } }, { isBilled: true }],
       ...(unitId ? { unitId } : {}),
       ...(excludedSourceIds.length > 0 ? { id: { notIn: excludedSourceIds } } : {}),
     },
     include: {
-      unit: { select: { name: true } },
       customer: {
         select: { type: true, fullName: true, tradeName: true },
       },
       receivables: {
+        where: { originType: "SERVICE_ORDER" },
         select: { status: true, amount: true, dueDate: true },
+      },
+      items: {
+        select: { lineTotal: true, description: true },
       },
     },
     orderBy: { openedAt: "desc" },
   });
 
-  type Reason = "RECEBIVEL_PENDENTE" | "FECHAMENTO_ABERTO" | "FECHAMENTO_PARCIAL";
   type RowType = "NORMAL" | "FECHAMENTO";
 
-  const mapped = orders.map((order) => {
+  const todayIso = formatReportLocalDate(new Date());
+
+  function computeOpenAmount(order: (typeof orders)[number]): number {
+    const pendingRecv = order.receivables
+      .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
+      .reduce((sum, r) => sum + Number(r.amount), 0);
+
+    if (pendingRecv > 0) {
+      return pendingRecv;
+    }
+
+    if (order.number.startsWith("FEC-")) {
+      return fecOutstandingFromItems(order.items);
+    }
+
+    return 0;
+  }
+
+  function rowHasOverdueReceivable(order: (typeof orders)[number]): boolean {
+    for (const r of order.receivables) {
+      if (r.status !== "PENDENTE" && r.status !== "VENCIDO") {
+        continue;
+      }
+      if (r.status === "VENCIDO") {
+        return true;
+      }
+      const dueIso = formatReportLocalDate(new Date(r.dueDate));
+      if (dueIso < todayIso) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const mappedWithMeta = orders.map((order) => {
     const isClosing = order.number.startsWith("FEC-");
     const type: RowType = isClosing ? "FECHAMENTO" : "NORMAL";
 
-    const reason: Reason = isClosing
-      ? order.paymentStatus === "PAGO_PARCIAL"
-        ? "FECHAMENTO_PARCIAL"
-        : "FECHAMENTO_ABERTO"
-      : "RECEBIVEL_PENDENTE";
+    const receivableAmount = computeOpenAmount(order);
 
-    const dueDateStr = order.dueDate?.toISOString().slice(0, 10) ?? null;
+    const pendingRecvDueDates = order.receivables
+      .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
+      .map((r) => r.dueDate);
+    const earliestDue =
+      pendingRecvDueDates.length > 0
+        ? new Date(Math.min(...pendingRecvDueDates.map((d) => d.getTime())))
+        : null;
+    const dueDateStr =
+      earliestDue != null
+        ? earliestDue.toISOString().slice(0, 10)
+        : (order.dueDate?.toISOString().slice(0, 10) ?? null);
 
     return {
       id: order.id,
       number: order.number,
       type,
       clientName: customerDisplayName(order),
-      unitName: order.unit.name,
       openedAt: order.openedAt.toISOString().slice(0, 10),
       totalAmount: Number(order.totalAmount),
-      receivableAmount: order.receivables
-        .filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO")
-        .reduce((sum, r) => sum + Number(r.amount), 0),
-      receivableStatus: null,
+      receivableAmount,
       dueDate: dueDateStr,
-      reason,
+      hasOverdue: rowHasOverdueReceivable(order),
     };
   });
 
+  const mappedFiltered = mappedWithMeta.filter((row) => row.receivableAmount > 0.005);
+
+  const mapped = mappedFiltered.map((row) => {
+    const { hasOverdue, ...rest } = row;
+    void hasOverdue;
+    return rest;
+  });
+
   const summary = {
-    total: mapped.length,
-    totalAmount: mapped.reduce((sum, row) => sum + row.receivableAmount, 0),
-    totalVencido: 0,
-    totalFechamento: mapped.filter((row) => row.type === "FECHAMENTO").length,
+    total: mappedFiltered.length,
+    totalAmount: mappedFiltered.reduce((sum, row) => sum + row.receivableAmount, 0),
+    totalVencido: mappedFiltered.filter((row) => row.hasOverdue).length,
+    totalFechamento: mappedFiltered.filter((row) => row.type === "FECHAMENTO").length,
   };
 
   return NextResponse.json({ orders: mapped, summary });

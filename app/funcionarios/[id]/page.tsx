@@ -196,7 +196,7 @@ export default function FuncionarioDetailPage() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Meta mensal</span>
-              <span>{employee.monthlyGoal != null ? currency(employee.monthlyGoal) : "—"}</span>
+              <span>{employee.monthlyGoal != null ? currency(employee.monthlyGoal) : "-"}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Telefone</span>

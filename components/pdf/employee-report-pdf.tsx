@@ -150,7 +150,7 @@ export function EmployeeReportPdf({ employee, companyName, startDate, endDate }:
       <Page size="A4" style={styles.page}>
         <PdfHeader
           companyName={companyName}
-          title={`Relatório de Funcionário — ${employee.name}`}
+      title={`Relatório de Funcionário - ${employee.name}`}
         />
 
         <View style={styles.section}>
@@ -162,7 +162,7 @@ export function EmployeeReportPdf({ employee, companyName, startDate, endDate }:
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.label}>E-mail</Text>
-              <Text style={styles.value}>{employee.email || "—"}</Text>
+              <Text style={styles.value}>{employee.email || "-"}</Text>
             </View>
             <View style={styles.gridItem}>
               <Text style={styles.label}>Período</Text>
@@ -213,12 +213,12 @@ export function EmployeeReportPdf({ employee, companyName, startDate, endDate }:
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Meta mensal</Text>
             <Text style={styles.cardValue}>
-              {employee.monthlyGoal != null ? formatCurrency(employee.monthlyGoal) : "—"}
+                  {employee.monthlyGoal != null ? formatCurrency(employee.monthlyGoal) : "-"}
             </Text>
           </View>
           <View style={styles.cardHighlight}>
             <Text style={styles.cardLabelLight}>% atingido</Text>
-            <Text style={styles.cardValueGold}>{goalPct != null ? `${goalPct}%` : "—"}</Text>
+                <Text style={styles.cardValueGold}>{goalPct != null ? `${goalPct}%` : "-"}</Text>
           </View>
         </View>
 

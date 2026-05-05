@@ -229,7 +229,7 @@ export default function FuncionariosPage() {
             {
               key: "monthlyGoal",
               header: "Meta mensal",
-              render: (row) => (row.monthlyGoal != null ? currency(row.monthlyGoal) : "—"),
+                render: (row) => (row.monthlyGoal != null ? currency(row.monthlyGoal) : "-"),
             },
             {
               key: "actions",
@@ -288,7 +288,7 @@ export default function FuncionariosPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {goalEmployee ? `Meta mensal — ${goalEmployee.name}` : "Meta mensal"}
+            {goalEmployee ? `Meta mensal - ${goalEmployee.name}` : "Meta mensal"}
             </DialogTitle>
             <DialogDescription>Defina ou altere o valor da meta mensal em reais.</DialogDescription>
           </DialogHeader>

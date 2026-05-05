@@ -11,7 +11,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     padding: 40,
     color: "#111111",
-    backgroundcolor: "#111111",
+    backgroundColor: "#FFFFFF",
   },
   section: {
     marginBottom: 20,

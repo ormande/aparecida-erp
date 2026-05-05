@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Activity, CircleDollarSign, ClipboardList, Percent, Wallet, X } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -18,9 +18,16 @@ import { useDashboardOsStats } from "@/hooks/use-dashboard-os-stats";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useReceivables } from "@/hooks/use-receivables";
 import { useServiceOrders } from "@/hooks/use-service-orders";
-import { currency, date } from "@/lib/formatters";
+import { currency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { isFirstSevenDaysOfMonth } from "@/lib/report-dates";
+
+/** Título curto da OS a partir da descrição do recebível (ex.: parcelas "OS-1 (2/3)" → "OS-1"). */
+function receivableOsTitle(description: string): string {
+  const trimmed = description.trim();
+  const paren = trimmed.indexOf(" (");
+  return paren === -1 ? trimmed : trimmed.slice(0, paren).trim();
+}
 
 function getMonthPrefixLocal(dateValue = new Date()) {
   const year = dateValue.getFullYear();
@@ -75,6 +82,9 @@ export default function DashboardPage() {
 
   const [employeeRow, setEmployeeRow] = useState<EmployeeReportRow | null>(null);
   const [employeeReportHydrated, setEmployeeReportHydrated] = useState(false);
+
+  const [generatedChart, setGeneratedChart] = useState<Array<{ day: string; revenue: number }>>([]);
+  const [generatedChartHydrated, setGeneratedChartHydrated] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -152,36 +162,71 @@ export default function DashboardPage() {
     };
   }, [authLoading, isFuncionario, user?.id, debouncedUnitId]);
 
+  useEffect(() => {
+    if (isFuncionario) {
+      setGeneratedChart([]);
+      setGeneratedChartHydrated(true);
+      return;
+    }
+
+    let active = true;
+    setGeneratedChartHydrated(false);
+    const params = new URLSearchParams({ days: "7" });
+    if (debouncedUnitId) {
+      params.set("unitId", debouncedUnitId);
+    }
+
+    fetch(`/api/dashboard/generated-revenue?${params.toString()}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error ?? "Falha ao carregar série.");
+        }
+        return data as { series?: Array<{ dayLabel: string; total: number }> };
+      })
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        const rows = data.series ?? [];
+        setGeneratedChart(
+          rows.map((s) => ({
+            day: s.dayLabel,
+            revenue: Number(s.total ?? 0),
+          })),
+        );
+      })
+      .catch(() => {
+        if (active) {
+          setGeneratedChart([]);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setGeneratedChartHydrated(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isFuncionario, debouncedUnitId]);
+
   const today = getTodayLocalIso();
   const openedToday = orders.filter((order) => order.openedAt === today && order.status !== "Cancelada").length;
 
   const latestOrders = orders
     .filter((order) => !order.number.startsWith("FEC-"))
     .slice(0, 5);
-  const warningsReceber = receivables.filter((item) => item.dueDate === today && item.status !== "Pago").slice(0, 3);
-  const oldPendingOs = orders.filter((item) => item.status === "Em andamento" || item.status === "Aguardando peça").slice(0, 2);
   const hasHistory = receivables.length > 0 || orders.length > 0;
 
-  const revenueMap = new Map<string, number>();
-  for (let index = 6; index >= 0; index -= 1) {
-    const day = new Date();
-    day.setDate(day.getDate() - index);
-    const year = day.getFullYear();
-    const month = String(day.getMonth() + 1).padStart(2, "0");
-    const dateDay = String(day.getDate()).padStart(2, "0");
-    revenueMap.set(`${year}-${month}-${dateDay}`, 0);
-  }
-  receivables
-    .filter((item) => item.status === "Pago")
-    .forEach((item) => {
-      if (revenueMap.has(item.dueDate)) {
-        revenueMap.set(item.dueDate, (revenueMap.get(item.dueDate) ?? 0) + item.value);
-      }
-    });
-  const dashboardRevenue = Array.from(revenueMap.entries()).map(([dateKey, revenue]) => ({
-    day: new Intl.DateTimeFormat("pt-BR", { weekday: "short" }).format(new Date(`${dateKey}T00:00:00`)),
-    revenue,
-  }));
+  const dueTodayReceivables = useMemo(
+    () =>
+      receivables
+        .filter((item) => item.dueDate === today && item.status !== "Pago")
+        .slice(0, 8),
+    [receivables, today],
+  );
 
   const hydrated =
     !unitLoading &&
@@ -290,13 +335,18 @@ export default function DashboardPage() {
         )}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_360px]">
-        <div className="space-y-6">
-          <Card className="surface-card border-none">
-            <CardHeader>
+      <section className="space-y-6">
+        <div
+          className={cn(
+            "grid gap-6",
+            !isFuncionario && "xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] xl:items-stretch",
+          )}
+        >
+          <Card className="surface-card flex h-full min-h-0 flex-col border-none">
+            <CardHeader className="shrink-0">
               <CardTitle>Últimas ordens de serviço</CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent className="min-h-0 flex-1 overflow-x-auto">
               {!hydrated || latestOrders.length ? (
                 <table className="w-full min-w-[720px] text-sm">
                   <thead className="text-left text-muted-foreground">
@@ -330,76 +380,74 @@ export default function DashboardPage() {
           </Card>
 
           {!isFuncionario ? (
-            <Card className="surface-card border-none">
-              <CardHeader>
-                <CardTitle>Receita dos últimos 7 dias</CardTitle>
-              </CardHeader>
-              <CardContent className="h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dashboardRevenue}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis dataKey="day" axisLine={false} tickLine={false} />
-                    <YAxis axisLine={false} tickLine={false} />
-                    <Tooltip formatter={(value) => currency(Number(value ?? 0))} />
-                    <Bar dataKey="revenue" name="Receita" radius={[10, 10, 0, 0]} fill="var(--color-gold)" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
-
-        <div className="space-y-6">
-          {!isFuncionario ? (
-            <Card className="surface-card border-none">
-              <CardHeader>
+            <Card className="surface-card flex h-full min-h-0 min-w-0 flex-col border-none">
+              <CardHeader className="shrink-0">
                 <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-[var(--color-gold-dark)]" />
+                  <Activity className="h-5 w-5 shrink-0 text-primary" aria-hidden />
                   Contas vencendo hoje
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {warningsReceber.length ? (
-                  warningsReceber.map((item) => (
-                    <div key={item.id} className="rounded-2xl border bg-muted/40 p-4">
-                      <p className="font-medium">{item.description}</p>
-                      <p className="text-sm text-muted-foreground">{item.clientName}</p>
-                      <p className="mt-2 text-sm font-semibold">{currency(item.value)}</p>
-                    </div>
-                  ))
+              <CardContent className="flex min-h-0 flex-1 flex-col pb-5 pt-0">
+                {dueTodayReceivables.length ? (
+                  <div className="max-h-[240px] space-y-0 overflow-y-auto overflow-x-hidden pr-0.5">
+                    {dueTodayReceivables.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-2 border-b border-border/80 py-2 last:border-0"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium leading-tight">
+                            {receivableOsTitle(item.description)}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground leading-tight">{item.clientName}</p>
+                        </div>
+                        <div className="shrink-0 self-center text-xs font-semibold tabular-nums sm:text-sm">
+                          {currency(item.value)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Nenhuma conta vencendo hoje nesta unidade.</p>
+                  <div className="flex min-h-[8rem] flex-1 flex-col items-center justify-center px-1 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Nenhuma conta com vencimento hoje nesta unidade.
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>
           ) : null}
+        </div>
 
-          <Card className="surface-card border-none">
+        {!isFuncionario ? (
+          <Card className="surface-card w-full max-w-none border-none">
             <CardHeader>
-              <CardTitle>OS pendentes</CardTitle>
+              <CardTitle>Valor gerado nos últimos 7 dias</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {oldPendingOs.length ? (
-                oldPendingOs.map((item) => (
-                  <div key={item.id} className="rounded-2xl border bg-muted/40 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{item.number}</p>
-                        <p className="text-sm text-muted-foreground">{item.clientName}</p>
-                      </div>
-                      <StatusBadge status={item.status} />
-                    </div>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                      Aberta em {date(item.openedAt)}.
-                    </p>
-                  </div>
-                ))
+            <CardContent className="h-[300px] w-full px-2 sm:px-6">
+              {generatedChartHydrated ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={generatedChart}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.2} />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                    <YAxis axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(value) => currency(Number(value ?? 0))} />
+                    <Bar
+                      dataKey="revenue"
+                      name="Valor gerado"
+                      radius={[10, 10, 0, 0]}
+                      fill="var(--color-gold)"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
               ) : (
-                <p className="text-sm text-muted-foreground">Nenhuma OS pendente na unidade selecionada.</p>
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  Carregando gráfico...
+                </div>
               )}
             </CardContent>
           </Card>
-        </div>
+        ) : null}
       </section>
     </div>
   );

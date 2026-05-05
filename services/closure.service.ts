@@ -43,6 +43,85 @@ type ClosureLine = {
   previousOrderStatus: ServiceOrderStatus;
 };
 
+type ClosureSourceOrder = Prisma.ServiceOrderGetPayload<{
+  include: {
+    items: true;
+    products: true;
+    receivables: true;
+    customer: {
+      select: {
+        type: true;
+        fullName: true;
+        tradeName: true;
+      };
+    };
+  };
+}>;
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function buildProratedClosureLines(
+  order: ClosureSourceOrder,
+  selectedAmount: number,
+  marker?: string,
+): ClosureLine[] {
+  const sourceLines = [
+    ...order.items.map((item) => ({
+      serviceId: item.serviceId,
+      description: item.description,
+      quantity: item.quantity,
+      total: Number(item.lineTotal),
+    })),
+    ...order.products.map((product) => ({
+      serviceId: null,
+      description: `[Produto] ${product.description}`,
+      quantity: Number(product.quantity),
+      total: Number(product.totalPrice),
+    })),
+  ].filter((item) => item.total > 0);
+
+  if (sourceLines.length === 0 || selectedAmount <= 0) {
+    return [
+      {
+        serviceId: null,
+        description: `[Sem itens] ${order.number}${marker ? ` ${marker}` : ""}`.trim(),
+        referencedOrderNumber: order.number,
+        laborPrice: 0,
+        lineTotal: 0,
+        originalLineTotal: 0,
+        quantity: 1,
+        previousOrderStatus: order.status,
+      },
+    ];
+  }
+
+  const sourceTotal = sourceLines.reduce((sum, item) => sum + item.total, 0);
+  let remaining = roundMoney(selectedAmount);
+
+  return sourceLines.map((item, index) => {
+    const quantity = item.quantity > 0 ? item.quantity : 1;
+    const allocatedTotal =
+      index === sourceLines.length - 1
+        ? remaining
+        : roundMoney((selectedAmount * item.total) / sourceTotal);
+
+    remaining = roundMoney(remaining - allocatedTotal);
+
+    return {
+      serviceId: item.serviceId,
+      description: `${item.description}${marker ? ` ${marker}` : ""}`.trim(),
+      referencedOrderNumber: order.number,
+      laborPrice: roundMoney(allocatedTotal / quantity),
+      lineTotal: allocatedTotal,
+      originalLineTotal: allocatedTotal,
+      quantity,
+      previousOrderStatus: order.status,
+    };
+  });
+}
+
 function buildClosureNumber(year: number, sequence: number) {
   return `FEC-${year}-${String(sequence).padStart(4, "0")}`;
 }
@@ -190,16 +269,13 @@ export const closureService = {
       if (selectedReceivableIds.length > 0) {
         return order.receivables
           .filter((r) => selectedReceivableIds.includes(r.id))
-          .map((r) => ({
-            serviceId: null,
-            description: `Parcela ${r.installmentNumber ?? 1}/${r.installmentCount ?? 1} da ${order.number} [RCV:${r.id}]`,
-            referencedOrderNumber: order.number,
-            laborPrice: Number(r.amount),
-            lineTotal: Number(r.amount),
-            originalLineTotal: Number(r.amount),
-            quantity: 1,
-            previousOrderStatus: order.status,
-          }));
+          .flatMap((r) =>
+            buildProratedClosureLines(
+              order,
+              Number(r.amount),
+              `[RCV:${r.id}]`,
+            ),
+          );
       }
 
       const plannedIndices = orderSelections
@@ -222,18 +298,13 @@ export const closureService = {
         if (uniqueSorted.length === 0) {
           throw new ServiceError("Seleção de parcelas planejadas inválida.", 400);
         }
-        return uniqueSorted.map((idx) => {
+        return uniqueSorted.flatMap((idx) => {
           const part = plan[idx];
-          return {
-            serviceId: null,
-            description: `Parcela ${idx + 1}/${plan.length} da ${order.number} (planejada)`,
-            referencedOrderNumber: null,
-            laborPrice: part.amount,
-            lineTotal: part.amount,
-            originalLineTotal: part.amount,
-            quantity: 1,
-            previousOrderStatus: order.status,
-          };
+          return buildProratedClosureLines(
+            order,
+            part.amount,
+            `[PLAN:${order.number}:${idx + 1}:${plan.length}]`,
+          );
         });
       }
 

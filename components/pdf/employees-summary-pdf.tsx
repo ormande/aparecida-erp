@@ -239,12 +239,12 @@ export function EmployeesSummaryPdf({ employees, companyName, startDate, endDate
                 <View style={styles.card}>
                   <Text style={styles.cardLabel}>Meta mensal</Text>
                   <Text style={styles.cardValue}>
-                    {employee.monthlyGoal != null ? formatCurrency(employee.monthlyGoal) : "—"}
+                    {employee.monthlyGoal != null ? formatCurrency(employee.monthlyGoal) : "-"}
                   </Text>
                 </View>
                 <View style={styles.cardHighlight}>
                   <Text style={styles.cardLabelLight}>% atingido</Text>
-                  <Text style={styles.cardValueGold}>{goalPct != null ? `${goalPct}%` : "—"}</Text>
+                  <Text style={styles.cardValueGold}>{goalPct != null ? `${goalPct}%` : "-"}</Text>
                 </View>
               </View>
             </View>

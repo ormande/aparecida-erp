@@ -30,6 +30,8 @@ export type OrderDetails = {
   number: string;
   clientId: string | null;
   clientName: string;
+  clientDocument?: string | null;
+  clientContact?: string | null;
   customerNameSnapshot?: string | null;
   unitId: string;
   unitName?: string;
@@ -48,9 +50,12 @@ export type OrderDetails = {
   services: Array<{
     id: string;
     serviceId?: string | null;
+    referencedOrderNumber?: string | null;
     description: string;
     quantity?: number;
     laborPrice: number;
+    lineTotal?: number;
+    commissionRate?: number;
     executedByUserId?: string | null;
     executedByName?: string | null;
   }>;
@@ -195,6 +200,7 @@ export type OsEditableServiceLine = {
   laborPrice: number;
   laborPriceInput: string;
   executedByUserId: string;
+  commissionRate: number;
 };
 
 export type OsEditableProductLine = {
@@ -557,8 +563,8 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               amount: line.amount,
               label:
                 line.installmentNumber && line.installmentCount
-                  ? `Parcela ${line.installmentNumber}/${line.installmentCount} — ${currency(line.amount)}`
-                  : `Parcela — ${currency(line.amount)}`,
+              ? `Parcela ${line.installmentNumber}/${line.installmentCount} - ${currency(line.amount)}`
+              : `Parcela - ${currency(line.amount)}`,
               disabled: Boolean(line.isLockedByAnyClosure),
               disabledReason: line.isLockedByAnyClosure
                 ? "Esta parcela já foi vinculada a outro fechamento."
@@ -571,7 +577,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
                   key: plannedInstallmentSelectionKey(order.id, idx),
                   dueDate: row.dueDate,
                   amount: row.amount,
-                  label: `Parcela ${idx + 1}/${planRows.length} — ${currency(row.amount)}`,
+                  label: `Parcela ${idx + 1}/${planRows.length} - ${currency(row.amount)}`,
                   disabled: Boolean(order.isLockedByAnyClosure),
                   disabledReason: order.isLockedByAnyClosure
                     ? "Esta OS já foi vinculada a outro fechamento."
@@ -674,6 +680,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         laborPrice: service.laborPrice,
         laborPriceInput: formatCurrencyInput(String(Math.round(service.laborPrice * 100))),
         executedByUserId: service.executedByUserId ?? "",
+        commissionRate: service.commissionRate ?? 12,
       })),
     );
     setEditableProducts(
@@ -769,7 +776,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
             service.executedByUserId?.trim() && service.executedByUserId !== "__casa__"
               ? service.executedByUserId
               : null,
-          commissionRate: service.executedByUserId === "__casa__" ? 0 : undefined,
+          commissionRate: service.executedByUserId === "__casa__" ? 0 : (service.commissionRate ?? 12),
         })),
         products: editableProducts
           .filter((product) => product.description.trim().length > 0 && Number(product.quantity) > 0)

@@ -325,7 +325,7 @@ export default function FinanceiroPagarPage() {
         </Card>
       </section>
 
-      <div className="surface-card space-y-5 p-6">
+      <div className="surface-card space-y-5 overflow-x-auto p-6 [&_td:last-child>div]:flex-nowrap [&_td:last-child]:whitespace-nowrap">
         <MonthPeriodPresetButtons value={periodFilter} onChange={setPeriodFilter} />
         <div className="grid gap-3 md:grid-cols-2">
           <Input value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} placeholder="Filtrar por status" />

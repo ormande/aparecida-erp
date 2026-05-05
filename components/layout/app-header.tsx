@@ -1,7 +1,8 @@
 "use client";
 
 import { LogOut, Menu } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
@@ -22,10 +23,33 @@ import { useAuth } from "@/hooks/use-auth";
 export function AppHeader() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const [pageTitle, setPageTitle] = useState("");
+  const [pageSubtitle, setPageSubtitle] = useState("");
+
+  useEffect(() => {
+    const syncHeaderMeta = () => {
+      const meta = document.querySelector<HTMLElement>("[data-page-header-meta='true']");
+      setPageTitle(meta?.dataset.pageTitle ?? "");
+      setPageSubtitle(meta?.dataset.pageSubtitle ?? "");
+    };
+
+    syncHeaderMeta();
+
+    const observer = new MutationObserver(syncHeaderMeta);
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-page-title", "data-page-subtitle"],
+    });
+
+    return () => observer.disconnect();
+  }, [pathname]);
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:left-[240px]">
-      <div className="flex h-20 items-center gap-3 px-4 md:px-8">
+      <div className="flex min-h-20 items-start gap-3 px-4 py-4 md:px-8">
         <Sheet>
           <SheetTrigger
             render={
@@ -39,7 +63,12 @@ export function AppHeader() {
           </SheetContent>
         </Sheet>
 
-        <div className="min-w-0 flex-1" />
+        <div className="min-w-0 flex-1 pr-2">
+          {pageTitle ? <p className="truncate text-2xl font-semibold tracking-tight">{pageTitle}</p> : null}
+          {pageSubtitle ? (
+            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{pageSubtitle}</p>
+          ) : null}
+        </div>
 
         <ThemeToggle />
 

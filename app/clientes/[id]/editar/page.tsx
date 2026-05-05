@@ -71,7 +71,7 @@ export default function EditarClientePage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title={`Editar — ${getClientDisplayName(client)}`}
+      title={`Editar - ${getClientDisplayName(client)}`}
         subtitle={`${client.tipo === "pf" ? "Pessoa Física" : "Pessoa Jurídica"} • ${getClientDocument(client)}`}
         actions={
           <Button type="button" variant="outline" onClick={() => handleNavigate(`/clientes/${client.id}`)}>

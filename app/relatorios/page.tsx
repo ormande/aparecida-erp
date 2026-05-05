@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/dialog";
 import { PageHeader } from "@/components/ui/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { useEmployees } from "@/hooks/use-employees";
 import { usePdfDownload } from "@/hooks/use-pdf-download";
@@ -54,17 +53,10 @@ export type UnsettledOrderRow = {
   number: string;
   type: "NORMAL" | "FECHAMENTO";
   clientName: string;
-  unitName: string;
   openedAt: string;
   totalAmount: number;
   receivableAmount: number;
-  receivableStatus: "PENDENTE" | "VENCIDO" | null;
   dueDate: string | null;
-  reason:
-    | "RECEBIVEL_PENDENTE"
-    | "RECEBIVEL_VENCIDO"
-    | "FECHAMENTO_ABERTO"
-    | "FECHAMENTO_PARCIAL";
 };
 
 export type UnsettledSummary = {
@@ -76,6 +68,7 @@ export type UnsettledSummary = {
 
 const EMPTY_EMPLOYEE_SERVICES: EmployeeReportRow["services"] = [];
 const EMPTY_COMPANY_BY_UNIT: CompanyReport["byUnit"] = [];
+const HOUSE_EMPLOYEE_ID = "__casa__";
 
 export default function RelatoriosPage() {
   const { employees } = useEmployees();
@@ -109,6 +102,7 @@ export default function RelatoriosPage() {
 
   const employeeOptions = useMemo(() => {
     const opts = [{ value: "", label: "Todos os funcionários" }];
+    opts.push({ value: HOUSE_EMPLOYEE_ID, label: "Casa (sem comissao)" });
     for (const e of employees) {
       opts.push({ value: e.id, label: e.nomeCompleto });
     }
@@ -431,7 +425,7 @@ export default function RelatoriosPage() {
                 {
                   key: "goal",
                   header: "Meta mensal",
-                  render: (row) => (row.monthlyGoal != null ? currency(row.monthlyGoal) : "—"),
+                  render: (row) => (row.monthlyGoal != null ? currency(row.monthlyGoal) : "-"),
                 },
                 { key: "services", header: "Serviços executados", render: (row) => String(row.totalServices) },
                 { key: "value", header: "Valor gerado", render: (row) => currency(row.totalValue) },
@@ -446,7 +440,7 @@ export default function RelatoriosPage() {
                   render: (row) =>
                     row.monthlyGoal != null && row.monthlyGoal > 0
                       ? `${((row.totalValue / row.monthlyGoal) * 100).toFixed(1)}%`
-                      : "—",
+                      : "-",
                 },
                 {
                   key: "actions",
@@ -578,7 +572,7 @@ export default function RelatoriosPage() {
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Sem recebíveis pagos no período.</p>
+                    <p className="text-sm text-muted-foreground">Sem faturamento gerado no período.</p>
                   )}
                 </CardContent>
               </Card>
@@ -731,41 +725,16 @@ export default function RelatoriosPage() {
                   ),
                 },
                 { key: "client", header: "Cliente", render: (row) => row.clientName },
-                { key: "unit", header: "Unidade", render: (row) => row.unitName },
                 { key: "opened", header: "Abertura", render: (row) => date(row.openedAt) },
                 {
                   key: "due",
                   header: "Vencimento",
-                  render: (row) => (row.dueDate ? date(row.dueDate) : "—"),
+                  render: (row) => (row.dueDate ? date(row.dueDate) : "-"),
                 },
                 {
                   key: "openAmount",
                   header: "Valor em aberto",
                   render: (row) => currency(row.receivableAmount),
-                },
-                {
-                  key: "recvStatus",
-                  header: "Status",
-                  render: (row) => (
-                    <StatusBadge
-                      status={row.receivableStatus === "VENCIDO" ? "Vencido" : "Pendente"}
-                    />
-                  ),
-                },
-                {
-                  key: "reason",
-                  header: "Motivo",
-                  render: (row) => (
-                    <span className="text-sm text-muted-foreground">
-                      {row.reason === "RECEBIVEL_VENCIDO"
-                        ? "Vencido"
-                        : row.reason === "FECHAMENTO_ABERTO"
-                          ? "Fechamento aberto"
-                          : row.reason === "FECHAMENTO_PARCIAL"
-                            ? "Fechamento parcial"
-                            : "Pendente"}
-                    </span>
-                  ),
                 },
               ]}
             />
@@ -776,7 +745,7 @@ export default function RelatoriosPage() {
       <Dialog open={detailRow !== null} onOpenChange={(open) => !open && setDetailRow(null)}>
         <DialogContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Serviços executados — {detailRow?.name}</DialogTitle>
+            <DialogTitle>Serviços executados - {detailRow?.name}</DialogTitle>
             <DialogDescription>Itens vinculados ao funcionário no período filtrado.</DialogDescription>
             {detailRow && (user?.accessLevel === "PROPRIETARIO" || user?.accessLevel === "GESTOR") ? (
               <div className="flex justify-end pt-2">

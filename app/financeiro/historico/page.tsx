@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { PageHeader } from "@/components/ui/page-header";
-import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { usePayables } from "@/hooks/use-payables";
 import { useReceivables } from "@/hooks/use-receivables";
 import { useUnits } from "@/hooks/use-units";
@@ -15,16 +14,9 @@ import { currency, date } from "@/lib/formatters";
 import { getPreviousMonthPrefix } from "@/lib/month-period";
 
 export default function FinanceiroHistoricoPage() {
-  const { unitId } = useCurrentUnit();
   const { units } = useUnits();
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [periodFilter, setPeriodFilter] = useState(() => getPreviousMonthPrefix());
-
-  useEffect(() => {
-    if (unitId) {
-      setSelectedUnitId((current) => current || unitId);
-    }
-  }, [unitId]);
 
   const { receivables, hydrated: receivablesHydrated } = useReceivables({
     unitId: selectedUnitId || undefined,

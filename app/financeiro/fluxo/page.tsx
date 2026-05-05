@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { Button } from "@/components/ui/button";
@@ -14,16 +14,10 @@ import { currency } from "@/lib/formatters";
 import { getCurrentMonthPrefix, getPreviousMonthPrefix } from "@/lib/month-period";
 
 export default function FluxoCaixaPage() {
-  const { unitId, currentUnit } = useCurrentUnit();
+  const { currentUnit } = useCurrentUnit();
   const { units } = useUnits();
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [period, setPeriod] = useState(() => getPreviousMonthPrefix());
-
-  useEffect(() => {
-    if (unitId) {
-      setSelectedUnitId((current) => current || unitId);
-    }
-  }, [unitId]);
 
   const activeUnit = units.find((unit) => unit.id === selectedUnitId) ?? currentUnit;
   const { receivables } = useReceivables({ unitId: selectedUnitId || undefined, period });

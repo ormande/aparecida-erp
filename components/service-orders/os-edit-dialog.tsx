@@ -109,7 +109,13 @@ export function OsEditDialog({
     if (!sameEmployeeForAll || !globalEmployeeId) {
       return;
     }
-    setEditableServices((current) => current.map((line) => ({ ...line, executedByUserId: globalEmployeeId })));
+    setEditableServices((current) =>
+      current.map((line) => ({
+        ...line,
+        executedByUserId: globalEmployeeId,
+        commissionRate: globalEmployeeId === "__casa__" ? 0 : (line.commissionRate || 12),
+      })),
+    );
   }, [sameEmployeeForAll, globalEmployeeId, setEditableServices]);
 
   const draftTotal = useMemo(() => {
@@ -132,6 +138,7 @@ export function OsEditDialog({
         laborPrice: 0,
         laborPriceInput: formatCurrencyInput("0"),
         executedByUserId: sameEmployeeForAll ? globalEmployeeId : "",
+        commissionRate: sameEmployeeForAll && globalEmployeeId === "__casa__" ? 0 : 12,
       },
     ]);
   }
@@ -350,7 +357,15 @@ export function OsEditDialog({
                       value={service.executedByUserId}
                       onChange={(value) =>
                         setEditableServices((current) =>
-                          current.map((item) => (item.id === service.id ? { ...item, executedByUserId: value } : item)),
+                          current.map((item) =>
+                            item.id === service.id
+                              ? {
+                                  ...item,
+                                  executedByUserId: value,
+                                  commissionRate: value === "__casa__" ? 0 : (item.commissionRate || 12),
+                                }
+                              : item,
+                          ),
                         )
                       }
                       placeholder="Selecione o funcionário (opcional)"

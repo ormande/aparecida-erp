@@ -2,41 +2,93 @@ import "@/lib/pdf-fonts";
 import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 
 import type { OrderDetails } from "@/hooks/use-os-page";
+import {
+  formatPdfCurrency,
+  formatPdfDate,
+  formatPdfDocument,
+  formatPdfPhone,
+  sanitizeClosurePdfDescription,
+} from "@/lib/pdf-order-formatters";
 
-import { PdfHeader } from "./pdf-header";
+const COMPANY_TITLE = "Borracharia Nossa Senhora Aparecida";
+const COMPANY_PHONE = "(67) 99222-6129";
+const COMPANY_EMAIL = "diego.pn@hotmail.com";
 
 const styles = StyleSheet.create({
   page: {
     fontFamily: "DM Sans",
     fontSize: 10,
-    padding: 40,
+    paddingTop: 28,
+    paddingRight: 32,
+    paddingBottom: 54,
+    paddingLeft: 32,
     color: "#111111",
-    backgroundcolor: "#111111",
+    backgroundColor: "#FFFFFF",
+  },
+  centerBlock: {
+    alignItems: "center",
+    marginBottom: 28,
+  },
+  companyTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#111111",
+  },
+  companyBody: {
+    fontSize: 10,
+    marginTop: 3,
+    color: "#64748B",
+  },
+  orderTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    marginTop: 20,
+    color: "#A87C20",
+  },
+  orderDate: {
+    fontSize: 10,
+    marginTop: 6,
+    color: "#64748B",
   },
   section: {
-    marginBottom: 16,
+    marginBottom: 22,
+  },
+  clientSection: {
+    marginTop: 14,
+    marginBottom: 28,
+  },
+  tableSection: {
+    marginTop: 14,
+    marginBottom: 22,
   },
   sectionTitle: {
-    fontSize: 10,
-    fontFamily: "DM Sans",
+    fontSize: 11,
     fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 14,
     color: "#A87C20",
     textTransform: "uppercase",
     letterSpacing: 0.6,
-    marginBottom: 8,
   },
-  grid2: {
+  clientRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+    justifyContent: "space-between",
+    gap: 10,
   },
-  gridItem: {
-    width: "48%",
-    marginBottom: 6,
+  clientCell: {
+    flex: 1,
+  },
+  clientCellCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
+  clientCellRight: {
+    flex: 1,
+    alignItems: "flex-end",
   },
   label: {
     fontSize: 8,
-    color: "#64748B",
+    color: "#666666",
     marginBottom: 2,
   },
   value: {
@@ -46,82 +98,76 @@ const styles = StyleSheet.create({
   tableHeader: {
     flexDirection: "row",
     backgroundColor: "#F5F5F5",
-    borderRadius: 4,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderTopColor: "#A87C20",
+    borderBottomColor: "#A87C20",
     paddingVertical: 6,
-    paddingHorizontal: 8,
-    marginBottom: 2,
+    paddingHorizontal: 6,
+    color: "#666666",
   },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
+    borderBottomColor: "#D4D4D4",
+    paddingVertical: 6,
+    paddingHorizontal: 6,
   },
-  colDesc: { flex: 3, fontSize: 9 },
-  colEmployee: { flex: 2, fontSize: 9 },
-  colValue: { flex: 1, fontSize: 9, textAlign: "right" },
-  colDescHeader: { flex: 3, fontSize: 9, fontWeight: "bold", color: "#666666" },
-  colEmployeeHeader: { flex: 2, fontSize: 9, fontWeight: "bold", color: "#666666" },
-  colValueHeader: { flex: 1, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "right" },
-  colQty: { width: 40, fontSize: 9, textAlign: "center" },
-  colUnit: { width: 30, fontSize: 9, textAlign: "center" },
-  colQtyHeader: { width: 40, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "center" },
-  colUnitHeader: { width: 30, fontSize: 9, fontWeight: "bold", color: "#666666", textAlign: "center" },
-  subtotalRow: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginTop: 4,
+  colDescription: {
+    flex: 4.4,
+    fontSize: 9,
     paddingRight: 8,
   },
-  subtotalLabel: {
+  colQty: {
+    flex: 1,
     fontSize: 9,
-    color: "#475569",
-    marginRight: 12,
+    textAlign: "center",
   },
-  subtotalValue: {
+  colUnit: {
+    flex: 1.4,
     fontSize: 9,
-    color: "#475569",
-    fontWeight: "bold",
+    textAlign: "right",
   },
-  totalRow: {
+  colTotal: {
+    flex: 1.4,
+    fontSize: 9,
+    textAlign: "right",
+  },
+  summary: {
+    marginTop: 22,
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  summaryRow: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 2,
-    borderTopColor: "#A87C20",
+    width: 240,
+    justifyContent: "space-between",
+    paddingVertical: 2,
   },
-  totalLabel: {
-    fontSize: 11,
+  summaryLabel: {
+    fontSize: 10,
     fontWeight: "bold",
+    color: "#475569",
+  },
+  summaryValue: {
+    fontSize: 10,
     color: "#111111",
-    marginRight: 12,
   },
   totalValue: {
-    fontSize: 14,
-    fontWeight: "bold",
     color: "#A87C20",
+    fontWeight: "bold",
   },
-  notesBox: {
-    backgroundColor: "#F5F5F5",
-    borderRadius: 4,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-  notesText: {
+  orderReference: {
+    marginTop: 20,
+    textAlign: "center",
     fontSize: 9,
     color: "#475569",
-    lineHeight: 1.5,
   },
   footer: {
     position: "absolute",
-    bottom: 24,
-    left: 40,
-    right: 40,
+    bottom: 22,
+    left: 32,
+    right: 32,
     textAlign: "center",
     fontSize: 8,
     color: "#666666",
@@ -131,12 +177,54 @@ const styles = StyleSheet.create({
   },
 });
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}
+type PdfRow = {
+  id: string;
+  groupType: "service" | "product";
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+};
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("pt-BR").format(new Date(`${value}T00:00:00`));
+function buildGroupedRows(order: OrderDetails): PdfRow[] {
+  const grouped = new Map<string, PdfRow>();
+
+  const pushRow = (row: PdfRow) => {
+    const key = `${row.groupType}|${row.description}|${row.unitPrice.toFixed(2)}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.quantity += row.quantity;
+      existing.total += row.total;
+      return;
+    }
+    grouped.set(key, { ...row });
+  };
+
+  for (const service of order.services) {
+    const quantity = service.quantity ?? 1;
+    const unitPrice = service.laborPrice;
+    pushRow({
+      id: `service-${service.id}`,
+      groupType: "service",
+      description: sanitizeClosurePdfDescription(service.description),
+      quantity,
+      unitPrice,
+      total: service.lineTotal ?? quantity * unitPrice,
+    });
+  }
+
+  for (const product of order.products ?? []) {
+    pushRow({
+      id: `product-${product.id}`,
+      groupType: "product",
+      description: product.description,
+      quantity: product.quantity,
+      unitPrice: product.unitPrice,
+      total: product.totalPrice,
+    });
+  }
+
+  return Array.from(grouped.values());
 }
 
 type OsPdfProps = {
@@ -145,116 +233,74 @@ type OsPdfProps = {
   unitName: string;
 };
 
-export function OsPdf({ order, companyName, unitName }: OsPdfProps) {
-  const paymentTermLabel =
-    order.paymentTerm === "A_PRAZO" ? "A prazo" : order.paymentTerm === "A_VISTA" ? "À vista" : "—";
+export function OsPdf({ order }: OsPdfProps) {
+  const rows = buildGroupedRows(order);
+  const documentLabel = order.clientDocument?.replace(/\D/g, "").length === 14 ? "CNPJ" : "CPF";
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        <PdfHeader companyName={companyName} unitName={unitName} title={`Ordem de Serviço ${order.number}`} />
+        <View style={styles.centerBlock}>
+          <Text style={styles.companyTitle}>{COMPANY_TITLE}</Text>
+          <Text style={styles.companyBody}>Celular: {COMPANY_PHONE}</Text>
+          <Text style={styles.companyBody}>E-mail: {COMPANY_EMAIL}</Text>
+          <Text style={styles.orderTitle}>{order.number}</Text>
+          <Text style={styles.orderDate}>Data de emissão: {formatPdfDate(order.openedAt)}</Text>
+        </View>
 
-        <View style={styles.section}>
+        <View style={[styles.section, styles.clientSection]}>
           <Text style={styles.sectionTitle}>Dados do cliente</Text>
-          <View style={styles.grid2}>
-            <View style={styles.gridItem}>
-              <Text style={styles.label}>Cliente</Text>
-              <Text style={styles.value}>{order.clientName || "—"}</Text>
+          <View style={styles.clientRow}>
+            <View style={styles.clientCell}>
+              <Text style={styles.label}>Nome</Text>
+              <Text style={styles.value}>{order.clientName || "-"}</Text>
             </View>
-            <View style={styles.gridItem}>
-              <Text style={styles.label}>Data de abertura</Text>
-              <Text style={styles.value}>{order.openedAt ? formatDate(order.openedAt) : "—"}</Text>
+            <View style={styles.clientCellCenter}>
+              <Text style={styles.label}>{documentLabel}</Text>
+              <Text style={styles.value}>{formatPdfDocument(order.clientDocument)}</Text>
+            </View>
+            <View style={styles.clientCellRight}>
+              <Text style={styles.label}>Contato</Text>
+              <Text style={styles.value}>{formatPdfPhone(order.clientContact)}</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Dados de pagamento</Text>
-          <View style={styles.grid2}>
-            <View style={styles.gridItem}>
-              <Text style={styles.label}>Forma de pagamento</Text>
-              <Text style={styles.value}>{order.paymentMethod || "—"}</Text>
-            </View>
-            <View style={styles.gridItem}>
-              <Text style={styles.label}>Condição</Text>
-              <Text style={styles.value}>{paymentTermLabel}</Text>
-            </View>
-            {order.paymentTerm === "A_PRAZO" && order.dueDate ? (
-              <View style={styles.gridItem}>
-                <Text style={styles.label}>Vencimento</Text>
-                <Text style={styles.value}>{formatDate(order.dueDate)}</Text>
-              </View>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Serviços</Text>
+        <View style={[styles.section, styles.tableSection]}>
+          <Text style={styles.sectionTitle}>Dados dos produtos/serviços</Text>
           <View style={styles.tableHeader}>
-            <Text style={styles.colQtyHeader}>Qtd</Text>
-            <Text style={styles.colDescHeader}>Descrição</Text>
-            <Text style={styles.colEmployeeHeader}>Funcionário</Text>
-            <Text style={styles.colValueHeader}>Valor</Text>
+            <Text style={styles.colDescription}>Nome do produto/serviço</Text>
+            <Text style={styles.colQty}>Quantidade</Text>
+            <Text style={styles.colUnit}>Valor unitário</Text>
+            <Text style={styles.colTotal}>Valor total</Text>
           </View>
-          {order.services.map((svc, i) => (
-            <View key={`${svc.id}-${i}`} style={styles.tableRow}>
-              <Text style={styles.colQty}>{String(svc.quantity ?? 1)}</Text>
-              <Text style={styles.colDesc}>{svc.description}</Text>
-              <Text style={styles.colEmployee}>{svc.executedByName || "—"}</Text>
-              <Text style={styles.colValue}>{formatCurrency((svc.quantity ?? 1) * svc.laborPrice)}</Text>
+          {rows.map((item) => (
+            <View key={item.id} style={styles.tableRow}>
+              <Text style={styles.colDescription}>{item.description}</Text>
+              <Text style={styles.colQty}>{String(item.quantity)}</Text>
+              <Text style={styles.colUnit}>{formatPdfCurrency(item.unitPrice)}</Text>
+              <Text style={styles.colTotal}>{formatPdfCurrency(item.total)}</Text>
             </View>
           ))}
-        </View>
-
-        {order.products && order.products.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Produtos utilizados</Text>
-            <View style={styles.tableHeader}>
-              <Text style={styles.colQtyHeader}>Qtd</Text>
-              <Text style={styles.colDescHeader}>Descrição</Text>
-              <Text style={styles.colUnitHeader}>Un.</Text>
-              <Text style={styles.colValueHeader}>Vlr unit.</Text>
-              <Text style={styles.colValueHeader}>Total</Text>
+          <View style={styles.summary}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Desconto</Text>
+              <Text style={styles.summaryValue}>{formatPdfCurrency(0)}</Text>
             </View>
-            {order.products.map((p, i) => (
-              <View key={i} style={styles.tableRow}>
-                <Text style={styles.colQty}>{String(p.quantity)}</Text>
-                <Text style={styles.colDesc}>{p.description}</Text>
-                <Text style={styles.colUnit}>{p.unit}</Text>
-                <Text style={styles.colValue}>{formatCurrency(p.unitPrice)}</Text>
-                <Text style={styles.colValue}>{formatCurrency(p.totalPrice)}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        <View style={styles.section}>
-          {order.laborSubtotal != null ? (
-            <View style={styles.subtotalRow}>
-              <Text style={styles.subtotalLabel}>Subtotal mão de obra</Text>
-              <Text style={styles.subtotalValue}>{formatCurrency(order.laborSubtotal)}</Text>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Total</Text>
+              <Text style={[styles.summaryValue, styles.totalValue]}>{formatPdfCurrency(order.total)}</Text>
             </View>
-          ) : null}
-          {order.productsSubtotal != null && order.productsSubtotal > 0 ? (
-            <View style={styles.subtotalRow}>
-              <Text style={styles.subtotalLabel}>Subtotal produtos</Text>
-              <Text style={styles.subtotalValue}>{formatCurrency(order.productsSubtotal)}</Text>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Data de vencimento</Text>
+              <Text style={styles.summaryValue}>
+                {order.paymentTerm === "A_PRAZO" && order.dueDate ? formatPdfDate(order.dueDate) : "À vista"}
+              </Text>
             </View>
-          ) : null}
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalValue}>{formatCurrency(order.total)}</Text>
           </View>
         </View>
 
-        {order.notes ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Observações</Text>
-            <View style={styles.notesBox}>
-              <Text style={styles.notesText}>{order.notes}</Text>
-            </View>
-          </View>
-        ) : null}
+        <Text style={styles.orderReference}>Referente ao pedido de nº {order.number}</Text>
 
         <Text style={styles.footer} fixed>
           Documento gerado pelo Aparecida ERP

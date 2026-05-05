@@ -46,7 +46,11 @@ export function ProductCombobox({ value, onChange, placeholder = "Selecione um p
   }, []);
 
   const options = useMemo(
-    () => products.map((p) => ({ value: p.id, label: `${p.name} — ${currency(p.salePrice)}` })),
+    () =>
+      products.map((p) => ({
+        value: p.id,
+        label: `${p.name} • ${currency(p.salePrice)}`,
+      })),
     [products],
   );
 

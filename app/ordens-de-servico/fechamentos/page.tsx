@@ -24,6 +24,43 @@ import { useServiceOrders } from "@/hooks/use-service-orders";
 import { useUnits } from "@/hooks/use-units";
 import { currency, date, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
 import { getPersonName } from "@/lib/person-helpers";
+import { aggregateFecLineContributionsByOrderNumber } from "@/lib/service-order-reference";
+
+function formatPreviewOrderNumber(value: string) {
+  const match = /^(OS-\d{4}-\d{5})-P(\d+)$/i.exec(value.trim());
+  if (!match) {
+    return value;
+  }
+
+  return `${match[1]} - ${Number(match[2])}ª parcela`;
+}
+
+function formatClosurePreviewOrderLabels(numbers: string[]) {
+  const normalized = numbers.map((value) => value.trim());
+  const parcelBases = new Set(
+    normalized
+      .map((value) => /^(OS-\d{4}-\d{5})-P(\d+)$/i.exec(value)?.[1] ?? null)
+      .filter((value): value is string => Boolean(value)),
+  );
+
+  const labels = new Map<string, string>();
+  for (const number of normalized) {
+    const parcelMatch = /^(OS-\d{4}-\d{5})-P(\d+)$/i.exec(number);
+    if (parcelMatch) {
+      labels.set(number, `${parcelMatch[1]} - ${Number(parcelMatch[2])}ª parcela`);
+      continue;
+    }
+
+    if (parcelBases.has(number)) {
+      labels.set(number, `${number} - 1ª parcela`);
+      continue;
+    }
+
+    labels.set(number, number);
+  }
+
+  return labels;
+}
 
 const PAYMENT_METHOD_OPTIONS = [
   { value: "Pix", label: "PIX" },
@@ -147,6 +184,29 @@ export default function FechamentosPage() {
     value: customer.id,
     label: getPersonName(customer, "-"),
   }));
+
+  const previewOrderLines = useMemo(() => {
+    if (!orderPreview) {
+      return [];
+    }
+
+    const entries = Array.from(
+      aggregateFecLineContributionsByOrderNumber(
+        orderPreview.services.map((service) => ({
+          description: service.description,
+          lineTotal: service.lineTotal ?? (service.quantity ?? 1) * service.laborPrice,
+          referencedOrderNumber: service.referencedOrderNumber,
+        })),
+      ).entries(),
+    );
+    const labels = formatClosurePreviewOrderLabels(entries.map(([number]) => number));
+
+    return entries.map(([number, amount]) => ({
+      number,
+      label: labels.get(number) ?? formatPreviewOrderNumber(number),
+      amount,
+    }));
+  }, [orderPreview]);
 
   async function handleStatusChange(
     id: string,
@@ -310,7 +370,7 @@ export default function FechamentosPage() {
         }
       />
 
-      <div className="surface-card space-y-5 p-6">
+      <div className="surface-card space-y-5 overflow-x-auto p-6 [&_td:last-child>div]:flex-nowrap [&_td:last-child]:whitespace-nowrap">
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant={selectedUnitId === "" ? "default" : "outline"} onClick={() => setSelectedUnitId("")}>Geral</Button>
           {units.map((unit) => <Button key={unit.id} size="sm" variant={selectedUnitId === unit.id ? "default" : "outline"} onClick={() => setSelectedUnitId(unit.id)}>{unit.name}</Button>)}
@@ -400,7 +460,7 @@ export default function FechamentosPage() {
               header: "Valor devido",
               render: (row) =>
                 row.paymentStatus === "PAGO" ? (
-                  <span className="text-muted-foreground">—</span>
+                        <span className="text-muted-foreground">-</span>
                 ) : (
                   currency(row.receivableAmount ?? 0)
                 ),
@@ -513,10 +573,10 @@ export default function FechamentosPage() {
               <div className="rounded-2xl border bg-muted/20 p-4">
                 <p className="font-medium">Serviços</p>
                 <div className="mt-3 space-y-2">
-                  {orderPreview.services.map((service) => (
-                    <div key={service.id} className="flex items-center justify-between text-sm">
-                      <span>{service.description}</span>
-                      <span>{currency(service.laborPrice)}</span>
+                  {previewOrderLines.map((sourceOrder) => (
+                    <div key={sourceOrder.number} className="flex items-center justify-between text-sm">
+                      <span>{sourceOrder.label}</span>
+                      <span>{currency(sourceOrder.amount)}</span>
                     </div>
                   ))}
                 </div>

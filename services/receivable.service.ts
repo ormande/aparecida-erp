@@ -1,12 +1,11 @@
 import { randomUUID } from "crypto";
 
-import type { Prisma, ServiceOrderStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 import { mapReceivableToAppReceivable } from "@/lib/db-mappers";
 import { parcelColumnLabel } from "@/lib/receivable-display";
 import {
   extractReceivableIdsFromText,
-  fecLineReferencedOrderNumbers,
   getReferencedOrderNumbersFromFecItems,
 } from "@/lib/service-order-reference";
 import { getAuditPrisma } from "@/lib/prisma-audit";
@@ -384,47 +383,22 @@ export const receivableService = {
             }
 
             if (sourceOrderIds.length > 0) {
-              if (allPaid) {
-                await tx.serviceOrder.updateMany({
-                  where: { id: { in: sourceOrderIds } },
-                  data: {
-                    status: "CONCLUIDA",
-                    paymentStatus: "PAGO",
-                    closedAt: new Date(),
-                    updatedByUserId: context.userId,
-                  },
-                });
-              } else {
-                const previousStatusByNumber = new Map<string, ServiceOrderStatus>();
-                for (const item of closure.items) {
-                  for (const number of fecLineReferencedOrderNumbers(item)) {
-                    if (!previousStatusByNumber.has(number)) {
-                      previousStatusByNumber.set(number, item.previousOrderStatus ?? "ABERTA");
-                    }
-                  }
-                }
-
-                for (const sourceOrder of sourceOrders) {
-                  await tx.serviceOrder.update({
-                    where: { id: sourceOrder.id },
-                    data: {
-                      status: previousStatusByNumber.get(sourceOrder.number) ?? "ABERTA",
-                      paymentStatus: "PENDENTE",
-                      closedAt: null,
-                      updatedByUserId: context.userId,
-                    },
-                  });
-                }
-              }
+              await tx.serviceOrder.updateMany({
+                where: { id: { in: sourceOrderIds } },
+                data: {
+                  status: "CONCLUIDA",
+                  paymentStatus: allPaid ? "PAGO" : "PENDENTE",
+                  updatedByUserId: context.userId,
+                },
+              });
             }
           }
 
           await tx.serviceOrder.update({
             where: { id: existing.serviceOrder!.id },
             data: {
-              status: allPaid ? closure.status : paymentStatus === "PENDENTE" ? "ABERTA" : closure.status,
+              status: "CONCLUIDA",
               paymentStatus,
-              closedAt: allPaid ? new Date() : null,
               updatedByUserId: context.userId,
             },
           });
@@ -432,8 +406,8 @@ export const receivableService = {
           await tx.serviceOrder.update({
             where: { id: existing.serviceOrder!.id },
             data: {
+              status: "CONCLUIDA",
               paymentStatus,
-              closedAt: allPaid ? new Date() : null,
               updatedByUserId: context.userId,
             },
           });

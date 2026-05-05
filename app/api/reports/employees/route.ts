@@ -5,6 +5,8 @@ import { getRequiredSessionContext } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatReportLocalDate, parseReportDayEnd, parseReportDayStart } from "@/lib/report-dates";
 
+const HOUSE_EMPLOYEE_ID = "__casa__";
+
 const querySchema = z
   .object({
     employeeId: z.string().min(1).optional(),
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest) {
   const end = parseReportDayEnd(endDate);
   const { companyId } = auth.context;
 
-  if (employeeId) {
+  if (employeeId && employeeId !== HOUSE_EMPLOYEE_ID) {
     const allowed = await prisma.user.findFirst({
       where: { id: employeeId, companyId },
       select: { id: true },
@@ -60,9 +62,21 @@ export async function GET(request: NextRequest) {
 
   // Comissão só sobre serviços (mão de obra / ServiceOrderItem.laborPrice).
   // Produtos lançados na OS (ServiceOrderProduct) não têm commissionRate e não entram aqui.
+  const executorFilter =
+    employeeId === HOUSE_EMPLOYEE_ID
+      ? { executedByUserId: null, commissionRate: 0 }
+      : employeeId
+        ? { executedByUserId: employeeId }
+        : {
+            OR: [
+              { executedByUserId: { not: null } },
+              { executedByUserId: null, commissionRate: 0 },
+            ],
+          };
+
   const items = await prisma.serviceOrderItem.findMany({
     where: {
-      executedByUserId: employeeId ? employeeId : { not: null },
+      ...executorFilter,
       serviceOrder: {
         companyId,
         openedAt: { gte: start, lte: end },
@@ -100,7 +114,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  if (employeeId) {
+  if (employeeId && employeeId !== HOUSE_EMPLOYEE_ID) {
     userIds.add(employeeId);
   }
 
@@ -109,6 +123,21 @@ export async function GET(request: NextRequest) {
     select: { id: true, name: true, email: true, monthlyGoal: true },
   });
   const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const shouldIncludeHouse =
+    employeeId === HOUSE_EMPLOYEE_ID || items.some((item) => !item.executedByUserId && item.commissionRate === 0);
+  if (shouldIncludeHouse) {
+    byUser.set(HOUSE_EMPLOYEE_ID, {
+      id: HOUSE_EMPLOYEE_ID,
+      name: "Casa",
+      email: "",
+      monthlyGoal: null,
+      totalServices: 0,
+      totalValue: 0,
+      totalCommission: 0,
+      services: [],
+    });
+  }
 
   for (const uid of Array.from(userIds)) {
     const u = userMap.get(uid);
@@ -128,7 +157,7 @@ export async function GET(request: NextRequest) {
   }
 
   for (const item of items) {
-    const uid = item.executedByUserId;
+    const uid = item.executedByUserId ?? (item.commissionRate === 0 ? HOUSE_EMPLOYEE_ID : null);
     if (!uid) {
       continue;
     }
@@ -151,7 +180,7 @@ export async function GET(request: NextRequest) {
       byUser.set(uid, agg);
     }
     const val = Number(item.laborPrice);
-    const commission = (val * (item.commissionRate ?? 12)) / 100;
+    const commission = uid === HOUSE_EMPLOYEE_ID ? 0 : (val * (item.commissionRate ?? 12)) / 100;
     agg.totalServices += 1;
     agg.totalValue += val;
     agg.totalCommission += commission;

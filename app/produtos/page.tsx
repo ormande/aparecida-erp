@@ -210,7 +210,7 @@ export default function ProdutosPage() {
           data={products}
           pageSize={10}
           isLoading={!hydrated}
-          searchPlaceholder="Buscar por nome, marca ou código"
+          searchPlaceholder="Buscar por nome, marca ou categoria"
           searchKeys={searchKeys}
           columns={[
             {
@@ -225,14 +225,8 @@ export default function ProdutosPage() {
                 </div>
               ),
             },
-            { key: "code", header: "Código", render: (row) => row.internalCode || "—" },
-            { key: "category", header: "Categoria", render: (row) => row.category || "—" },
+              { key: "category", header: "Categoria", render: (row) => row.category || "-" },
             { key: "unit", header: "Unidade", render: (row) => row.unit },
-            {
-              key: "costPrice",
-              header: "Preço de custo",
-              render: (row) => (row.costPrice != null ? currency(row.costPrice) : "—"),
-            },
             { key: "salePrice", header: "Preço de venda", render: (row) => currency(row.salePrice) },
             {
               key: "status",

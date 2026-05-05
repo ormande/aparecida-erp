@@ -22,7 +22,7 @@ export const apiRatelimit = isRateLimitDisabled
   : new Ratelimit({ redis: redis!, limiter: Ratelimit.slidingWindow(60, "1 m"), prefix: "ratelimit:api" });
 
 export function getRateLimitIdentifier(request: Request): string {
-  // x-forwarded-for: pode conter lista "client, proxy1, proxy2" — pega o primeiro (cliente real)
+  // x-forwarded-for: pode conter lista "client, proxy1, proxy2" - pega o primeiro (cliente real)
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
     const ip = forwarded.split(",")[0]?.trim();

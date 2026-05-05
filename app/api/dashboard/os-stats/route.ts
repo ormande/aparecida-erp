@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 
 import { getRequiredSessionContext } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { countDistinctLogicalServiceOrders } from "@/lib/service-order-stats";
 
 const querySchema = z.object({
   unitId: z.string().min(1).optional(),
@@ -40,39 +41,54 @@ export async function GET(request: NextRequest) {
   const { monthStart, now } = getCurrentMonthRange();
   const unitFilter = unitId ? { unitId } : {};
 
-  const [coletadas, faturadas, totalProduzido, emCaixaTotal, emCaixaRows] = await Promise.all([
+  const baseMonth = {
+    companyId,
+    ...unitFilter,
+    openedAt: { gte: monthStart, lte: now },
+    status: { not: "CANCELADA" as const },
+  };
+
+  const [
+    coletadasAgg,
+    coletadasRows,
+    faturadasAgg,
+    faturadasRows,
+    totalProduzidoAgg,
+    totalProduzidoRows,
+    emCaixaTotal,
+    emCaixaRows,
+  ] = await Promise.all([
     prisma.serviceOrder.aggregate({
-      where: {
-        companyId,
-        ...unitFilter,
-        openedAt: { gte: monthStart, lte: now },
-        status: { not: "CANCELADA" },
-        isBilled: false,
-      },
-      _count: { _all: true },
+      where: { ...baseMonth, isBilled: false },
       _sum: { totalAmount: true },
+    }),
+    prisma.serviceOrder.findMany({
+      where: { ...baseMonth, isBilled: false },
+      select: { id: true, parcelGroupId: true },
     }),
     prisma.serviceOrder.aggregate({
       where: {
-        companyId,
-        ...unitFilter,
-        openedAt: { gte: monthStart, lte: now },
-        status: { not: "CANCELADA" },
+        ...baseMonth,
         isBilled: true,
         paymentStatus: { not: "PAGO" },
       },
-      _count: { _all: true },
       _sum: { totalAmount: true },
     }),
-    prisma.serviceOrder.aggregate({
+    prisma.serviceOrder.findMany({
       where: {
-        companyId,
-        ...unitFilter,
-        openedAt: { gte: monthStart, lte: now },
-        status: { not: "CANCELADA" },
+        ...baseMonth,
+        isBilled: true,
+        paymentStatus: { not: "PAGO" },
       },
-      _count: { _all: true },
+      select: { id: true, parcelGroupId: true },
+    }),
+    prisma.serviceOrder.aggregate({
+      where: baseMonth,
       _sum: { totalAmount: true },
+    }),
+    prisma.serviceOrder.findMany({
+      where: baseMonth,
+      select: { id: true, parcelGroupId: true },
     }),
     prisma.accountReceivable.aggregate({
       where: {
@@ -95,22 +111,35 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
+  const paidOrderIds = Array.from(
+    new Set(
+      emCaixaRows.map((row) => row.serviceOrderId).filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const paidOrdersForCaixa =
+    paidOrderIds.length === 0
+      ? []
+      : await prisma.serviceOrder.findMany({
+          where: { id: { in: paidOrderIds }, companyId },
+          select: { id: true, parcelGroupId: true },
+        });
+
   return NextResponse.json({
     coletadas: {
-      count: coletadas._count._all,
-      total: Number(coletadas._sum.totalAmount ?? 0),
+      count: countDistinctLogicalServiceOrders(coletadasRows),
+      total: Number(coletadasAgg._sum.totalAmount ?? 0),
     },
     faturadas: {
-      count: faturadas._count._all,
-      total: Number(faturadas._sum.totalAmount ?? 0),
+      count: countDistinctLogicalServiceOrders(faturadasRows),
+      total: Number(faturadasAgg._sum.totalAmount ?? 0),
     },
     emCaixa: {
-      count: new Set(emCaixaRows.map((row) => row.serviceOrderId).filter(Boolean)).size,
+      count: countDistinctLogicalServiceOrders(paidOrdersForCaixa),
       total: Number(emCaixaTotal._sum.amount ?? 0),
     },
     totalProduzido: {
-      count: totalProduzido._count._all,
-      total: Number(totalProduzido._sum.totalAmount ?? 0),
+      count: countDistinctLogicalServiceOrders(totalProduzidoRows),
+      total: Number(totalProduzidoAgg._sum.totalAmount ?? 0),
     },
   });
 }

@@ -9,6 +9,10 @@ import {
   parseReportDayEnd,
   parseReportDayStart,
 } from "@/lib/report-dates";
+import {
+  countLogicalFullyBilledServiceOrders,
+  LOGICAL_SERVICE_ORDER_ROOT,
+} from "@/lib/service-order-stats";
 
 const querySchema = z
   .object({
@@ -46,17 +50,18 @@ export async function GET(request: NextRequest) {
   const { companyId } = auth.context;
 
   const unitFilter = unitId ? { unitId } : {};
+  const generatedRevenueFilter = {
+    companyId,
+    openedAt: { gte: start, lte: end },
+    NOT: { number: { startsWith: "FEC-" } },
+    ...unitFilter,
+  };
 
-  const [revenueAgg, receivablePending, payablePending, ordersOpened, ordersConcluded, paidRows, units] =
+  const [generatedRevenueAgg, receivablePending, payablePending, ordersOpened, generatedRows, units] =
     await Promise.all([
-      prisma.accountReceivable.aggregate({
-        where: {
-          companyId,
-          status: "PAGO",
-          paidAt: { gte: start, lte: end },
-          ...(unitId ? { unitId } : {}),
-        },
-        _sum: { amount: true },
+      prisma.serviceOrder.aggregate({
+        where: generatedRevenueFilter,
+        _sum: { totalAmount: true },
       }),
       prisma.accountReceivable.aggregate({
         where: {
@@ -78,27 +83,13 @@ export async function GET(request: NextRequest) {
       }),
       prisma.serviceOrder.count({
         where: {
-          companyId,
-          openedAt: { gte: start, lte: end },
-          ...unitFilter,
+          ...generatedRevenueFilter,
+          ...LOGICAL_SERVICE_ORDER_ROOT,
         },
       }),
-      prisma.serviceOrder.count({
-        where: {
-          companyId,
-          status: "CONCLUIDA",
-          closedAt: { gte: start, lte: end },
-          ...unitFilter,
-        },
-      }),
-      prisma.accountReceivable.findMany({
-        where: {
-          companyId,
-          status: "PAGO",
-          paidAt: { gte: start, lte: end },
-          ...(unitId ? { unitId } : {}),
-        },
-        select: { paidAt: true, amount: true },
+      prisma.serviceOrder.findMany({
+        where: generatedRevenueFilter,
+        select: { openedAt: true, totalAmount: true },
       }),
       prisma.unit.findMany({
         where: { companyId, isActive: true },
@@ -107,17 +98,16 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+  const ordersConcluded = await countLogicalFullyBilledServiceOrders(generatedRevenueFilter);
+
   const revenueByDayMap = new Map<string, number>();
   for (const key of iterDaysInclusive(startDate, endDate)) {
     revenueByDayMap.set(key, 0);
   }
-  for (const row of paidRows) {
-    if (!row.paidAt) {
-      continue;
-    }
-    const key = formatReportLocalDate(new Date(row.paidAt));
+  for (const row of generatedRows) {
+    const key = formatReportLocalDate(new Date(row.openedAt));
     if (revenueByDayMap.has(key)) {
-      revenueByDayMap.set(key, (revenueByDayMap.get(key) ?? 0) + Number(row.amount));
+      revenueByDayMap.set(key, (revenueByDayMap.get(key) ?? 0) + Number(row.totalAmount));
     }
   }
   const revenueByDay = Array.from(revenueByDayMap.entries()).map(([date, value]) => ({ date, value }));
@@ -126,31 +116,29 @@ export async function GET(request: NextRequest) {
 
   const byUnit = await Promise.all(
     unitsToBreakdown.map(async (u) => {
+      const unitBase = {
+        companyId,
+        unitId: u.id,
+        openedAt: { gte: start, lte: end },
+        NOT: { number: { startsWith: "FEC-" } },
+      } as const;
+
       const [rev, opened, concluded] = await Promise.all([
-        prisma.accountReceivable.aggregate({
-          where: {
-            companyId,
-            unitId: u.id,
-            status: "PAGO",
-            paidAt: { gte: start, lte: end },
-          },
-          _sum: { amount: true },
-        }),
-        prisma.serviceOrder.count({
-          where: { companyId, unitId: u.id, openedAt: { gte: start, lte: end } },
+        prisma.serviceOrder.aggregate({
+          where: unitBase,
+          _sum: { totalAmount: true },
         }),
         prisma.serviceOrder.count({
           where: {
-            companyId,
-            unitId: u.id,
-            status: "CONCLUIDA",
-            closedAt: { gte: start, lte: end },
+            ...unitBase,
+            ...LOGICAL_SERVICE_ORDER_ROOT,
           },
         }),
+        countLogicalFullyBilledServiceOrders(unitBase),
       ]);
       return {
         unitName: u.name,
-        revenue: Number(rev._sum.amount ?? 0),
+        revenue: Number(rev._sum.totalAmount ?? 0),
         ordersOpened: opened,
         ordersConcluded: concluded,
       };
@@ -158,7 +146,7 @@ export async function GET(request: NextRequest) {
   );
 
   return NextResponse.json({
-    totalRevenue: Number(revenueAgg._sum.amount ?? 0),
+    totalRevenue: Number(generatedRevenueAgg._sum.totalAmount ?? 0),
     totalReceivable: Number(receivablePending._sum.amount ?? 0),
     totalPayable: Number(payablePending._sum.amount ?? 0),
     ordersOpened,

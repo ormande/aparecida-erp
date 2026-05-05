@@ -32,7 +32,7 @@ export type OsInstallmentPlanFieldsHandle = {
   validate: () => boolean;
   /** Abertura: omitir campo no POST quando parcela única */
   getForCreate: () => OrderInstallmentPayload[] | undefined;
-  /** Edição: sempre enviar — [] limpa plano salvo; 2+ grava novo plano */
+  /** Edição: sempre enviar - [] limpa plano salvo; 2+ grava novo plano */
   getForEditSave: () => OrderInstallmentPayload[];
 };
 
@@ -426,7 +426,7 @@ export const OsInstallmentPlanFields = forwardRef<OsInstallmentPlanFieldsHandle,
                     className="grid grid-cols-1 gap-3 rounded-lg border p-3 sm:grid-cols-2 sm:gap-4"
                   >
                     <div className="grid min-w-0 gap-1.5">
-                      <Label className="text-muted-foreground">Parcela {index + 1} — vencimento</Label>
+                  <Label className="text-muted-foreground">Parcela {index + 1} - vencimento</Label>
                       <DatePicker
                         value={item.dueDate}
                         disabled={disabled}

@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 import { withSentryConfig } from "@sentry/nextjs";
 
-const nextConfig = {};
+const nextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+};
 
 export default withSentryConfig(nextConfig, {
   silent: true,
