@@ -25,13 +25,11 @@ export function AppHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const [pageTitle, setPageTitle] = useState("");
-  const [pageSubtitle, setPageSubtitle] = useState("");
 
   useEffect(() => {
     const syncHeaderMeta = () => {
       const meta = document.querySelector<HTMLElement>("[data-page-header-meta='true']");
       setPageTitle(meta?.dataset.pageTitle ?? "");
-      setPageSubtitle(meta?.dataset.pageSubtitle ?? "");
     };
 
     syncHeaderMeta();
@@ -41,7 +39,7 @@ export function AppHeader() {
       subtree: true,
       childList: true,
       attributes: true,
-      attributeFilter: ["data-page-title", "data-page-subtitle"],
+      attributeFilter: ["data-page-title"],
     });
 
     return () => observer.disconnect();
@@ -49,7 +47,7 @@ export function AppHeader() {
 
   return (
     <header className="fixed inset-x-0 top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70 md:left-[240px]">
-      <div className="flex min-h-20 items-start gap-3 px-4 py-4 md:px-8">
+      <div className="flex min-h-16 items-center gap-3 px-4 py-3 md:px-8">
         <Sheet>
           <SheetTrigger
             render={
@@ -64,10 +62,7 @@ export function AppHeader() {
         </Sheet>
 
         <div className="min-w-0 flex-1 pr-2">
-          {pageTitle ? <p className="truncate text-2xl font-semibold tracking-tight">{pageTitle}</p> : null}
-          {pageSubtitle ? (
-            <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{pageSubtitle}</p>
-          ) : null}
+          {pageTitle ? <p className="truncate text-xl font-semibold tracking-tight">{pageTitle}</p> : null}
         </div>
 
         <ThemeToggle />

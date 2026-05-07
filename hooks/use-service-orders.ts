@@ -59,6 +59,7 @@ type UseServiceOrdersParams = {
   status?: string;
   unitId?: string;
   customerId?: string;
+  customerDocument?: string;
   numberPrefix?: string;
   excludeFechamentos?: boolean;
   openedMonth?: string;
@@ -91,6 +92,7 @@ export function useServiceOrders(filters?: UseServiceOrdersParams) {
     if (filters?.status) params.set("status", filters.status);
     if (filters?.unitId) params.set("unitId", filters.unitId);
     if (filters?.customerId) params.set("customerId", filters.customerId);
+    if (filters?.customerDocument?.trim()) params.set("customerDocument", filters.customerDocument.trim());
     if (filters?.numberPrefix) params.set("numberPrefix", filters.numberPrefix);
     if (filters?.excludeFechamentos) params.set("excludeFechamentos", "true");
     if (filters?.openedMonth) params.set("openedMonth", filters.openedMonth);
@@ -105,6 +107,7 @@ export function useServiceOrders(filters?: UseServiceOrdersParams) {
   }, [
     filters?.billingScope,
     filters?.customerId,
+    filters?.customerDocument,
     filters?.excludeFechamentos,
     filters?.limit,
     filters?.maxTotal,

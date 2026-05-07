@@ -7,7 +7,7 @@ import { ServiceError } from "@/services/service-error";
 
 const closureSchema = z.object({
   customerId: z.string().min(1),
-  month: z.string().regex(/^\d{4}-\d{2}$/),
+  month: z.string().regex(/^\d{4}-\d{2}$/).optional().nullable(),
   sourceOrderIds: z.array(z.string().min(1)).default([]),
   sourceSelections: z
     .array(

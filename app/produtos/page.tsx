@@ -110,6 +110,7 @@ export default function ProdutosPage() {
     <div className="space-y-8">
       <PageHeader
         title="Produtos"
+        className="hidden"
         subtitle="Gerencie o catálogo de produtos disponíveis para lançamento nas OS."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
@@ -208,6 +209,63 @@ export default function ProdutosPage() {
 
         <DataTable
           data={products}
+          headerActions={
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger
+                render={
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Novo produto
+                  </Button>
+                }
+              />
+              <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Novo produto</DialogTitle>
+                  <DialogDescription>Cadastre o produto sem sair da lista.</DialogDescription>
+                </DialogHeader>
+                <ProductForm
+                  submitLabel="Salvar produto"
+                  categories={categories}
+                  onSubmit={async (values) => {
+                    const response = await fetch("/api/products", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(values),
+                    });
+
+                    const data = await response.json().catch(() => ({}));
+
+                    if (!response.ok) {
+                      toast.error(
+                        (data as { message?: string; error?: string }).message ??
+                          (data as { error?: string }).error ??
+                          "Não foi possível cadastrar o produto.",
+                      );
+                      return;
+                    }
+
+                    toast.success("Produto cadastrado com sucesso!");
+                    setOpen(false);
+
+                    const params = new URLSearchParams();
+                    if (activeFilter) params.set("isActive", activeFilter);
+                    if (categoryFilter) params.set("category", categoryFilter);
+                    setHydrated(false);
+                    const refreshed = await fetch(`/api/products?${params.toString()}`).then((res) => res.json()).catch(() => ({}));
+                    setProducts(
+                      ((refreshed as { products?: ProductApiRow[] }).products ?? []).map((p) => ({
+                        ...p,
+                        costPrice: p.costPrice == null || p.costPrice === "" ? null : Number(p.costPrice),
+                        salePrice: Number(p.salePrice),
+                      })),
+                    );
+                    setHydrated(true);
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          }
           pageSize={10}
           isLoading={!hydrated}
           searchPlaceholder="Buscar por nome, marca ou categoria"

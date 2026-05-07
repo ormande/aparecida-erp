@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogIn } from "lucide-react";
@@ -54,6 +55,14 @@ export function LoginScreen() {
     router.push(nextUrl);
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canSubmit) {
+      return;
+    }
+    await handleLogin();
+  }
+
   return (
     <div className="navy-pattern relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(232,201,106,0.1),transparent_28%),linear-gradient(135deg,transparent_20%,rgba(255,255,255,0.02)_100%)]" />
@@ -67,7 +76,8 @@ export function LoginScreen() {
             <p className="text-sm text-[rgba(240,244,248,0.72)]">Acesso interno ao sistema da borracharia</p>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
+          <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid gap-2">
             <Label htmlFor="email" className="text-white">E-mail</Label>
             <Input
@@ -92,8 +102,8 @@ export function LoginScreen() {
           </div>
 
           <Button
+            type="submit"
             className="h-12 w-full rounded-2xl border border-[var(--color-gold-dark)] bg-[var(--color-gold)] text-[var(--color-navy)] hover:bg-[var(--color-gold-light)]"
-            onClick={handleLogin}
             disabled={!canSubmit}
           >
             <LogIn className="mr-2 h-4 w-4" />
@@ -106,6 +116,7 @@ export function LoginScreen() {
           >
             Primeiro acesso ao sistema →
           </Link>
+          </form>
         </CardContent>
         <CardFooter className="justify-center pt-2 text-xs text-[rgba(240,244,248,0.58)]">
           {"\u00a9"} 2026 Aparecida ERP

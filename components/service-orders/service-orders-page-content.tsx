@@ -45,6 +45,7 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
     <div className="space-y-8">
       <PageHeader
         title={title}
+        className="hidden"
         subtitle={
           p.selectedUnitId && p.currentUnit
             ? `Acompanhe as OS da unidade ${p.currentUnit.name}.`
@@ -52,12 +53,9 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
         }
         actions={
           <div className="flex flex-wrap gap-3">
-            <Link href="/ordens-de-servico/fechamentos">
-              <Button variant="outline">OS de fechamento</Button>
-            </Link>
             {allowClosureGrouping ? (
               <Button variant={p.groupByCustomer ? "default" : "outline"} onClick={() => p.setGroupByCustomer((c) => !c)}>
-                {p.groupByCustomer ? "Visão individual" : "Unificar por cliente/mês"}
+                {p.groupByCustomer ? "Visão individual" : "Unificar por cliente"}
               </Button>
             ) : null}
             <Button variant="outline" onClick={p.clearFilters}>
@@ -79,24 +77,48 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
         }
       />
       <div className="surface-card space-y-5 overflow-x-auto p-6 [&_td:last-child>div]:flex-nowrap [&_td:last-child]:whitespace-nowrap">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant={p.selectedUnitId === "" ? "default" : "outline"}
-            onClick={() => p.setSelectedUnitId("")}
-          >
-            Geral
-          </Button>
-          {p.units.map((unit) => (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
             <Button
-              key={unit.id}
               size="sm"
-              variant={p.selectedUnitId === unit.id ? "default" : "outline"}
-              onClick={() => p.setSelectedUnitId(unit.id)}
+              variant={p.selectedUnitId === "" ? "default" : "outline"}
+              onClick={() => p.setSelectedUnitId("")}
             >
-              {unit.name}
+              Geral
             </Button>
-          ))}
+            {p.units.map((unit) => (
+              <Button
+                key={unit.id}
+                size="sm"
+                variant={p.selectedUnitId === unit.id ? "default" : "outline"}
+                onClick={() => p.setSelectedUnitId(unit.id)}
+              >
+                {unit.name}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {allowClosureGrouping ? (
+              <Button variant={p.groupByCustomer ? "default" : "outline"} onClick={() => p.setGroupByCustomer((c) => !c)}>
+                {p.groupByCustomer ? "Visão individual" : "Unificar por cliente"}
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={p.clearFilters}>
+              Excluir filtros
+            </Button>
+            <Link href="/ordens-de-servico/nova?standalone=1">
+              <Button variant="outline">
+                <FilePlus2 className="mr-2 h-4 w-4" />
+                OS avulsa
+              </Button>
+            </Link>
+            <Link href={p.queryClientId ? `/ordens-de-servico/nova?clientId=${p.queryClientId}` : "/ordens-de-servico/nova"}>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Nova OS
+              </Button>
+            </Link>
+          </div>
         </div>
         <div className="grid gap-3 lg:grid-cols-4">
           <SearchableSelect

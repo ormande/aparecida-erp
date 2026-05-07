@@ -47,6 +47,7 @@ export default function FornecedoresPage() {
     <div className="space-y-8">
       <PageHeader
         title="Fornecedores"
+        className="hidden"
         subtitle="Gerencie parceiros de pneus, peças, insumos e serviços com base real da empresa."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
@@ -98,6 +99,51 @@ export default function FornecedoresPage() {
       <div className="surface-card p-6">
         <DataTable
           data={data}
+          headerActions={
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger
+                render={
+                  <Button className="rounded-full">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Novo fornecedor
+                  </Button>
+                }
+              />
+              <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Novo fornecedor</DialogTitle>
+                  <DialogDescription>Cadastre o fornecedor sem sair da lista.</DialogDescription>
+                </DialogHeader>
+                <SupplierForm
+                  submitLabel="Salvar fornecedor"
+                  onSubmit={async (values) => {
+                    const response = await fetch("/api/suppliers", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(values),
+                    });
+
+                    const data = await response.json().catch(() => ({}));
+
+                    if (!response.ok) {
+                      toast.error(
+                        (data as { message?: string; error?: string }).message ??
+                          (data as { error?: string }).error ??
+                          "Não foi possível cadastrar o fornecedor.",
+                      );
+                      return;
+                    }
+
+                    toast.success("Fornecedor cadastrado com sucesso!");
+                    setOpen(false);
+                    await mutate("/api/suppliers");
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          }
           isLoading={!hydrated}
           pageSize={10}
           searchPlaceholder="Buscar por nome, CNPJ/CPF, categoria ou celular"

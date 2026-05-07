@@ -58,7 +58,7 @@ const baseItems: NavItem[] = [
       { href: "/ordens-de-servico", label: "Ordens abertas", icon: Wrench },
       { href: "/ordens-de-servico/faturadas", label: "Ordens faturadas", icon: Wrench },
       { href: "/ordens-de-servico/pagas", label: "Ordens pagas", icon: Wrench },
-      { href: "/ordens-de-servico/fechamentos", label: "Fechamentos", icon: Package },
+      { href: "/ordens-de-servico/consulta", label: "Consulta", icon: Package },
     ],
   },
   {
@@ -166,7 +166,7 @@ export function AppSidebar({ onNavigate }: SidebarProps) {
 
   return (
     <aside className="flex h-full min-h-0 w-full flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="flex h-20 items-center justify-center border-b border-sidebar-border px-5">
+      <div className="flex min-h-20 items-start justify-center px-5 py-4">
         <NsaLogo compact />
       </div>
 

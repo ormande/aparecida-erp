@@ -40,6 +40,7 @@ export default function FinanceiroReceberPage() {
     <div className="space-y-8">
       <PageHeader
         title="Contas a Receber"
+        className="hidden"
         subtitle="Recebimentos podem vir automaticamente das OS ou entrar manualmente como lançamentos avulsos."
         actions={
           <div className="flex flex-wrap gap-3">
@@ -60,15 +61,33 @@ export default function FinanceiroReceberPage() {
           </div>
         }
       />
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant={p.unitFilter === "" ? "default" : "outline"} onClick={() => p.setUnitFilter("")}>
-          Geral
-        </Button>
-        {p.units.map((unit) => (
-          <Button key={unit.id} size="sm" variant={p.unitFilter === unit.id ? "default" : "outline"} onClick={() => p.setUnitFilter(unit.id)}>
-            {unit.name}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={p.unitFilter === "" ? "default" : "outline"} onClick={() => p.setUnitFilter("")}>
+            Geral
           </Button>
-        ))}
+          {p.units.map((unit) => (
+            <Button key={unit.id} size="sm" variant={p.unitFilter === unit.id ? "default" : "outline"} onClick={() => p.setUnitFilter(unit.id)}>
+              {unit.name}
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/ordens-de-servico/nova" className="inline-flex">
+            <Button variant="outline">Adicionar OS</Button>
+          </Link>
+          <Dialog open={p.open} onOpenChange={p.setOpen}>
+            <DialogTrigger
+              render={
+                <Button onClick={p.openCreateDialog}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Novo recebível
+                </Button>
+              }
+            />
+            <ReceivableFormDialog {...formProps} />
+          </Dialog>
+        </div>
       </div>
       <ReceivablesSummaryCards totalPendente={p.totalPendente} totalVencido={p.totalVencido} totalRecebidoMes={p.totalRecebidoMes} />
       <div className="surface-card space-y-5 overflow-x-auto p-6 [&_td:last-child>div]:flex-nowrap [&_td:last-child]:whitespace-nowrap">

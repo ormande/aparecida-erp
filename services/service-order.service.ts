@@ -92,6 +92,7 @@ type ListOrdersFilters = {
   status?: string;
   unitId?: string;
   customerId?: string;
+  customerDocument?: string;
   /** Ex.: "FEC-" para listar só OS de fechamento */
   numberPrefix?: string;
   /** Exclui números que começam com FEC- (útil para agrupamento / fechamento) */
@@ -767,6 +768,17 @@ export const serviceOrderService = {
       extraAnd.push({ NOT: { number: { startsWith: "FEC-" } } });
     }
 
+    if (filters.customerDocument?.trim()) {
+      const digits = filters.customerDocument.replace(/\D/g, "");
+      if (digits) {
+        extraAnd.push({
+          customer: {
+            OR: [{ cpf: { contains: digits } }, { cnpj: { contains: digits } }],
+          },
+        });
+      }
+    }
+
     const openedMonthMatch = filters.openedMonth?.trim() && /^(\d{4})-(\d{2})$/.exec(filters.openedMonth.trim());
     if (openedMonthMatch) {
       const y = Number(openedMonthMatch[1]);
@@ -801,7 +813,31 @@ export const serviceOrderService = {
     }
 
     const bs = filters.billingScope;
+    let hiddenSourceOrderNumbers = new Set<string>();
     if (bs === "ABERTAS") {
+      const openClosures = await prisma.serviceOrder.findMany({
+        where: {
+          companyId: context.companyId,
+          ...(filters.unitId ? { unitId: filters.unitId } : {}),
+          number: { startsWith: "FEC-" },
+          isBilled: false,
+          paymentStatus: { not: "PAGO" },
+        },
+        select: {
+          items: {
+            select: {
+              description: true,
+              referencedOrderNumber: true,
+            },
+          },
+        },
+      });
+      hiddenSourceOrderNumbers = new Set(
+        openClosures.flatMap((closure) => Array.from(getReferencedOrderNumbersFromFecItems(closure.items))),
+      );
+      if (hiddenSourceOrderNumbers.size > 0) {
+        extraAnd.push({ NOT: { number: { in: Array.from(hiddenSourceOrderNumbers) } } });
+      }
       extraAnd.push({ isBilled: false });
       extraAnd.push({
         receivables: {
@@ -813,6 +849,29 @@ export const serviceOrderService = {
       /** Evita OS já quitadas na aba errada e duplicação com “Pagas”; aberta = ainda não faturada e não totalmente paga. */
       extraAnd.push({ paymentStatus: { not: "PAGO" } });
     } else if (bs === "FATURADAS") {
+      const billedClosures = await prisma.serviceOrder.findMany({
+        where: {
+          companyId: context.companyId,
+          ...(filters.unitId ? { unitId: filters.unitId } : {}),
+          number: { startsWith: "FEC-" },
+          isBilled: true,
+          paymentStatus: { not: "PAGO" },
+        },
+        select: {
+          items: {
+            select: {
+              description: true,
+              referencedOrderNumber: true,
+            },
+          },
+        },
+      });
+      hiddenSourceOrderNumbers = new Set(
+        billedClosures.flatMap((closure) => Array.from(getReferencedOrderNumbersFromFecItems(closure.items))),
+      );
+      if (hiddenSourceOrderNumbers.size > 0) {
+        extraAnd.push({ NOT: { number: { in: Array.from(hiddenSourceOrderNumbers) } } });
+      }
       extraAnd.push({ NOT: { paymentStatus: "PAGO" } });
       extraAnd.push({
         OR: [
@@ -829,6 +888,28 @@ export const serviceOrderService = {
         ],
       });
     } else if (bs === "PAGAS") {
+      const paidClosures = await prisma.serviceOrder.findMany({
+        where: {
+          companyId: context.companyId,
+          ...(filters.unitId ? { unitId: filters.unitId } : {}),
+          number: { startsWith: "FEC-" },
+          paymentStatus: "PAGO",
+        },
+        select: {
+          items: {
+            select: {
+              description: true,
+              referencedOrderNumber: true,
+            },
+          },
+        },
+      });
+      hiddenSourceOrderNumbers = new Set(
+        paidClosures.flatMap((closure) => Array.from(getReferencedOrderNumbersFromFecItems(closure.items))),
+      );
+      if (hiddenSourceOrderNumbers.size > 0) {
+        extraAnd.push({ NOT: { number: { in: Array.from(hiddenSourceOrderNumbers) } } });
+      }
       extraAnd.push({ paymentStatus: "PAGO" });
     }
 

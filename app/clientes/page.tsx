@@ -50,6 +50,7 @@ export default function ClientesPage() {
     <div className="space-y-8">
       <PageHeader
         title="Clientes"
+        className="hidden"
         subtitle="Cadastre pessoas físicas e jurídicas com contato rápido e visão completa do relacionamento."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
@@ -97,6 +98,47 @@ export default function ClientesPage() {
       <div className="surface-card p-6">
         <DataTable
           data={data}
+          headerActions={
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger
+                render={
+                  <Button className="rounded-full">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Novo cliente
+                  </Button>
+                }
+              />
+              <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Novo cliente</DialogTitle>
+                  <DialogDescription>Os dados agora são persistidos no banco de dados do sistema.</DialogDescription>
+                </DialogHeader>
+                <ClientForm
+                  submitLabel="Salvar cliente"
+                  onSubmit={async (values) => {
+                    const response = await fetch("/api/customers", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(values),
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                      toast.error(data.message ?? "Não foi possível cadastrar o cliente.");
+                      return;
+                    }
+
+                    await refresh();
+                    toast.success("Cliente cadastrado com sucesso!");
+                    setOpen(false);
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          }
           pageSize={10}
           isLoading={!hydrated}
           totalItems={meta?.total}

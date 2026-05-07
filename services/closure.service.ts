@@ -13,7 +13,7 @@ import type { Prisma, ServiceOrderStatus } from "@prisma/client";
 
 type ClosurePayload = {
   customerId: string;
-  month: string;
+  month?: string | null;
   sourceOrderIds: string[];
   sourceSelections?: Array<{
     orderId: string;
@@ -168,10 +168,6 @@ export const closureService = {
       throw new ServiceError("Cliente não encontrado.", 404);
     }
 
-    const [year, month] = payload.month.split("-").map(Number);
-    const start = new Date(Date.UTC(year, month - 1, 1));
-    const end = new Date(Date.UTC(year, month, 1));
-
     const selectionRows: Array<{
       orderId: string;
       receivableId?: string | null;
@@ -187,10 +183,6 @@ export const closureService = {
         companyId: context.companyId,
         ...(context.unitId ? { unitId: context.unitId } : {}),
         customerId: payload.customerId,
-        openedAt: {
-          gte: start,
-          lt: end,
-        },
         NOT: {
           number: {
             startsWith: "FEC-",
@@ -219,7 +211,7 @@ export const closureService = {
     }
 
     if (sourceOrders.length !== sourceOrderIds.length) {
-      throw new ServiceError("Algumas OS selecionadas não pertencem ao cliente/período informado.", 400);
+      throw new ServiceError("Algumas OS selecionadas não pertencem ao cliente informado.", 400);
     }
 
     const billedWithoutParcelChoice = sourceOrders.filter((o) => {
@@ -387,7 +379,7 @@ export const closureService = {
           paymentTerm: payload.paymentTerm,
           paymentMethod: payload.paymentMethod,
           isBilled: false,
-          notes: `Fechamento mensal de ${payload.month} com ${sourceOrders.length} OS de origem.`,
+          notes: `Fechamento unificado com ${sourceOrders.length} OS de origem.`,
           totalAmount: totalSpent,
           createdByUserId: context.userId,
           updatedByUserId: context.userId,
@@ -417,7 +409,7 @@ export const closureService = {
         clientName: customerName,
         unitId: closureUnitId,
         unitName: undefined,
-        servicesLabel: `Fechamento mensal (${sourceOrders.length} OS)`,
+        servicesLabel: `Fechamento (${sourceOrders.length} OS)`,
         status: "Aberta",
         paymentStatus: closureOrder.paymentStatus,
         total: totalSpent,

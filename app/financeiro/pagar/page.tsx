@@ -213,6 +213,7 @@ export default function FinanceiroPagarPage() {
     <div className="space-y-8">
       <PageHeader
         title="Contas a Pagar"
+        className="hidden"
         subtitle="Separe despesas por unidade quando precisar, ou lance como Geral quando a despesa for compartilhada."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
@@ -288,20 +289,92 @@ export default function FinanceiroPagarPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant={unitFilter === "" ? "default" : "outline"} onClick={() => setUnitFilter("")}>
-          Geral
-        </Button>
-        {units.map((unit) => (
-          <Button
-            key={unit.id}
-            size="sm"
-            variant={unitFilter === unit.id ? "default" : "outline"}
-            onClick={() => setUnitFilter(unit.id)}
-          >
-            {unit.name}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant={unitFilter === "" ? "default" : "outline"} onClick={() => setUnitFilter("")}>
+            Geral
           </Button>
-        ))}
+          {units.map((unit) => (
+            <Button
+              key={unit.id}
+              size="sm"
+              variant={unitFilter === unit.id ? "default" : "outline"}
+              onClick={() => setUnitFilter(unit.id)}
+            >
+              {unit.name}
+            </Button>
+          ))}
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger
+            render={
+              <Button className="rounded-full" onClick={openCreateDialog}>
+                <Plus className="mr-2 h-4 w-4" />
+                Nova conta a pagar
+              </Button>
+            }
+          />
+            <DialogContent className="sm:max-w-xl">
+              <DialogHeader>
+                <DialogTitle>{editingPayable ? "Editar conta a pagar" : "Nova conta a pagar"}</DialogTitle>
+                <DialogDescription>
+                  {editingPayable
+                    ? "Atualize os dados do lanÃ§amento."
+                    : "VocÃª pode vincular a uma unidade especÃ­fica ou deixar o lanÃ§amento como Geral."}
+                </DialogDescription>
+              </DialogHeader>
+            <div className="grid gap-4 py-2">
+              <div className="grid gap-2">
+                <Label htmlFor="description">DescriÃ§Ã£o</Label>
+                <Input id="description" value={description} onChange={(e) => setDescription(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Categoria</Label>
+                <SearchableSelect value={category} onChange={setCategory} placeholder="Selecione a categoria" options={categoryOptions} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Fornecedor</Label>
+                <SearchableSelect
+                  value={supplierId}
+                  onChange={setSupplierId}
+                  placeholder="Selecione o fornecedor (opcional)"
+                  options={supplierOptions}
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label htmlFor="amount">Valor</Label>
+                  <Input id="amount" type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="dueDate">Vencimento</Label>
+                  <DatePicker value={dueDate} onChange={setDueDate} />
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2">
+                  <Label>Unidade</Label>
+                  <SearchableSelect value={unitId} onChange={setUnitId} placeholder="Selecione a unidade" options={unitOptions} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="installments">Parcelas</Label>
+                  <Input
+                    id="installments"
+                    type="number"
+                    min="1"
+                    max="24"
+                    value={installments}
+                    onChange={(e) => setInstallments(e.target.value)}
+                    disabled={Boolean(editingPayable)}
+                  />
+                </div>
+              </div>
+              <Button onClick={editingPayable ? handleUpdatePayable : handleCreatePayable}>
+                {editingPayable ? "Salvar alteraÃ§Ãµes" : "Salvar conta a pagar"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <section className="grid gap-4 md:grid-cols-3">

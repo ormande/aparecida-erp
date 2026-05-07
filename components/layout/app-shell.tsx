@@ -13,7 +13,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <AppHeader />
         <RouteProgress />
-        <main className="min-h-screen px-4 pb-8 pt-32 md:ml-[240px] md:px-8 md:pt-36">
+        <main className="min-h-screen px-4 pb-8 pt-20 md:ml-[240px] md:px-8 md:pt-24">
           <PageTransition>{children}</PageTransition>
         </main>
       </div>

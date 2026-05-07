@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
         status: searchParams.get("status") ?? undefined,
         unitId: searchParams.get("unitId") ?? undefined,
         customerId: searchParams.get("customerId") ?? undefined,
+        customerDocument: searchParams.get("customerDocument") ?? undefined,
         numberPrefix: searchParams.get("numberPrefix") ?? undefined,
         excludeFechamentos: searchParams.get("excludeFechamentos") === "true",
         openedMonth: searchParams.get("openedMonth") ?? undefined,

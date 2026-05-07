@@ -27,6 +27,7 @@ type Column<T> = {
 export function DataTable<T>({
   data,
   columns,
+  headerActions,
   searchPlaceholder = "Buscar...",
   searchKeys = [],
   pageSize = 10,
@@ -41,6 +42,7 @@ export function DataTable<T>({
 }: {
   data: T[];
   columns: Column<T>[];
+  headerActions?: React.ReactNode;
   searchPlaceholder?: string;
   searchKeys?: Array<(row: T) => string>;
   pageSize?: number;
@@ -102,8 +104,11 @@ export function DataTable<T>({
             className="pl-10"
           />
         </div>
-        <div className="text-sm text-muted-foreground">
-          {totalCount} registro{totalCount === 1 ? "" : "s"}
+        <div className="flex items-center gap-3 self-end md:self-auto">
+          <div className="text-sm text-muted-foreground">
+            {totalCount} registro{totalCount === 1 ? "" : "s"}
+          </div>
+          {headerActions}
         </div>
       </div>
 

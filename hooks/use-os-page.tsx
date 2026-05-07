@@ -81,7 +81,6 @@ export type ClosureRow = {
   id: string;
   customerId: string | null;
   customerName: string;
-  month: string;
   totalSpent: number;
   outstandingAmount: number;
   count: number;
@@ -269,12 +268,17 @@ function applyOrderClientFilters(
     customTo: string;
   },
 ): boolean {
-  if (order.number.startsWith("FEC-")) return false;
+  const isClosureOrder = order.number.startsWith("FEC-");
   const { serviceFilter, billingFilter, datePreset, customFrom, customTo } = opts;
   if (serviceFilter && !order.servicesLabel.toLowerCase().includes(serviceFilter.toLowerCase())) return false;
   if (billingFilter === "ABERTAS") {
-    if (hasActiveBilling(order)) return false;
-    if (order.paymentStatus === "PAGO") return false;
+    if (isClosureOrder) {
+      if (hasActiveBilling(order)) return false;
+      if (order.paymentStatus === "PAGO") return false;
+    } else {
+      if (hasActiveBilling(order)) return false;
+      if (order.paymentStatus === "PAGO") return false;
+    }
   }
   if (billingFilter === "FATURADAS") {
     if (order.paymentStatus === "PAGO") return false;
@@ -391,7 +395,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     status: statusFilter || undefined,
     unitId: selectedUnitId || undefined,
     customerId: customerFilter || undefined,
-    excludeFechamentos: fixedBillingFilter ? true : undefined,
     billingScope: fixedBillingFilter,
   });
 
@@ -485,8 +488,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const groupedOrders = useMemo(() => {
     const grouped = new Map<string, ClosureRow>();
     for (const order of filteredOrders) {
-      const month = order.openedAt.slice(0, 7);
-      const key = `${order.clientId ?? order.clientName}-${month}`;
+      const key = order.clientId ?? order.clientName;
       const current = grouped.get(key);
       const outstanding = order.receivableStatus === "PAGO" ? 0 : order.total;
       if (current) {
@@ -498,7 +500,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
           id: key,
           customerId: order.clientId,
           customerName: order.clientName,
-          month,
           totalSpent: order.total,
           outstandingAmount: outstanding,
           count: 1,
@@ -531,7 +532,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       try {
         const query: Record<string, string | undefined> = {
           customerId: row.customerId,
-          openedMonth: row.month,
           excludeFechamentos: "true",
         };
         if (row.unitScope) {
@@ -556,7 +556,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         });
         const mapped = eligibleForClosure.map((order) => {
           const receivableOptions = (order.receivableLines ?? [])
-            .filter((line) => line.status !== "PAGO")
+            .filter((line) => line.status !== "PAGO" && !line.isLockedByAnyClosure)
             .map((line) => ({
               key: `receivable:${line.id}`,
               dueDate: line.dueDate,
@@ -572,7 +572,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
             }));
           const planRows = order.billingInstallmentPlanRows;
           const plannedOptions =
-            !order.isBilled && planRows && planRows.length >= 2
+            !order.isBilled && !order.isLockedByAnyClosure && planRows && planRows.length >= 2
               ? planRows.map((row, idx) => ({
                   key: plannedInstallmentSelectionKey(order.id, idx),
                   dueDate: row.dueDate,
@@ -605,17 +605,16 @@ export function useOsPage(options: UseOsPageOptions = {}) {
             openedAt: order.openedAt,
             total: order.total,
             paymentStatus: order.paymentStatus,
-            selectionOptions,
+            selectionOptions: selectionOptions.filter((item) => !item.disabled),
             disabled: selectionOptions.every((item) => item.disabled),
             disabledReason: selectionOptions.every((item) => item.disabled)
               ? "Não há itens elegíveis para esta OS."
               : undefined,
           };
         });
-        setClosureDialogOrders(mapped);
-        setSelectedClosureOrderIds(
-          mapped.flatMap((order) => order.selectionOptions.filter((item) => !item.disabled).map((item) => item.key)),
-        );
+        const availableOnly = mapped.filter((order) => order.selectionOptions.length > 0);
+        setClosureDialogOrders(availableOnly);
+        setSelectedClosureOrderIds(availableOnly.flatMap((order) => order.selectionOptions.map((item) => item.key)));
       } catch {
         toast.error("Não foi possível carregar as OS para fechamento.");
         setClosureDialogOrders([]);
@@ -627,7 +626,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   );
 
   const groupedOrdersSearchKeys = useMemo<Array<(row: ClosureRow) => string>>(
-    () => [(row) => row.customerName, (row) => row.month],
+    () => [(row) => row.customerName],
     [],
   );
   const filteredOrdersSearchKeys = useMemo<Array<(row: ServiceOrderListDisplayRow) => string>>(
@@ -1036,7 +1035,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
       body: JSON.stringify({
         customerId: closureRow.customerId,
         unitId: closureRow.unitScope,
-        month: closureRow.month,
         sourceOrderIds: [],
         sourceSelections,
         paymentTerm: closurePaymentTerm,
@@ -1089,8 +1087,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const closureEligibilityByRow = useMemo(() => {
     const byRow = new Map<string, number>();
     for (const order of filteredOrders) {
-      const month = order.openedAt.slice(0, 7);
-      const key = `${order.clientId ?? order.clientName}-${month}`;
+      const key = order.clientId ?? order.clientName;
       const receivableEligible = (order.receivableLines ?? []).filter(
         (line) => line.status !== "PAGO" && !line.isLockedByAnyClosure,
       ).length;
@@ -1110,7 +1107,6 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const groupedTableColumns = useMemo(
     () => [
       { key: "customer", header: "Cliente", render: (row: ClosureRow) => row.customerName },
-      { key: "month", header: "Mes", render: (row: ClosureRow) => row.month },
       { key: "count", header: "OS", render: (row: ClosureRow) => row.count },
       { key: "total", header: "Valor total gasto", render: (row: ClosureRow) => currency(row.totalSpent) },
       { key: "outstanding", header: "Saldo em aberto", render: (row: ClosureRow) => currency(row.outstandingAmount) },

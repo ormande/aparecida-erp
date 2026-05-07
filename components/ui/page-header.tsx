@@ -2,7 +2,6 @@ import { cn } from "@/lib/utils";
 
 export function PageHeader({
   title,
-  subtitle,
   actions,
   className,
 }: {
@@ -16,12 +15,11 @@ export function PageHeader({
       <div
         data-page-header-meta="true"
         data-page-title={title}
-        data-page-subtitle={subtitle ?? ""}
         className="hidden"
         aria-hidden="true"
       />
       {actions ? (
-        <div className={cn("flex flex-wrap items-center justify-end gap-3", className)}>
+        <div className={cn("mb-[-0.75rem] flex flex-wrap items-center justify-end gap-3", className)}>
           {actions}
         </div>
       ) : null}

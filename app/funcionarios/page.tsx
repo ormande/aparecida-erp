@@ -155,6 +155,7 @@ export default function FuncionariosPage() {
     <div className="space-y-8">
       <PageHeader
         title="Funcionários"
+        className="hidden"
         subtitle="Gerencie os registros da equipe com nível de acesso e situação operacional."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
@@ -206,6 +207,51 @@ export default function FuncionariosPage() {
       <div className="surface-card p-6">
         <DataTable
           data={employees}
+          headerActions={
+            <Dialog open={open} onOpenChange={setOpen}>
+              <DialogTrigger
+                render={
+                  <Button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Novo funcionário
+                  </Button>
+                }
+              />
+              <DialogContent className="sm:max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Novo funcionário</DialogTitle>
+                  <DialogDescription>Cadastre o funcionário sem sair da lista.</DialogDescription>
+                </DialogHeader>
+                <EmployeeForm
+                  submitLabel="Salvar funcionário"
+                  onSubmit={async (values) => {
+                    const response = await fetch("/api/employees", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify(values),
+                    });
+
+                    const data = await response.json().catch(() => ({}));
+
+                    if (!response.ok) {
+                      toast.error(
+                        (data as { message?: string; error?: string }).message ??
+                          (data as { error?: string }).error ??
+                          "Não foi possível cadastrar o funcionário.",
+                      );
+                      return;
+                    }
+
+                    toast.success("Funcionário cadastrado com sucesso!");
+                    setOpen(false);
+                    await mutate("/api/employees");
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          }
           pageSize={10}
           searchPlaceholder="Buscar por nome, e-mail ou telefone"
           searchKeys={searchKeys}

@@ -50,9 +50,6 @@ export function OsClosureDialog({
                 <strong>Cliente:</strong> {row.customerName}
               </p>
               <p>
-                <strong>Mes:</strong> {row.month}
-              </p>
-              <p>
                 <strong>Total consumido:</strong> {currency(row.totalSpent)}
               </p>
               <p>
@@ -73,9 +70,7 @@ export function OsClosureDialog({
                   ? availableOrders.map((order) => (
                   <details
                     key={order.id}
-                    className={`rounded-lg border bg-background ${
-                      order.disabled ? "opacity-70" : ""
-                    }`}
+                    className="rounded-lg border bg-background"
                     open
                   >
                     <summary className="cursor-pointer list-none px-3 py-2">
@@ -99,15 +94,11 @@ export function OsClosureDialog({
                       {order.selectionOptions.map((option) => (
                         <label
                           key={option.key}
-                          className={`flex items-center justify-between gap-3 rounded-md border px-2 py-2 ${
-                            option.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-                          }`}
-                          title={option.disabled ? option.disabledReason : undefined}
+                          className="flex cursor-pointer items-center justify-between gap-3 rounded-md border px-2 py-2"
                         >
                           <div className="flex items-center gap-3">
                             <Checkbox
                               checked={selectedOrderIds.includes(option.key)}
-                              disabled={option.disabled}
                               onCheckedChange={() => onToggleOrder(option.key)}
                             />
                             <div className="text-sm">
@@ -124,7 +115,7 @@ export function OsClosureDialog({
                     ))
                   : null}
                 {!isLoadingOrders && availableOrders.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Nenhuma OS disponível para este cliente/período.</p>
+                  <p className="text-sm text-muted-foreground">Nenhuma OS disponível para este cliente.</p>
                 ) : null}
               </div>
             </div>
