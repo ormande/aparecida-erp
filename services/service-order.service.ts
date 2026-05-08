@@ -526,6 +526,10 @@ async function getOrder(companyId: string, unitId: string | undefined, id: strin
           status: true,
           amount: true,
           dueDate: true,
+          lineSlot: true,
+          installmentGroupId: true,
+          installmentNumber: true,
+          installmentCount: true,
         },
       },
       unit: {
@@ -2198,12 +2202,6 @@ export const serviceOrderService = {
       if (!hasActiveBilling) {
         throw new ServiceError("Não há faturamento registrado para reabrir o pagamento.", 400);
       }
-      if (existing.paymentStatus === "PAGO_PARCIAL") {
-        throw new ServiceError(
-          "Reabrir pagamento de OS comum com baixa parcial não está disponível. Entre em contato com o suporte se precisar corrigir.",
-          400,
-        );
-      }
       const paidLike =
         existing.paymentStatus === "PAGO" ||
         existing.receivables.some((r) => r.status === "PAGO");
@@ -2215,16 +2213,59 @@ export const serviceOrderService = {
       }
     }
 
-    const receivable = existing.receivables[0] ?? null;
+    const pendingReceivables = existing.receivables
+      .filter((item) => item.status === "PENDENTE" || item.status === "VENCIDO")
+      .sort((a, b) => {
+        const sa = a.lineSlot ?? 0;
+        const sb = b.lineSlot ?? 0;
+        if (sa !== sb) return sa - sb;
+        return a.id.localeCompare(b.id);
+      });
+
+    const primaryReceivable = pendingReceivables[0] ?? null;
+    const receivable = primaryReceivable ?? existing.receivables[0] ?? null;
+
+    const regularOutstandingAmount = pendingReceivables.reduce(
+      (sum, item) => sum + Number(item.amount),
+      0,
+    );
     const closureOutstandingAmount = fecOutstandingFromItems(existing.items);
+
+    if (
+      payload.mode === "settle" &&
+      !existing.number.startsWith("FEC-") &&
+      (payload.partialAmount ?? 0) > 0 &&
+      pendingReceivables.length > 1
+    ) {
+      throw new ServiceError(
+        "Esta OS possui mais de um título em aberto (parcelas). Registre o pagamento parcial pela linha correspondente na lista ou quite cada título por vez.",
+        400,
+      );
+    }
+
     const isPartialPayment =
-      existing.number.startsWith("FEC-") &&
       payload.mode === "settle" &&
       (payload.partialAmount ?? 0) > 0 &&
-      (payload.partialAmount ?? 0) < closureOutstandingAmount;
+      (existing.number.startsWith("FEC-")
+        ? (payload.partialAmount ?? 0) < closureOutstandingAmount
+        : Boolean(primaryReceivable) &&
+          (payload.partialAmount ?? 0) < Number(primaryReceivable.amount));
 
     if (!existing.number.startsWith("FEC-") && !receivable) {
       throw new ServiceError("Recebível vinculado não encontrado.", 404);
+    }
+
+    if (
+      payload.mode === "settle" &&
+      !existing.number.startsWith("FEC-") &&
+      primaryReceivable &&
+      (payload.partialAmount ?? 0) > 0 &&
+      (payload.partialAmount ?? 0) >= Number(primaryReceivable.amount)
+    ) {
+      throw new ServiceError(
+        "O valor informado cobre o título em aberto inteiro. Confirme a baixa sem marcar pagamento parcial.",
+        400,
+      );
     }
 
     if (existing.number.startsWith("FEC-") && !receivable && isPartialPayment) {
@@ -2241,11 +2282,19 @@ export const serviceOrderService = {
         ? Math.min(payload.discountAmount ?? 0, closureOutstandingAmount)
         : 0;
 
-    const closureSettledAmount = isPartialPayment
-      ? payload.partialAmount!
-      : Math.max(closureOutstandingAmount - appliedDiscount, 0);
+    const closureSettledAmount =
+      existing.number.startsWith("FEC-") && isPartialPayment
+        ? payload.partialAmount!
+        : Math.max(closureOutstandingAmount - appliedDiscount, 0);
 
-    const remainingAmount = isPartialPayment ? closureOutstandingAmount - closureSettledAmount : 0;
+    const remainingAmount = isPartialPayment && existing.number.startsWith("FEC-")
+      ? closureOutstandingAmount - closureSettledAmount
+      : 0;
+
+    const regularLineRemainder =
+      isPartialPayment && !existing.number.startsWith("FEC-") && primaryReceivable
+        ? Math.max(Number(primaryReceivable.amount) - (payload.partialAmount ?? 0), 0)
+        : 0;
 
     const fecOrderStatus = "CONCLUIDA";
 
@@ -2260,36 +2309,97 @@ export const serviceOrderService = {
 
     const updated = await db.$transaction(async (tx) => {
       if (isRegularReopen) {
-        await tx.accountReceivable.updateMany({
-          where: {
-            serviceOrderId: existing.id,
-            originType: "SERVICE_ORDER",
-          },
-          data: {
-            status: "PENDENTE",
-            paidAt: null,
-          },
-        });
-        await tx.accountReceivable.deleteMany({
-          where: {
-            serviceOrderId: existing.id,
-            originType: "SERVICE_ORDER",
-            lineSlot: { gt: 0 },
-            installmentGroupId: null,
-          },
-        });
-      } else if (!existing.number.startsWith("FEC-")) {
-        if (payload.mode === "settle") {
+        const helperReceivables = existing.receivables.filter(
+          (item) => item.installmentNumber == null && item.installmentCount == null,
+        );
+
+        if (helperReceivables.length > 1) {
+          const restoredAmount = helperReceivables.reduce((sum, item) => sum + Number(item.amount), 0);
+          const baseReceivable = helperReceivables[0];
+
+          await tx.accountReceivable.update({
+            where: { id: baseReceivable.id },
+            data: {
+              amount: restoredAmount,
+              status: "PENDENTE",
+              paidAt: null,
+            },
+          });
+
+          await tx.accountReceivable.deleteMany({
+            where: {
+              id: {
+                in: helperReceivables.slice(1).map((item) => item.id),
+              },
+            },
+          });
+        } else {
           await tx.accountReceivable.updateMany({
             where: {
               serviceOrderId: existing.id,
               originType: "SERVICE_ORDER",
             },
             data: {
-              status: "PAGO",
-              paidAt: new Date(),
+              status: "PENDENTE",
+              paidAt: null,
             },
           });
+          await tx.accountReceivable.deleteMany({
+            where: {
+              serviceOrderId: existing.id,
+              originType: "SERVICE_ORDER",
+              lineSlot: { gt: 0 },
+              installmentGroupId: null,
+            },
+          });
+        }
+      } else if (!existing.number.startsWith("FEC-")) {
+        if (payload.mode === "settle") {
+          if (isPartialPayment && receivable) {
+            const maxLineSlot = existing.receivables.reduce(
+              (max, item) => Math.max(max, item.lineSlot ?? 0),
+              receivable.lineSlot ?? 0,
+            );
+
+            await tx.accountReceivable.update({
+              where: { id: receivable.id },
+              data: {
+                amount: payload.partialAmount ?? 0,
+                status: "PAGO",
+                paidAt: new Date(),
+              },
+            });
+
+            await tx.accountReceivable.create({
+              data: {
+                companyId: context.companyId,
+                unitId: existing.unitId || null,
+                customerId: existing.customerId || null,
+                serviceOrderId: existing.id,
+                lineSlot: maxLineSlot + 1,
+                originType: "SERVICE_ORDER",
+                description: `Pendência de ${existing.number}`,
+                amount: regularLineRemainder,
+                dueDate: receivable.dueDate,
+                status: "PENDENTE",
+                paidAt: null,
+                installmentGroupId: receivable.installmentGroupId ?? null,
+                installmentNumber: receivable.installmentNumber ?? null,
+                installmentCount: receivable.installmentCount ?? null,
+              },
+            });
+          } else {
+            await tx.accountReceivable.updateMany({
+              where: {
+                serviceOrderId: existing.id,
+                originType: "SERVICE_ORDER",
+              },
+              data: {
+                status: "PAGO",
+                paidAt: new Date(),
+              },
+            });
+          }
         } else if (receivable) {
           await tx.accountReceivable.update({
             where: { id: receivable.id },

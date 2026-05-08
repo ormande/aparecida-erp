@@ -11,6 +11,8 @@ const receivableUpdateSchema = z.object({
   customerId: z.string().optional(),
   amount: z.coerce.number().optional(),
   dueDate: z.string().optional(),
+  partialAmount: z.coerce.number().min(0).max(999999.99).optional().default(0),
+  paymentMethod: z.string().max(100).optional().default(""),
 });
 
 function handleServiceError(error: unknown) {

@@ -26,6 +26,8 @@ type ReceivableUpdatePayload = {
   customerId?: string;
   amount?: number;
   dueDate?: string;
+  partialAmount?: number;
+  paymentMethod?: string;
 };
 
 type ReceivableContext = {
@@ -304,6 +306,20 @@ export const receivableService = {
       existing.serviceOrder &&
       (payload.mode === "settle" || payload.mode === "reopen")
     ) {
+      const currentAmount = Number(existing.amount);
+      const partialAmount = Number(payload.partialAmount ?? 0);
+      const isPartialSettle =
+        payload.mode === "settle" &&
+        partialAmount > 0 &&
+        partialAmount < currentAmount;
+
+      if (payload.mode === "settle" && partialAmount >= currentAmount) {
+        throw new ServiceError(
+          "O valor parcial nao pode ser igual ou maior que o valor devido. Use a baixa total.",
+          400,
+        );
+      }
+
       const db = getAuditPrisma({
         userId: context.userId,
         companyId: context.companyId,
@@ -311,13 +327,53 @@ export const receivableService = {
       });
 
       await db.$transaction(async (tx) => {
-        await tx.accountReceivable.update({
-          where: { id: existing.id },
-          data:
-            payload.mode === "settle"
-              ? { status: "PAGO", paidAt: new Date() }
-              : { status: "PENDENTE", paidAt: null },
-        });
+        if (isPartialSettle) {
+          const maxLineSlot = await tx.accountReceivable.aggregate({
+            where: {
+              serviceOrderId: existing.serviceOrder!.id,
+              originType: "SERVICE_ORDER",
+            },
+            _max: {
+              lineSlot: true,
+            },
+          });
+
+          await tx.accountReceivable.update({
+            where: { id: existing.id },
+            data: {
+              amount: partialAmount,
+              status: "PAGO",
+              paidAt: new Date(),
+            },
+          });
+
+          await tx.accountReceivable.create({
+            data: {
+              companyId: existing.companyId,
+              unitId: existing.unitId,
+              customerId: existing.customerId,
+              serviceOrderId: existing.serviceOrder!.id,
+              lineSlot: (maxLineSlot._max.lineSlot ?? existing.lineSlot) + 1,
+              originType: "SERVICE_ORDER",
+              description: existing.description,
+              amount: currentAmount - partialAmount,
+              dueDate: existing.dueDate,
+              status: "PENDENTE",
+              paidAt: null,
+              installmentGroupId: existing.installmentGroupId,
+              installmentNumber: existing.installmentNumber,
+              installmentCount: existing.installmentCount,
+            },
+          });
+        } else {
+          await tx.accountReceivable.update({
+            where: { id: existing.id },
+            data:
+              payload.mode === "settle"
+                ? { status: "PAGO", paidAt: new Date() }
+                : { status: "PENDENTE", paidAt: null },
+          });
+        }
 
         const orderReceivables = await tx.accountReceivable.findMany({
           where: {
@@ -399,6 +455,10 @@ export const receivableService = {
             data: {
               status: "CONCLUIDA",
               paymentStatus,
+              paymentMethod:
+                payload.mode === "settle" && payload.paymentMethod?.trim().length
+                  ? payload.paymentMethod.trim()
+                  : undefined,
               updatedByUserId: context.userId,
             },
           });
@@ -408,6 +468,10 @@ export const receivableService = {
             data: {
               status: "CONCLUIDA",
               paymentStatus,
+              paymentMethod:
+                payload.mode === "settle" && payload.paymentMethod?.trim().length
+                  ? payload.paymentMethod.trim()
+                  : undefined,
               updatedByUserId: context.userId,
             },
           });

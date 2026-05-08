@@ -129,8 +129,76 @@ function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrde
     const friendly = serviceOrderFriendlyNumberLabel(order);
     const slices: ServiceOrderListDisplayRow[] = [];
 
-    if (recv.length > 1) {
-      for (let i = 0; i < recv.length; i++) {
+    if (recv.length > 0) {
+      const hasInstallmentRows = recv.some(
+        (line) => line.installmentNumber != null || line.installmentCount != null,
+      );
+
+      if (hasInstallmentRows) {
+        const grouped = new Map<
+          string,
+          {
+            installmentNumber: number | null | undefined;
+            lines: typeof recv;
+          }
+        >();
+
+        for (const line of recv) {
+          const key =
+            line.installmentNumber != null
+              ? `${line.installmentNumber}-${line.installmentCount ?? ""}`
+              : `line-${line.id}`;
+          const current = grouped.get(key);
+          if (current) {
+            current.lines.push(line);
+          } else {
+            grouped.set(key, {
+              installmentNumber: line.installmentNumber,
+              lines: [line],
+            });
+          }
+        }
+
+        for (const [key, group] of Array.from(grouped.entries())) {
+          const pendingLine =
+            group.lines.find((line) => line.status === "VENCIDO") ??
+            group.lines.find((line) => line.status === "PENDENTE") ??
+            null;
+          const allPaid = group.lines.every((line) => line.status === "PAGO");
+          const installmentOrdinal = group.installmentNumber ?? slices.length + 1;
+          slices.push({
+            order,
+            rowKey: `${order.id}-rcv-group-${key}`,
+            displayNumber: `${friendly} - ${installmentOrdinal}Âª parcela`,
+            displayTotal: pendingLine
+              ? group.lines
+                  .filter((line) => line.status !== "PAGO")
+                  .reduce((sum, line) => sum + line.amount, 0)
+              : group.lines.reduce((sum, line) => sum + line.amount, 0),
+            receivableLineId: pendingLine?.id ?? group.lines[0]?.id,
+            receivableLineStatus: pendingLine?.status ?? (allPaid ? "PAGO" : undefined),
+          });
+        }
+      } else {
+        const pendingLine =
+          recv.find((line) => line.status === "VENCIDO") ??
+          recv.find((line) => line.status === "PENDENTE") ??
+          null;
+        const allPaid = recv.every((line) => line.status === "PAGO");
+        slices.push({
+          order,
+          rowKey: `${order.id}-rcv-collapsed`,
+          displayNumber: friendly,
+          displayTotal: pendingLine
+            ? recv
+                .filter((line) => line.status !== "PAGO")
+                .reduce((sum, line) => sum + line.amount, 0)
+            : recv.reduce((sum, line) => sum + line.amount, 0),
+          receivableLineId: pendingLine?.id,
+          receivableLineStatus: pendingLine?.status ?? (allPaid ? "PAGO" : undefined),
+        });
+      }
+      if (false) { for (let i = 0; i < recv.length; i++) {
         const line = recv[i];
         const n = line.installmentNumber ?? i + 1;
         slices.push({
@@ -141,8 +209,8 @@ function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrde
           receivableLineId: line.id,
           receivableLineStatus: line.status,
         });
-      }
-    } else if (recv.length === 1) {
+      } }
+    } else if (false && recv.length === 1) {
       slices.push({
         order,
         rowKey: `${order.id}-rcv-${recv[0].id}`,
@@ -341,7 +409,13 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   const editInstallmentPlanRef = useRef<OsInstallmentPlanFieldsHandle>(null);
   const [editOrder, setEditOrder] = useState<OrderDetails | null>(null);
   const [viewOrder, setViewOrder] = useState<OrderDetails | null>(null);
-  const [settleOrder, setSettleOrder] = useState<{ id: string; number: string; receivableId?: string } | null>(null);
+  const [settleOrder, setSettleOrder] = useState<{
+    id: string;
+    number: string;
+    receivableId?: string;
+    /** Valor em aberto exibido na linha da tabela (parcela ou total consolidado). */
+    outstandingAmount?: number;
+  } | null>(null);
   const [billOrder, setBillOrder] = useState<{
     id: string;
     number: string;
@@ -477,7 +551,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     const scope = fixedBillingFilter ?? billingFilter;
     let rows = expandServiceOrdersForListTable(filteredOrders);
     if (!groupByCustomer && scope === "FATURADAS") {
-      rows = rows.filter((r) => r.receivableLineStatus != null);
+      rows = rows.filter((r) => r.receivableLineStatus != null && r.receivableLineStatus !== "PAGO");
     }
     if (!groupByCustomer && scope === "ABERTAS") {
       rows = rows.filter((r) => !r.order.isBilled && r.order.paymentStatus !== "PAGO");
@@ -857,7 +931,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     async (
       id: string,
       mode: "settle" | "reopen" | "bill" | "unbill",
-      options?: { paymentMethod?: string } | OsBillConfirmPayload,
+      options?: { paymentMethod?: string; partialAmount?: number } | OsBillConfirmPayload,
     ): Promise<void> => {
       if (statusLoadingByOrderId[id]) {
         return;
@@ -877,7 +951,10 @@ export function useOsPage(options: UseOsPageOptions = {}) {
           mode === "settle"
             ? JSON.stringify({
                 discountAmount: 0,
-                partialAmount: 0,
+                partialAmount:
+                  options && "partialAmount" in options && typeof options.partialAmount === "number"
+                    ? options.partialAmount
+                    : 0,
                 ...(options && "paymentMethod" in options && options.paymentMethod
                   ? { paymentMethod: options.paymentMethod }
                   : {}),
@@ -954,7 +1031,12 @@ export function useOsPage(options: UseOsPageOptions = {}) {
   );
 
   const handleReceivableStatusChange = useCallback(
-    async (receivableId: string, mode: "settle" | "reopen", orderId?: string): Promise<void> => {
+    async (
+      receivableId: string,
+      mode: "settle" | "reopen",
+      orderId?: string,
+      options?: { paymentMethod?: string; partialAmount?: number },
+    ): Promise<void> => {
       const loadingKey = orderId ?? receivableId;
       if (statusLoadingByOrderId[loadingKey]) {
         return;
@@ -964,7 +1046,11 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         const response = await fetch(`/api/receivables/${receivableId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode }),
+          body: JSON.stringify({
+            mode,
+            partialAmount: mode === "settle" ? (options?.partialAmount ?? 0) : 0,
+            ...(mode === "settle" && options?.paymentMethod ? { paymentMethod: options.paymentMethod } : {}),
+          }),
         });
         const data = await response.json();
         if (!response.ok) {
@@ -978,7 +1064,7 @@ export function useOsPage(options: UseOsPageOptions = {}) {
           return;
         }
         void refreshOrders();
-        void toast.success(mode === "settle" ? "Parcela baixada com sucesso!" : "Parcela reaberta com sucesso!");
+        void toast.success(mode === "settle" ? "Pagamento registrado com sucesso!" : "Parcela reaberta com sucesso!");
       } catch {
         toast.error("Nao foi possivel alterar o recebivel.");
       } finally {
@@ -1171,17 +1257,19 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         key: "paymentStatus",
         header: "Pagamento",
         render: (row: ServiceOrderListDisplayRow) => {
-          const label = row.receivableLineStatus
-            ? row.receivableLineStatus === "PAGO"
-              ? "Pago"
-              : row.receivableLineStatus === "VENCIDO"
-                ? "Vencido"
-                : "Pendente"
-            : row.order.paymentStatus === "PAGO"
-              ? "Pago"
-              : row.order.paymentStatus === "PAGO_PARCIAL"
-                ? "Pago parcialmente"
-                : "Pendente";
+          const ps = row.order.paymentStatus;
+          const label =
+            ps === "PAGO_PARCIAL"
+              ? "Pago parcialmente"
+              : row.receivableLineStatus
+                ? row.receivableLineStatus === "PAGO"
+                  ? "Pago"
+                  : row.receivableLineStatus === "VENCIDO"
+                    ? "Vencido"
+                    : "Pendente"
+                : ps === "PAGO"
+                  ? "Pago"
+                  : "Pendente";
           return <StatusBadge status={label} />;
         },
       },
@@ -1232,7 +1320,12 @@ export function useOsPage(options: UseOsPageOptions = {}) {
                     ? void handleReceivableStatusChange(row.receivableLineId, "reopen", row.order.id)
                     : void handleStatusChange(row.order.id, "reopen")
                   : activeBilling
-                    ? setSettleOrder({ id: row.order.id, number: row.displayNumber, receivableId: row.receivableLineId })
+                    ? setSettleOrder({
+                        id: row.order.id,
+                        number: row.displayNumber,
+                        receivableId: row.receivableLineId,
+                        outstandingAmount: row.displayTotal,
+                      })
                     : setBillOrder({
                         id: row.order.id,
                         number: row.displayNumber,

@@ -225,13 +225,13 @@ export function ServiceOrdersPageContent({ title, fixedBillingFilter }: ServiceO
       <OsSettleDialog
         order={p.settleOrder}
         onClose={() => p.setSettleOrder(null)}
-        onConfirm={async (id, paymentMethod) => {
+        onConfirm={async (id, options) => {
           if (p.settleOrder?.receivableId) {
-            await p.handleReceivableStatusChange(p.settleOrder.receivableId, "settle", id);
+            await p.handleReceivableStatusChange(p.settleOrder.receivableId, "settle", id, options);
             return;
           }
 
-          await p.handleStatusChange(id, "settle", paymentMethod ? { paymentMethod } : undefined);
+          await p.handleStatusChange(id, "settle", options);
         }}
       />
       <OsBillConfirmDialog
