@@ -55,7 +55,7 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-1/3 max-h-[85dvh] translate-y-0 overflow-hidden rounded-xl! p-0 sm:max-w-lg",
+          "top-1/3 translate-y-0 overflow-visible rounded-xl! p-0 sm:max-w-lg",
           className
         )}
         bodyClassName="p-0"
@@ -99,7 +99,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+        "scroll-py-1 overflow-x-hidden overflow-y-visible outline-none",
         className
       )}
       {...props}

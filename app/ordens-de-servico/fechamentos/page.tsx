@@ -18,7 +18,11 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useCustomers } from "@/hooks/use-customers";
-import type { OrderDetails } from "@/hooks/use-os-page";
+import {
+  expandServiceOrdersForListTable,
+  type OrderDetails,
+  type ServiceOrderListDisplayRow,
+} from "@/hooks/use-os-page";
 import { usePdfDownload } from "@/hooks/use-pdf-download";
 import { useServiceOrders } from "@/hooks/use-service-orders";
 import { useUnits } from "@/hooks/use-units";
@@ -79,7 +83,22 @@ export default function FechamentosPage() {
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [orderPreview, setOrderPreview] = useState<OrderDetails | null>(null);
-  const [settleOrder, setSettleOrder] = useState<OrderDetails | null>(null);
+  /** Alvo da baixa: pode ser o FEC inteiro (receivableId=null) ou uma parcela (receivableId setado).
+   *  Quando há receivableId, a baixa vai pela rota /api/receivables/[id] (uma parcela por vez).
+   *  Caso contrário, baixa o FEC inteiro via /api/service-orders/[id]/settle (suporta desconto). */
+  const [settleTarget, setSettleTarget] = useState<{
+    order: OrderDetails;
+    receivableId?: string | null;
+    /** Saldo em aberto da parcela (ou do FEC inteiro). */
+    outstandingAmount: number;
+    /** Total original da parcela quando há partial anterior. */
+    originalAmount?: number;
+    /** Quanto já foi pago naquela parcela. */
+    paidAmount?: number;
+    isPartiallyPaid?: boolean;
+    /** Rótulo da linha (ex.: "FEC-2026-00001 - 2ª parcela"). */
+    label?: string;
+  } | null>(null);
   const [billFecOrder, setBillFecOrder] = useState<
     | (OsBillConfirmPayload & { id: string; number: string; openedAt: string; totalInput: string })
     | null
@@ -175,8 +194,11 @@ export default function FechamentosPage() {
     openedTo: openedBounds.openedTo,
   });
 
-  const searchKeys = useMemo<Array<(row: (typeof orders)[number]) => string>>(
-    () => [(row) => row.number, (row) => row.clientName],
+  /** Linhas exibidas: expande cada FEC em N linhas quando tem múltiplas parcelas. */
+  const displayRows = useMemo(() => expandServiceOrdersForListTable(orders), [orders]);
+
+  const searchKeys = useMemo<Array<(row: ServiceOrderListDisplayRow) => string>>(
+    () => [(row) => row.order.number, (row) => row.order.clientName, (row) => row.displayNumber],
     [],
   );
 
@@ -266,7 +288,7 @@ export default function FechamentosPage() {
             : item,
         ),
       );
-    setSettleOrder(null);
+    setSettleTarget(null);
     setBillFecOrder(null);
     setDiscountInput("");
     setIsPartial(false);
@@ -284,6 +306,54 @@ export default function FechamentosPage() {
         setFecBillLoading(false);
       }
     }
+  }
+
+  async function handleReceivableStatusChange(
+    receivableId: string,
+    mode: "settle" | "reopen",
+    options?: { partialAmount?: number; paymentMethod?: string },
+  ) {
+    const response = await fetch(`/api/receivables/${receivableId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode,
+        partialAmount: mode === "settle" ? options?.partialAmount ?? 0 : 0,
+        ...(mode === "settle" && options?.paymentMethod ? { paymentMethod: options.paymentMethod } : {}),
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      toast.error(data.message ?? data.error ?? "Não foi possível alterar o recebível.");
+      return;
+    }
+    // Recarrega a OS (FEC) afetada para refrescar o paymentStatus consolidado.
+    if (settleTarget?.order.id) {
+      const fresh = await fetch(`/api/service-orders/${settleTarget.order.id}`, { cache: "no-store" });
+      const freshData = await fresh.json();
+      if (fresh.ok && freshData.order) {
+        setOrders((current) =>
+          current.map((item) =>
+            item.id === settleTarget.order.id
+              ? {
+                  ...item,
+                  status: freshData.order.status,
+                  paymentStatus: freshData.order.paymentStatus,
+                  receivableStatus: freshData.order.receivableStatus,
+                  receivableAmount: freshData.order.receivableAmount,
+                  receivableLines: freshData.order.receivableLines ?? item.receivableLines,
+                  isBilled: freshData.order.isBilled,
+                }
+              : item,
+          ),
+        );
+      }
+    }
+    setSettleTarget(null);
+    setIsPartial(false);
+    setPartialAmountInput("");
+    setSettlePaymentMethod("Pix");
+    toast.success(mode === "settle" ? "Parcela baixada com sucesso!" : "Parcela reaberta com sucesso!");
   }
 
   async function executeDelete(id: string) {
@@ -333,7 +403,17 @@ export default function FechamentosPage() {
     [downloadPdf],
   );
 
-  async function openSettleDialog(orderId: string) {
+  async function openSettleDialog(
+    orderId: string,
+    options?: {
+      receivableId?: string | null;
+      outstandingAmount?: number;
+      originalAmount?: number;
+      paidAmount?: number;
+      isPartiallyPaid?: boolean;
+      label?: string;
+    },
+  ) {
     const response = await fetch(`/api/service-orders/${orderId}`, { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) return toast.error(data.message ?? "Não foi possível carregar o fechamento.");
@@ -341,7 +421,15 @@ export default function FechamentosPage() {
     setIsPartial(false);
     setPartialAmountInput("");
     setSettlePaymentMethod("Pix");
-    setSettleOrder(data.order);
+    setSettleTarget({
+      order: data.order,
+      receivableId: options?.receivableId ?? null,
+      outstandingAmount: options?.outstandingAmount ?? (data.order.receivableAmount ?? 0),
+      originalAmount: options?.originalAmount,
+      paidAmount: options?.paidAmount,
+      isPartiallyPaid: options?.isPartiallyPaid,
+      label: options?.label,
+    });
   }
 
   return (
@@ -419,7 +507,7 @@ export default function FechamentosPage() {
         </div>
 
         <DataTable
-          data={orders}
+          data={displayRows}
           pageSize={10}
           isLoading={!hydrated}
           searchPlaceholder="Buscar por número ou cliente"
@@ -429,6 +517,7 @@ export default function FechamentosPage() {
             setTableSearch(value);
             setPage(1);
           }}
+          getRowKey={(row) => row.rowKey}
           manualPagination={{
             page: meta?.page ?? page,
             totalPages: meta?.totalPages ?? 1,
@@ -438,95 +527,147 @@ export default function FechamentosPage() {
           emptyTitle="Nenhum fechamento encontrado"
           emptyDescription="Gere um fechamento mensal a partir da página de ordens de serviço."
           columns={[
-            { key: "number", header: "Número", render: (row) => <span className="font-medium">{row.number}</span> },
-            { key: "unit", header: "Unidade", render: (row) => row.unitName ?? "Geral" },
-            { key: "client", header: "Cliente", render: (row) => row.clientName },
+            {
+              key: "number",
+              header: "Número",
+              render: (row: ServiceOrderListDisplayRow) => <span className="font-medium">{row.displayNumber}</span>,
+            },
+            { key: "unit", header: "Unidade", render: (row: ServiceOrderListDisplayRow) => row.order.unitName ?? "Geral" },
+            { key: "client", header: "Cliente", render: (row: ServiceOrderListDisplayRow) => row.order.clientName },
             {
               key: "paymentStatus",
               header: "Pagamento",
-              render: (row) => {
-                const label =
-                  row.paymentStatus === "PAGO"
-                    ? "Pago"
-                    : row.paymentStatus === "PAGO_PARCIAL"
-                      ? "Pago parcialmente"
-                      : "Pendente";
+              render: (row: ServiceOrderListDisplayRow) => {
+                // Quando a linha representa uma parcela específica, o status mostrado
+                // é o da PARCELA, não do FEC inteiro. Assim, parcelas pendentes não
+                // aparecem como "Pago parcialmente" só porque outra parcela foi paga.
+                let label: string;
+                if (row.receivableLineStatus != null || row.isPartiallyPaid) {
+                  if (row.isPartiallyPaid) label = "Pago parcialmente";
+                  else if (row.receivableLineStatus === "PAGO") label = "Pago";
+                  else if (row.receivableLineStatus === "VENCIDO") label = "Vencido";
+                  else label = "Pendente";
+                } else if (row.order.paymentStatus === "PAGO_PARCIAL") label = "Pago parcialmente";
+                else if (row.order.paymentStatus === "PAGO") label = "Pago";
+                else label = "Pendente";
                 return <StatusBadge status={label} />;
               },
             },
-            { key: "total", header: "Valor total", render: (row) => currency(row.total) },
+            {
+              key: "total",
+              header: "Valor total",
+              render: (row: ServiceOrderListDisplayRow) => currency(row.order.total),
+            },
             {
               key: "receivableAmount",
               header: "Valor devido",
-              render: (row) =>
-                row.paymentStatus === "PAGO" ? (
-                        <span className="text-muted-foreground">-</span>
-                ) : (
-                  currency(row.receivableAmount ?? 0)
-                ),
+              render: (row: ServiceOrderListDisplayRow) => {
+                // Para linhas de parcela: usar displayTotal (saldo da parcela).
+                // Para linhas únicas (FEC sem parcelas): usar receivableAmount do FEC.
+                const rowFullyPaid = row.receivableLineId
+                  ? row.receivableLineStatus === "PAGO" && !row.isPartiallyPaid
+                  : row.order.paymentStatus === "PAGO";
+                if (rowFullyPaid) return <span className="text-muted-foreground">-</span>;
+                const amount = row.receivableLineId ? row.displayTotal : row.order.receivableAmount ?? 0;
+                return currency(amount);
+              },
             },
-            { key: "date", header: "Data", render: (row) => date(row.openedAt) },
+            {
+              key: "date",
+              header: "Data",
+              render: (row: ServiceOrderListDisplayRow) => date(row.order.openedAt),
+            },
             {
               key: "actions",
               header: "Ações",
-              render: (row) => (
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => openOrderPreview(row.id)}>
-                    Ver
-                  </Button>
-                  {!row.isBilled ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setBillFecOrder({
-                          id: row.id,
-                          number: row.number,
-                          openedAt: row.openedAt,
-                          dueDate: row.dueDate ?? "",
-                          paymentMethod: row.paymentMethod ?? "",
-                          paymentTerm: row.paymentTerm === "A_PRAZO" ? "A_PRAZO" : "A_VISTA",
-                          totalInput: formatCurrencyInput(String(Math.round(row.total * 100))),
-                        })
-                      }
-                    >
-                      Faturar
+              render: (row: ServiceOrderListDisplayRow) => {
+                const fec = row.order;
+                const rowFullyPaid = row.receivableLineId
+                  ? row.receivableLineStatus === "PAGO" && !row.isPartiallyPaid
+                  : fec.paymentStatus === "PAGO";
+
+                return (
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openOrderPreview(fec.id)}>
+                      Ver
                     </Button>
-                  ) : row.paymentStatus === "PAGO" ? (
-                    <Button variant="outline" size="sm" onClick={() => void handleStatusChange(row.id, "reopen")}>
-                      Reabrir
-                    </Button>
-                  ) : (
-                    <Button variant="outline" size="sm" onClick={() => openSettleDialog(row.id)}>
-                      Baixar
-                    </Button>
-                  )}
-                  {user?.accessLevel === "PROPRIETARIO" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={downloadingPdfId === row.id}
-                      onClick={() => void handleFecPdfDownload(row.id, row.number)}
-                    >
-                      <FileDown className="mr-1 h-4 w-4" />
-                      {downloadingPdfId === row.id ? "..." : "PDF"}
-                    </Button>
-                  ) : null}
-                  <ConfirmModal
-                    trigger={
-                      <Button variant="outline" size="sm">
-                        Excluir
+                    {!fec.isBilled ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setBillFecOrder({
+                            id: fec.id,
+                            number: fec.number,
+                            openedAt: fec.openedAt,
+                            dueDate: fec.dueDate ?? "",
+                            paymentMethod: fec.paymentMethod ?? "",
+                            paymentTerm: fec.paymentTerm === "A_PRAZO" ? "A_PRAZO" : "A_VISTA",
+                            totalInput: formatCurrencyInput(String(Math.round(fec.total * 100))),
+                          })
+                        }
+                      >
+                        Faturar
                       </Button>
-                    }
-                    title="Excluir fechamento"
-                    description="Deseja realmente excluir este fechamento?"
-                    onConfirm={() => {
-                      void executeDelete(row.id);
-                    }}
-                    confirmLabel="Excluir"
-                  />
-                </div>
-              ),
+                    ) : rowFullyPaid ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          row.receivableLineId
+                            ? void handleReceivableStatusChange(row.receivableLineId, "reopen")
+                            : void handleStatusChange(fec.id, "reopen")
+                        }
+                      >
+                        Reabrir
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          void openSettleDialog(fec.id, {
+                            receivableId: row.receivableLineId ?? null,
+                            outstandingAmount: row.receivableLineId
+                              ? row.displayTotal
+                              : fec.receivableAmount ?? 0,
+                            originalAmount: row.originalAmount,
+                            paidAmount: row.paidAmount,
+                            isPartiallyPaid: row.isPartiallyPaid,
+                            label: row.displayNumber,
+                          })
+                        }
+                      >
+                        Baixar
+                      </Button>
+                    )}
+                    {user?.accessLevel === "PROPRIETARIO" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={downloadingPdfId === fec.id}
+                        onClick={() => void handleFecPdfDownload(fec.id, fec.number)}
+                      >
+                        <FileDown className="mr-1 h-4 w-4" />
+                        {downloadingPdfId === fec.id ? "..." : "PDF"}
+                      </Button>
+                    ) : null}
+                    <ConfirmModal
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          Excluir
+                        </Button>
+                      }
+                      title="Excluir fechamento"
+                      description="Deseja realmente excluir este fechamento?"
+                      onConfirm={() => {
+                        void executeDelete(fec.id);
+                      }}
+                      confirmLabel="Excluir"
+                    />
+                  </div>
+                );
+              },
             },
           ]}
         />
@@ -593,10 +734,10 @@ export default function FechamentosPage() {
         </DialogContent>
       </Dialog>
       <Dialog
-        open={Boolean(settleOrder)}
+        open={Boolean(settleTarget)}
         onOpenChange={(open) => {
           if (!open) {
-            setSettleOrder(null);
+            setSettleTarget(null);
             setDiscountInput("");
             setIsPartial(false);
             setPartialAmountInput("");
@@ -605,90 +746,150 @@ export default function FechamentosPage() {
         }}
       >
         <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{settleOrder?.number}</DialogTitle>
-            <DialogDescription>Confirme a baixa do fechamento e aplique desconto, se necessário.</DialogDescription>
-          </DialogHeader>
-          {settleOrder ? (
-            <div className="grid gap-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div><span className="text-sm text-muted-foreground">Cliente</span><p>{settleOrder.clientName}</p></div>
-                <div><span className="text-sm text-muted-foreground">Vencimento</span><p>{settleOrder.paymentTerm === "A_PRAZO" && settleOrder.dueDate ? date(settleOrder.dueDate) : "À vista"}</p></div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {isPartial ? "Saldo restante" : "Valor devido"}
-                  </p>
-                  <p className="mt-2 text-3xl font-semibold">
-                    {currency(
-                      isPartial
-                        ? Math.max((settleOrder.receivableAmount ?? 0) - parseCurrencyInput(partialAmountInput), 0)
-                        : Math.max((settleOrder.receivableAmount ?? 0) - parseCurrencyInput(discountInput), 0),
-                    )}
-                  </p>
-                </div>
-                <div className="rounded-2xl border bg-muted/20 p-4">
-                  <p className="text-sm font-medium text-muted-foreground">Valor total gasto</p>
-                  <p className="mt-2 text-3xl font-semibold">{currency(settleOrder.total)}</p>
-                </div>
-              </div>
-              <div className="rounded-2xl border bg-muted/20 p-4">
-                <p className="font-medium">Serviços</p>
-                <div className="mt-3 space-y-2">
-                  {settleOrder.services.map((service) => (
-                    <div key={service.id} className="flex items-center justify-between text-sm">
-                      <span>{service.description}</span>
-                      <span>{currency(service.laborPrice)}</span>
+          {settleTarget ? (() => {
+            const target = settleTarget;
+            const isLineSettle = Boolean(target.receivableId);
+            const outstanding = target.outstandingAmount;
+            const partial = parseCurrencyInput(partialAmountInput);
+            const discount = parseCurrencyInput(discountInput);
+            const remaining = isPartial
+              ? Math.max(outstanding - partial, 0)
+              : Math.max(outstanding - discount, 0);
+            const dialogTitle = target.label ?? target.order.number;
+            const dialogDescription = isLineSettle
+              ? "Confirme a baixa desta parcela (a OS de fechamento só ficará paga quando todas as parcelas estiverem quitadas)."
+              : "Confirme a baixa do fechamento e aplique desconto, se necessário.";
+
+            const onConfirm = () => {
+              if (isPartial) {
+                if (partial <= 0) {
+                  toast.error("Informe um valor parcial válido.");
+                  return;
+                }
+                if (partial >= outstanding) {
+                  toast.error("O valor parcial deve ser menor que o valor devido.");
+                  return;
+                }
+              }
+              if (isLineSettle && target.receivableId) {
+                void handleReceivableStatusChange(target.receivableId, "settle", {
+                  partialAmount: isPartial ? partial : 0,
+                  paymentMethod: settlePaymentMethod,
+                });
+              } else {
+                void handleStatusChange(target.order.id, "settle");
+              }
+            };
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle>{dialogTitle}</DialogTitle>
+                  <DialogDescription>{dialogDescription}</DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <span className="text-sm text-muted-foreground">Cliente</span>
+                      <p>{target.order.clientName}</p>
                     </div>
-                  ))}
+                    <div>
+                      <span className="text-sm text-muted-foreground">Vencimento</span>
+                      <p>
+                        {target.order.paymentTerm === "A_PRAZO" && target.order.dueDate
+                          ? date(target.order.dueDate)
+                          : "À vista"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border bg-muted/20 p-4">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {isPartial ? "Saldo restante" : "Valor devido"}
+                      </p>
+                      <p className="mt-2 text-3xl font-semibold">{currency(remaining)}</p>
+                      {target.isPartiallyPaid && (target.paidAmount ?? 0) > 0 ? (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Já recebido: <span className="font-medium">{currency(target.paidAmount ?? 0)}</span>
+                          {target.originalAmount != null
+                            ? ` de ${currency(target.originalAmount)} (valor original da parcela)`
+                            : null}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="rounded-2xl border bg-muted/20 p-4">
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {isLineSettle ? "Valor total do fechamento" : "Valor total gasto"}
+                      </p>
+                      <p className="mt-2 text-3xl font-semibold">{currency(target.order.total)}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border bg-muted/20 p-4">
+                    <p className="font-medium">Serviços</p>
+                    <div className="mt-3 space-y-2">
+                      {target.order.services.map((service) => (
+                        <div key={service.id} className="flex items-center justify-between text-sm">
+                          <span>{service.description}</span>
+                          <span>{currency(service.laborPrice)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Desconto só aparece ao baixar o FEC inteiro (sem receivableId). Por linha
+                      de parcela não há fluxo de desconto direto — usar baixa parcial. */}
+                  {!isLineSettle && !isPartial ? (
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Desconto</label>
+                      <Input
+                        value={discountInput}
+                        onChange={(event) => setDiscountInput(formatCurrencyInput(event.target.value))}
+                        placeholder="R$ 0,00"
+                      />
+                    </div>
+                  ) : null}
+                  <div className="border-t" />
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={isPartial}
+                      onCheckedChange={(checked) => {
+                        setIsPartial(Boolean(checked));
+                        setPartialAmountInput("");
+                      }}
+                    />
+                    <label className="text-sm font-medium">Registrar pagamento parcial</label>
+                  </div>
+                  {isPartial ? (
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">Valor pago agora</label>
+                      <Input
+                        value={partialAmountInput}
+                        onChange={(e) => setPartialAmountInput(formatCurrencyInput(e.target.value))}
+                        placeholder="R$ 0,00"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        O saldo restante será lançado automaticamente como pendência no contas a receber.
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Forma de pagamento</label>
+                    <SearchableSelect
+                      value={settlePaymentMethod}
+                      onChange={setSettlePaymentMethod}
+                      placeholder="Selecione a forma de pagamento"
+                      options={[...PAYMENT_METHOD_OPTIONS]}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setSettleTarget(null)}>
+                      Cancelar
+                    </Button>
+                    <Button onClick={onConfirm}>Confirmar baixa</Button>
+                  </div>
                 </div>
-              </div>
-              {!isPartial ? (
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium">Desconto</label>
-                  <Input value={discountInput} onChange={(event) => setDiscountInput(formatCurrencyInput(event.target.value))} placeholder="R$ 0,00" />
-                </div>
-              ) : null}
-              <div className="border-t" />
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={isPartial}
-                  onCheckedChange={(checked) => {
-                    setIsPartial(Boolean(checked));
-                    setPartialAmountInput("");
-                  }}
-                />
-                <label className="text-sm font-medium">Registrar pagamento parcial</label>
-              </div>
-              {isPartial ? (
-                <div className="grid gap-2">
-                  <label className="text-sm font-medium">Valor pago agora</label>
-                  <Input
-                    value={partialAmountInput}
-                    onChange={(e) => setPartialAmountInput(formatCurrencyInput(e.target.value))}
-                    placeholder="R$ 0,00"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    O saldo restante será lançado automaticamente como pendência no contas a receber.
-                  </p>
-                </div>
-              ) : null}
-              <div className="grid gap-2">
-                <label className="text-sm font-medium">Forma de pagamento</label>
-                <SearchableSelect
-                  value={settlePaymentMethod}
-                  onChange={setSettlePaymentMethod}
-                  placeholder="Selecione a forma de pagamento"
-                  options={[...PAYMENT_METHOD_OPTIONS]}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setSettleOrder(null)}>Cancelar</Button>
-                <Button onClick={() => handleStatusChange(settleOrder.id, "settle")}>Confirmar baixa</Button>
-              </div>
-            </div>
-          ) : null}
+              </>
+            );
+          })() : null}
         </DialogContent>
       </Dialog>
     </div>

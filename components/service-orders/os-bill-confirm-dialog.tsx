@@ -111,14 +111,14 @@ export function OsBillConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent
         size="wide"
-        className="flex min-h-0 max-h-[calc(100dvh-1rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] flex-col gap-4 overflow-hidden p-5 sm:p-8"
+        className="flex flex-col gap-4 overflow-visible p-5 sm:p-8"
       >
         <AlertDialogHeader className="shrink-0 text-left">
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 [-webkit-overflow-scrolling:touch]">
+        <div className="flex-1 overflow-x-hidden overflow-y-visible pr-1">
           {initial ? (
             <div className="grid min-w-0 gap-5 pb-1 text-left">
               <div className="grid min-w-0 gap-4">

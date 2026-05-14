@@ -115,13 +115,19 @@ export type ServiceOrderListDisplayRow = {
   displayTotal: number;
   receivableLineId?: string;
   receivableLineStatus?: "PAGO" | "PENDENTE" | "VENCIDO";
+  /** Indica se a linha (parcela/recebível) tem pagamento parcial registrado. */
+  isPartiallyPaid?: boolean;
+  /** Valor já pago na linha quando há partial. */
+  paidAmount?: number;
+  /** Valor original da linha antes do partial (= paidAmount + displayTotal quando partial). */
+  originalAmount?: number;
 };
 
 function hasActiveBilling(order: ServiceOrderRow) {
   return order.isBilled || (order.receivableLines ?? []).length > 0;
 }
 
-function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrderListDisplayRow[] {
+export function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrderListDisplayRow[] {
   const out: ServiceOrderListDisplayRow[] = [];
   for (const order of orders) {
     const recv = order.receivableLines ?? [];
@@ -165,38 +171,63 @@ function expandServiceOrdersForListTable(orders: ServiceOrderRow[]): ServiceOrde
             group.lines.find((line) => line.status === "PENDENTE") ??
             null;
           const allPaid = group.lines.every((line) => line.status === "PAGO");
+          const paidLines = group.lines.filter((line) => line.status === "PAGO");
+          const pendingLines = group.lines.filter(
+            (line) => line.status === "PENDENTE" || line.status === "VENCIDO",
+          );
+          const hasPartialPay = paidLines.length > 0 && pendingLines.length > 0;
+          const paidAmount = paidLines.reduce((sum, line) => sum + line.amount, 0);
+          const pendingAmount = pendingLines.reduce((sum, line) => sum + line.amount, 0);
           const installmentOrdinal = group.installmentNumber ?? slices.length + 1;
           slices.push({
             order,
             rowKey: `${order.id}-rcv-group-${key}`,
-            displayNumber: `${friendly} - ${installmentOrdinal}Âª parcela`,
+            displayNumber: `${friendly} - ${installmentOrdinal}ª parcela`,
             displayTotal: pendingLine
-              ? group.lines
-                  .filter((line) => line.status !== "PAGO")
-                  .reduce((sum, line) => sum + line.amount, 0)
+              ? pendingAmount
               : group.lines.reduce((sum, line) => sum + line.amount, 0),
             receivableLineId: pendingLine?.id ?? group.lines[0]?.id,
             receivableLineStatus: pendingLine?.status ?? (allPaid ? "PAGO" : undefined),
+            isPartiallyPaid: hasPartialPay,
+            paidAmount: hasPartialPay ? paidAmount : undefined,
+            originalAmount: hasPartialPay ? paidAmount + pendingAmount : undefined,
           });
         }
       } else {
-        const pendingLine =
-          recv.find((line) => line.status === "VENCIDO") ??
-          recv.find((line) => line.status === "PENDENTE") ??
-          null;
+        const pendingLines = recv.filter((line) => line.status === "VENCIDO" || line.status === "PENDENTE");
+        const paidLines = recv.filter((line) => line.status === "PAGO");
         const allPaid = recv.every((line) => line.status === "PAGO");
-        slices.push({
-          order,
-          rowKey: `${order.id}-rcv-collapsed`,
-          displayNumber: friendly,
-          displayTotal: pendingLine
-            ? recv
-                .filter((line) => line.status !== "PAGO")
-                .reduce((sum, line) => sum + line.amount, 0)
-            : recv.reduce((sum, line) => sum + line.amount, 0),
-          receivableLineId: pendingLine?.id,
-          receivableLineStatus: pendingLine?.status ?? (allPaid ? "PAGO" : undefined),
-        });
+        const hasPartialPay = paidLines.length > 0 && pendingLines.length > 0;
+        const paidAmount = paidLines.reduce((sum, line) => sum + line.amount, 0);
+        const pendingAmount = pendingLines.reduce((sum, line) => sum + line.amount, 0);
+
+        if (pendingLines.length > 1) {
+          for (const line of pendingLines) {
+            slices.push({
+              order,
+              rowKey: `${order.id}-rcv-${line.id}`,
+              displayNumber: friendly,
+              displayTotal: line.amount,
+              receivableLineId: line.id,
+              receivableLineStatus: line.status,
+            });
+          }
+        } else {
+          const pendingLine = pendingLines[0] ?? null;
+          slices.push({
+            order,
+            rowKey: `${order.id}-rcv-collapsed`,
+            displayNumber: friendly,
+            displayTotal: pendingLine
+              ? pendingAmount
+              : recv.reduce((sum, line) => sum + line.amount, 0),
+            receivableLineId: pendingLine?.id,
+            receivableLineStatus: pendingLine?.status ?? (allPaid ? "PAGO" : undefined),
+            isPartiallyPaid: hasPartialPay,
+            paidAmount: hasPartialPay ? paidAmount : undefined,
+            originalAmount: hasPartialPay ? paidAmount + pendingAmount : undefined,
+          });
+        }
       }
       if (false) { for (let i = 0; i < recv.length; i++) {
         const line = recv[i];
@@ -415,6 +446,12 @@ export function useOsPage(options: UseOsPageOptions = {}) {
     receivableId?: string;
     /** Valor em aberto exibido na linha da tabela (parcela ou total consolidado). */
     outstandingAmount?: number;
+    /** Valor original da parcela antes de qualquer baixa parcial. */
+    originalAmount?: number;
+    /** Valor já recebido em baixas parciais anteriores. */
+    paidAmount?: number;
+    /** Linha já tem baixa parcial registrada. */
+    isPartiallyPaid?: boolean;
   } | null>(null);
   const [billOrder, setBillOrder] = useState<{
     id: string;
@@ -1258,18 +1295,28 @@ export function useOsPage(options: UseOsPageOptions = {}) {
         header: "Pagamento",
         render: (row: ServiceOrderListDisplayRow) => {
           const ps = row.order.paymentStatus;
-          const label =
-            ps === "PAGO_PARCIAL"
-              ? "Pago parcialmente"
-              : row.receivableLineStatus
-                ? row.receivableLineStatus === "PAGO"
-                  ? "Pago"
-                  : row.receivableLineStatus === "VENCIDO"
-                    ? "Vencido"
-                    : "Pendente"
-                : ps === "PAGO"
-                  ? "Pago"
-                  : "Pendente";
+          // Quando a linha representa um recebível específico (parcela), o status
+          // exibido é o do recebível dela — não o da OS como um todo. Assim, uma
+          // parcela pendente não aparece como "Pago parcialmente" só porque outra
+          // parcela da mesma OS foi paga.
+          let label: string;
+          if (row.receivableLineStatus != null || row.isPartiallyPaid) {
+            if (row.isPartiallyPaid) {
+              label = "Pago parcialmente";
+            } else if (row.receivableLineStatus === "PAGO") {
+              label = "Pago";
+            } else if (row.receivableLineStatus === "VENCIDO") {
+              label = "Vencido";
+            } else {
+              label = "Pendente";
+            }
+          } else if (ps === "PAGO_PARCIAL") {
+            label = "Pago parcialmente";
+          } else if (ps === "PAGO") {
+            label = "Pago";
+          } else {
+            label = "Pendente";
+          }
           return <StatusBadge status={label} />;
         },
       },
@@ -1304,49 +1351,63 @@ export function useOsPage(options: UseOsPageOptions = {}) {
               <Pencil className="mr-1 h-4 w-4" />
               Editar
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={
-                Boolean(statusLoadingByOrderId[row.order.id]) ||
-                (!activeBilling && Boolean(row.order.isLockedByOpenClosure)) ||
-                (activeBilling &&
-                  row.order.paymentStatus !== "PAGO" &&
-                  Boolean(row.order.isLockedByOpenClosure))
-              }
-              onClick={() =>
-                row.order.paymentStatus === "PAGO"
-                  ? row.receivableLineId
-                    ? void handleReceivableStatusChange(row.receivableLineId, "reopen", row.order.id)
-                    : void handleStatusChange(row.order.id, "reopen")
-                  : activeBilling
-                    ? setSettleOrder({
-                        id: row.order.id,
-                        number: row.displayNumber,
-                        receivableId: row.receivableLineId,
-                        outstandingAmount: row.displayTotal,
-                      })
-                    : setBillOrder({
-                        id: row.order.id,
-                        number: row.displayNumber,
-                        openedAt: row.order.openedAt,
-                        dueDate: row.order.dueDate ?? "",
-                        paymentMethod: row.order.paymentMethod ?? "",
-                        paymentTerm: row.order.paymentTerm === "A_PRAZO" ? "A_PRAZO" : "A_VISTA",
-                        totalInput: formatCurrencyInput(String(Math.round(row.order.total * 100))),
-                        hasInstallmentPlan: row.order.hasInstallmentPlan ?? false,
-                      })
-              }
-              title={
-                !activeBilling && row.order.isLockedByOpenClosure
-                  ? "Fature a OS de fechamento vinculada antes de faturar esta OS."
-                  : activeBilling && row.order.paymentStatus !== "PAGO" && row.order.isLockedByOpenClosure
-                    ? "Baixe o fechamento vinculado antes de baixar esta OS."
-                    : undefined
-              }
-            >
-              {row.order.paymentStatus === "PAGO" ? "Reabrir" : activeBilling ? "Baixar" : "Faturar"}
-            </Button>
+            {/* A linha individual está paga quando o recebível dela é PAGO sem
+                pendência aberta. Quando não há recebível específico, cai no status
+                geral da OS. */}
+            {(() => {
+              const rowIsFullyPaid = row.receivableLineId
+                ? row.receivableLineStatus === "PAGO" && !row.isPartiallyPaid
+                : row.order.paymentStatus === "PAGO";
+
+              return (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    Boolean(statusLoadingByOrderId[row.order.id]) ||
+                    (!activeBilling && Boolean(row.order.isLockedByOpenClosure)) ||
+                    (activeBilling &&
+                      !rowIsFullyPaid &&
+                      Boolean(row.order.isLockedByOpenClosure))
+                  }
+                  onClick={() =>
+                    rowIsFullyPaid
+                      ? row.receivableLineId
+                        ? void handleReceivableStatusChange(row.receivableLineId, "reopen", row.order.id)
+                        : void handleStatusChange(row.order.id, "reopen")
+                      : activeBilling
+                        ? setSettleOrder({
+                            id: row.order.id,
+                            number: row.displayNumber,
+                            receivableId: row.receivableLineId,
+                            outstandingAmount: row.displayTotal,
+                            originalAmount: row.originalAmount,
+                            paidAmount: row.paidAmount,
+                            isPartiallyPaid: row.isPartiallyPaid,
+                          })
+                        : setBillOrder({
+                            id: row.order.id,
+                            number: row.displayNumber,
+                            openedAt: row.order.openedAt,
+                            dueDate: row.order.dueDate ?? "",
+                            paymentMethod: row.order.paymentMethod ?? "",
+                            paymentTerm: row.order.paymentTerm === "A_PRAZO" ? "A_PRAZO" : "A_VISTA",
+                            totalInput: formatCurrencyInput(String(Math.round(row.order.total * 100))),
+                            hasInstallmentPlan: row.order.hasInstallmentPlan ?? false,
+                          })
+                  }
+                  title={
+                    !activeBilling && row.order.isLockedByOpenClosure
+                      ? "Fature a OS de fechamento vinculada antes de faturar esta OS."
+                      : activeBilling && !rowIsFullyPaid && row.order.isLockedByOpenClosure
+                        ? "Baixe o fechamento vinculado antes de baixar esta OS."
+                        : undefined
+                  }
+                >
+                  {rowIsFullyPaid ? "Reabrir" : activeBilling ? "Baixar" : "Faturar"}
+                </Button>
+              );
+            })()}
             {activeBilling && row.order.paymentStatus !== "PAGO" ? (
               <Button
                 variant="outline"

@@ -2231,9 +2231,13 @@ export const serviceOrderService = {
     );
     const closureOutstandingAmount = fecOutstandingFromItems(existing.items);
 
+    // Baixa parcial só é permitida quando existe exatamente UM título em aberto.
+    // Para OS (regular ou FEC) com várias parcelas, o usuário deve baixar cada
+    // parcela isoladamente (via linha de recebível). Isto garante que o valor
+    // pago sempre se aplique a uma parcela específica — sem afetar a math das
+    // demais parcelas.
     if (
       payload.mode === "settle" &&
-      !existing.number.startsWith("FEC-") &&
       (payload.partialAmount ?? 0) > 0 &&
       pendingReceivables.length > 1
     ) {
@@ -2243,34 +2247,38 @@ export const serviceOrderService = {
       );
     }
 
-    const isPartialPayment =
-      payload.mode === "settle" &&
-      (payload.partialAmount ?? 0) > 0 &&
-      (existing.number.startsWith("FEC-")
-        ? (payload.partialAmount ?? 0) < closureOutstandingAmount
-        : Boolean(primaryReceivable) &&
-          (payload.partialAmount ?? 0) < Number(primaryReceivable.amount));
-
     if (!existing.number.startsWith("FEC-") && !receivable) {
       throw new ServiceError("Recebível vinculado não encontrado.", 404);
     }
 
-    if (
-      payload.mode === "settle" &&
-      !existing.number.startsWith("FEC-") &&
-      primaryReceivable &&
-      (payload.partialAmount ?? 0) > 0 &&
-      (payload.partialAmount ?? 0) >= Number(primaryReceivable.amount)
-    ) {
+    if (existing.number.startsWith("FEC-") && !receivable && (payload.partialAmount ?? 0) > 0) {
       throw new ServiceError(
-        "O valor informado cobre o título em aberto inteiro. Confirme a baixa sem marcar pagamento parcial.",
+        "Baixa parcial não está disponível para fechamento sem recebível registrado (somente baixa total).",
         400,
       );
     }
 
-    if (existing.number.startsWith("FEC-") && !receivable && isPartialPayment) {
+    // Valor de referência para validar o partial: SEMPRE o valor do recebível
+    // único em aberto (não a soma de items do FEC). Isso evita inflar o saldo
+    // restante quando há partials sucessivos.
+    const partialReferenceAmount = primaryReceivable
+      ? Number(primaryReceivable.amount)
+      : 0;
+
+    const isPartialPayment =
+      payload.mode === "settle" &&
+      (payload.partialAmount ?? 0) > 0 &&
+      Boolean(primaryReceivable) &&
+      (payload.partialAmount ?? 0) < partialReferenceAmount;
+
+    if (
+      payload.mode === "settle" &&
+      primaryReceivable &&
+      (payload.partialAmount ?? 0) > 0 &&
+      (payload.partialAmount ?? 0) >= partialReferenceAmount
+    ) {
       throw new ServiceError(
-        "Baixa parcial não está disponível para fechamento sem recebível na OS de fechamento (somente baixa total).",
+        "O valor informado cobre o título em aberto inteiro. Confirme a baixa sem marcar pagamento parcial.",
         400,
       );
     }
@@ -2287,14 +2295,18 @@ export const serviceOrderService = {
         ? payload.partialAmount!
         : Math.max(closureOutstandingAmount - appliedDiscount, 0);
 
-    const remainingAmount = isPartialPayment && existing.number.startsWith("FEC-")
-      ? closureOutstandingAmount - closureSettledAmount
-      : 0;
-
-    const regularLineRemainder =
-      isPartialPayment && !existing.number.startsWith("FEC-") && primaryReceivable
-        ? Math.max(Number(primaryReceivable.amount) - (payload.partialAmount ?? 0), 0)
+    // Saldo restante (gera nova linha PENDENTE) calculado a partir do recebível
+    // efetivamente sendo baixado, e NÃO da soma de items do FEC. Para o caso
+    // single-installment de FEC o valor coincide; para multi-installment, esse
+    // caminho não é atingido porque o partial multi é bloqueado acima.
+    const lineRemainderAmount =
+      isPartialPayment && primaryReceivable
+        ? Math.max(partialReferenceAmount - (payload.partialAmount ?? 0), 0)
         : 0;
+
+    // Aliases preservados para legibilidade nos blocos abaixo (FEC e regular).
+    const remainingAmount = lineRemainderAmount;
+    const regularLineRemainder = lineRemainderAmount;
 
     const fecOrderStatus = "CONCLUIDA";
 
@@ -2437,22 +2449,26 @@ export const serviceOrderService = {
           });
         }
 
-        if (isPartialPayment && remainingAmount > 0) {
+        if (isPartialPayment && remainingAmount > 0 && primaryReceivable) {
+          const maxLineSlot = existing.receivables.reduce(
+            (max, item) => Math.max(max, item.lineSlot ?? 0),
+            primaryReceivable.lineSlot ?? 0,
+          );
           await tx.accountReceivable.create({
             data: {
               companyId: context.companyId,
               unitId: existing.unitId || null,
               customerId: existing.customerId || null,
               serviceOrderId: existing.id,
-              lineSlot: 1,
+              lineSlot: maxLineSlot + 1,
               originType: "SERVICE_ORDER",
               description: `Pendência de ${existing.number}`,
               amount: remainingAmount,
-              dueDate: existing.dueDate ?? new Date(),
+              dueDate: primaryReceivable.dueDate ?? existing.dueDate ?? new Date(),
               status: "PENDENTE",
-              installmentGroupId: null,
-              installmentNumber: null,
-              installmentCount: null,
+              installmentGroupId: primaryReceivable.installmentGroupId ?? null,
+              installmentNumber: primaryReceivable.installmentNumber ?? null,
+              installmentCount: primaryReceivable.installmentCount ?? null,
             },
           });
         }

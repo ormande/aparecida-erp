@@ -58,7 +58,7 @@ export function OsClosureDialog({
             </div>
             <div className="grid gap-2">
               <Label>Selecionar OS para unificação</Label>
-              <div className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border bg-muted/10 p-3">
+              <div className="space-y-2 rounded-2xl border bg-muted/10 p-3">
                 {isLoadingOrders ? (
                   <div className="space-y-2">
                     {Array.from({ length: 4 }).map((_, index) => (

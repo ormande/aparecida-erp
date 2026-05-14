@@ -52,32 +52,38 @@ export async function POST(request: Request, { params }: { params: { id: string 
       },
     });
     if (order) {
-      if (order.number.startsWith("FEC-")) {
-        const outstanding = fecOutstandingFromItems(order.items);
-        if (body.partialAmount >= outstanding && outstanding > 0) {
-          return NextResponse.json(
-            { message: "O valor parcial não pode ser igual ou maior que o total devido. Use a baixa total." },
-            { status: 400 },
-          );
-        }
-      } else {
-        const pending = order.receivables.filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO");
-        if (pending.length > 1) {
-          return NextResponse.json(
-            {
-              message:
-                "Esta OS possui mais de um título em aberto (parcelas). Registre o pagamento parcial pela linha correspondente na lista ou quite cada título por vez.",
-            },
-            { status: 400 },
-          );
-        }
-        const cap = pending.reduce((sum, r) => sum + Number(r.amount), 0);
+      // Baixa parcial só é permitida quando existe exatamente UM título em
+      // aberto — para OS regular OU FEC. Em ambos os casos com parcelas
+      // múltiplas, o usuário deve baixar cada recebível pela linha
+      // correspondente para evitar inconsistência nos valores.
+      const pending = order.receivables.filter((r) => r.status === "PENDENTE" || r.status === "VENCIDO");
+      if (pending.length > 1) {
+        return NextResponse.json(
+          {
+            message:
+              "Esta OS possui mais de um título em aberto (parcelas). Registre o pagamento parcial pela linha correspondente na lista ou quite cada título por vez.",
+          },
+          { status: 400 },
+        );
+      }
+      if (pending.length === 1) {
+        const cap = Number(pending[0].amount);
         if (body.partialAmount >= cap && cap > 0) {
           return NextResponse.json(
             {
               message:
                 "O valor informado cobre o título em aberto inteiro. Confirme a baixa sem marcar pagamento parcial.",
             },
+            { status: 400 },
+          );
+        }
+      } else if (order.number.startsWith("FEC-")) {
+        // FEC sem recebível associado — situação atípica; mantém a checagem
+        // contra a soma dos items.
+        const outstanding = fecOutstandingFromItems(order.items);
+        if (body.partialAmount >= outstanding && outstanding > 0) {
+          return NextResponse.json(
+            { message: "O valor parcial não pode ser igual ou maior que o total devido. Use a baixa total." },
             { status: 400 },
           );
         }

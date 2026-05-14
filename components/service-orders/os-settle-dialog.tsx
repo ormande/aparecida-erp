@@ -24,7 +24,15 @@ export function OsSettleDialog({
   onClose,
   onConfirm,
 }: {
-  order: { id: string; number: string; receivableId?: string; outstandingAmount?: number } | null;
+  order: {
+    id: string;
+    number: string;
+    receivableId?: string;
+    outstandingAmount?: number;
+    originalAmount?: number;
+    paidAmount?: number;
+    isPartiallyPaid?: boolean;
+  } | null;
   onClose: () => void;
   onConfirm: (id: string, options?: { paymentMethod?: string; partialAmount?: number }) => Promise<void>;
 }) {
@@ -99,6 +107,9 @@ export function OsSettleDialog({
       : orderDetails?.receivableAmount ?? orderDetails?.total ?? 0;
   const partialAmount = parseCurrencyInput(partialAmountInput);
   const remainingAmount = isPartial ? Math.max(outstandingAmount - partialAmount, 0) : outstandingAmount;
+  const lineOriginalAmount = order?.originalAmount ?? null;
+  const lineAlreadyPaid = order?.paidAmount ?? 0;
+  const showPartialHistory = Boolean(order?.isPartiallyPaid && lineAlreadyPaid > 0);
 
   return (
     <Dialog open={Boolean(order)} onOpenChange={(open) => !open && onClose()}>
@@ -133,9 +144,19 @@ export function OsSettleDialog({
                   {isPartial ? "Saldo restante" : "Valor devido"}
                 </p>
                 <p className="mt-2 text-3xl font-semibold">{currency(remainingAmount)}</p>
+                {showPartialHistory ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Já recebido: <span className="font-medium">{currency(lineAlreadyPaid)}</span>
+                    {lineOriginalAmount != null
+                      ? ` de ${currency(lineOriginalAmount)} (valor original da parcela)`
+                      : null}
+                  </p>
+                ) : null}
               </div>
               <div className="rounded-2xl border bg-muted/20 p-4">
-                <p className="text-sm font-medium text-muted-foreground">Valor total</p>
+                <p className="text-sm font-medium text-muted-foreground">
+                  {order?.receivableId ? "Valor total da OS" : "Valor total"}
+                </p>
                 <p className="mt-2 text-3xl font-semibold">{currency(orderDetails.total)}</p>
               </div>
             </div>
