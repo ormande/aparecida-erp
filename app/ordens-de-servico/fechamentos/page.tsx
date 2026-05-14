@@ -12,9 +12,11 @@ import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/page-header";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
 import { useCustomers } from "@/hooks/use-customers";
@@ -28,7 +30,10 @@ import { useServiceOrders } from "@/hooks/use-service-orders";
 import { useUnits } from "@/hooks/use-units";
 import { currency, date, formatCurrencyInput, parseCurrencyInput } from "@/lib/formatters";
 import { getPersonName } from "@/lib/person-helpers";
-import { aggregateFecLineContributionsByOrderNumber } from "@/lib/service-order-reference";
+import {
+  aggregateFecLineContributionsByOrderNumber,
+  cleanFecItemDescriptionForDisplay,
+} from "@/lib/service-order-reference";
 
 function formatPreviewOrderNumber(value: string) {
   const match = /^(OS-\d{4}-\d{5})-P(\d+)$/i.exec(value.trim());
@@ -745,7 +750,10 @@ export default function FechamentosPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent
+          className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-3xl"
+          bodyClassName="flex min-h-0 flex-1 flex-col gap-0 p-0"
+        >
           {settleTarget ? (() => {
             const target = settleTarget;
             const isLineSettle = Boolean(target.receivableId);
@@ -759,6 +767,26 @@ export default function FechamentosPage() {
             const dialogDescription = isLineSettle
               ? "Confirme a baixa desta parcela (a OS de fechamento só ficará paga quando todas as parcelas estiverem quitadas)."
               : "Confirme a baixa do fechamento e aplique desconto, se necessário.";
+
+            // Tabela unificada de itens com descrições limpas (remove `[RCV:...]`,
+            // `[PLAN:...]` e o prefixo `[Produto]`). A OS de origem citada
+            // entre parênteses é extraída em coluna dedicada.
+            const items = target.order.services.map((service) => {
+              const cleaned = cleanFecItemDescriptionForDisplay(service.description);
+              const qty = service.quantity ?? 1;
+              const total =
+                typeof service.lineTotal === "number" && Number.isFinite(service.lineTotal)
+                  ? service.lineTotal
+                  : qty * service.laborPrice;
+              return {
+                key: `svc-${service.id}`,
+                name: cleaned.name,
+                type: cleaned.type === "produto" ? "Produto" : "Serviço",
+                quantity: qty,
+                total,
+                sourceOrderNumber: cleaned.sourceOrderNumber,
+              };
+            });
 
             const onConfirm = () => {
               if (isPartial) {
@@ -783,11 +811,12 @@ export default function FechamentosPage() {
 
             return (
               <>
-                <DialogHeader>
+                <DialogHeader className="shrink-0 px-6 pt-6">
                   <DialogTitle>{dialogTitle}</DialogTitle>
                   <DialogDescription>{dialogDescription}</DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4">
+
+                <div className="shrink-0 px-6 pt-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <span className="text-sm text-muted-foreground">Cliente</span>
@@ -802,6 +831,9 @@ export default function FechamentosPage() {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                <div className="shrink-0 px-6 pt-4">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-2xl border bg-muted/20 p-4">
                       <p className="text-sm font-medium text-muted-foreground">
@@ -824,67 +856,105 @@ export default function FechamentosPage() {
                       <p className="mt-2 text-3xl font-semibold">{currency(target.order.total)}</p>
                     </div>
                   </div>
-                  <div className="rounded-2xl border bg-muted/20 p-4">
-                    <p className="font-medium">Serviços</p>
-                    <div className="mt-3 space-y-2">
-                      {target.order.services.map((service) => (
-                        <div key={service.id} className="flex items-center justify-between text-sm">
-                          <span>{service.description}</span>
-                          <span>{currency(service.laborPrice)}</span>
+                </div>
+
+                <div className="mt-4 flex min-h-0 flex-1 flex-col px-6">
+                  <p className="mb-2 text-sm font-medium">Itens</p>
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border bg-muted/10">
+                    {items.length === 0 ? (
+                      <p className="px-4 py-6 text-sm text-muted-foreground">Nenhum item lançado.</p>
+                    ) : (
+                      <Table>
+                        <TableHeader className="sticky top-0 z-10 bg-muted/40 backdrop-blur">
+                          <TableRow>
+                            <TableHead>Item</TableHead>
+                            <TableHead className="w-[100px]">Tipo</TableHead>
+                            <TableHead className="w-[90px] text-right">Qtd.</TableHead>
+                            <TableHead className="w-[120px] text-right">Valor</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {items.map((item) => (
+                            <TableRow key={item.key}>
+                              <TableCell className="whitespace-normal">
+                                <div className="leading-tight">
+                                  <span>{item.name}</span>
+                                  {item.sourceOrderNumber ? (
+                                    <span className="ml-1 text-xs text-muted-foreground">
+                                      ({item.sourceOrderNumber})
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-xs text-muted-foreground">{item.type}</span>
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">{item.quantity}</TableCell>
+                              <TableCell className="text-right tabular-nums">{currency(item.total)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                </div>
+
+                <div className="shrink-0 border-t bg-muted/30 px-6 py-4">
+                  <div className="grid gap-3">
+                    {/* Desconto só aparece ao baixar o FEC inteiro (sem receivableId). Por linha
+                        de parcela não há fluxo de desconto direto — usar baixa parcial. */}
+                    {!isLineSettle && !isPartial ? (
+                      <div className="grid gap-2">
+                        <Label>Desconto</Label>
+                        <Input
+                          value={discountInput}
+                          onChange={(event) => setDiscountInput(formatCurrencyInput(event.target.value))}
+                          placeholder="R$ 0,00"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={isPartial}
+                        onCheckedChange={(checked) => {
+                          setIsPartial(Boolean(checked));
+                          setPartialAmountInput("");
+                        }}
+                      />
+                      <Label className="font-medium">Registrar pagamento parcial</Label>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {isPartial ? (
+                        <div className="grid gap-2">
+                          <Label>Valor pago agora</Label>
+                          <Input
+                            value={partialAmountInput}
+                            onChange={(e) => setPartialAmountInput(formatCurrencyInput(e.target.value))}
+                            placeholder="R$ 0,00"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            O saldo restante será lançado como pendência no contas a receber.
+                          </p>
                         </div>
-                      ))}
+                      ) : (
+                        <div />
+                      )}
+                      <div className="grid gap-2">
+                        <Label>Forma de pagamento</Label>
+                        <SearchableSelect
+                          value={settlePaymentMethod}
+                          onChange={setSettlePaymentMethod}
+                          placeholder="Selecione a forma de pagamento"
+                          options={[...PAYMENT_METHOD_OPTIONS]}
+                        />
+                      </div>
                     </div>
-                  </div>
-                  {/* Desconto só aparece ao baixar o FEC inteiro (sem receivableId). Por linha
-                      de parcela não há fluxo de desconto direto — usar baixa parcial. */}
-                  {!isLineSettle && !isPartial ? (
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Desconto</label>
-                      <Input
-                        value={discountInput}
-                        onChange={(event) => setDiscountInput(formatCurrencyInput(event.target.value))}
-                        placeholder="R$ 0,00"
-                      />
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button variant="outline" onClick={() => setSettleTarget(null)}>
+                        Cancelar
+                      </Button>
+                      <Button onClick={onConfirm}>Confirmar baixa</Button>
                     </div>
-                  ) : null}
-                  <div className="border-t" />
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      checked={isPartial}
-                      onCheckedChange={(checked) => {
-                        setIsPartial(Boolean(checked));
-                        setPartialAmountInput("");
-                      }}
-                    />
-                    <label className="text-sm font-medium">Registrar pagamento parcial</label>
-                  </div>
-                  {isPartial ? (
-                    <div className="grid gap-2">
-                      <label className="text-sm font-medium">Valor pago agora</label>
-                      <Input
-                        value={partialAmountInput}
-                        onChange={(e) => setPartialAmountInput(formatCurrencyInput(e.target.value))}
-                        placeholder="R$ 0,00"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        O saldo restante será lançado automaticamente como pendência no contas a receber.
-                      </p>
-                    </div>
-                  ) : null}
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium">Forma de pagamento</label>
-                    <SearchableSelect
-                      value={settlePaymentMethod}
-                      onChange={setSettlePaymentMethod}
-                      placeholder="Selecione a forma de pagamento"
-                      options={[...PAYMENT_METHOD_OPTIONS]}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setSettleTarget(null)}>
-                      Cancelar
-                    </Button>
-                    <Button onClick={onConfirm}>Confirmar baixa</Button>
                   </div>
                 </div>
               </>

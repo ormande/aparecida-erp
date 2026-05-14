@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { OrderPreview } from "@/hooks/use-receivables-page";
 import { currency, date } from "@/lib/formatters";
+import { cleanFecItemDescriptionForDisplay } from "@/lib/service-order-reference";
 
 export function OrderPreviewDialog({
   orderPreview,
@@ -40,12 +41,20 @@ export function OrderPreviewDialog({
             <div className="rounded-2xl border bg-muted/20 p-4">
               <p className="font-medium">Serviços</p>
               <div className="mt-3 space-y-2">
-                {orderPreview.services.map((service) => (
-                  <div key={service.id} className="flex items-center justify-between text-sm">
-                    <span>{service.description}</span>
-                    <span>{currency(service.laborPrice)}</span>
-                  </div>
-                ))}
+                {orderPreview.services.map((service) => {
+                  const cleaned = cleanFecItemDescriptionForDisplay(service.description);
+                  return (
+                    <div key={service.id} className="flex items-center justify-between text-sm">
+                      <span>
+                        {cleaned.name}
+                        {cleaned.sourceOrderNumber ? (
+                          <span className="text-xs text-muted-foreground"> ({cleaned.sourceOrderNumber})</span>
+                        ) : null}
+                      </span>
+                      <span>{currency(service.laborPrice)}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="flex items-center justify-between rounded-2xl border bg-muted/20 p-4">

@@ -8,7 +8,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { OrderDetails } from "@/hooks/use-os-page";
 import { usePdfDownload } from "@/hooks/use-pdf-download";
 import { currency, date } from "@/lib/formatters";
-import { serviceOrderFriendlyNumberLabel } from "@/lib/service-order-reference";
+import {
+  cleanFecItemDescriptionForDisplay,
+  serviceOrderFriendlyNumberLabel,
+} from "@/lib/service-order-reference";
 
 function paymentSummary(order: OrderDetails) {
   const term = order.paymentTerm === "A_PRAZO" ? "A prazo" : "À vista";
@@ -60,10 +63,14 @@ function OsViewDialogBody({
             {order.services.map((service) => {
               const qty = service.quantity ?? 1;
               const lineTotal = qty * service.laborPrice;
+              const cleaned = cleanFecItemDescriptionForDisplay(service.description);
               return (
                 <div key={service.id} className="flex items-center justify-between gap-2 text-sm">
                   <span>
-                    {service.description}
+                    {cleaned.name}
+                    {cleaned.sourceOrderNumber ? (
+                      <span className="text-xs text-muted-foreground"> ({cleaned.sourceOrderNumber})</span>
+                    ) : null}
                     {qty > 1 ? <span className="text-muted-foreground"> ×{qty}</span> : null}
                   </span>
                   <span className="shrink-0">{currency(lineTotal)}</span>

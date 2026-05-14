@@ -43,6 +43,81 @@ export function serviceOrderFriendlyNumberLabel(order: {
 
 export const RECEIVABLE_REFERENCE_REGEX = /\[RCV:([^\]]+)\]/gi;
 
+const PLAN_REFERENCE_REGEX = /\[PLAN:[^\]]+\]/gi;
+const ALREADY_PAID_PAREN_REGEX = /\(\s*refer[êe]ncia da OS-\d{4}-\d{5}[^)]*\)/gi;
+const SOURCE_ORDER_PAREN_REGEX = /\(\s*OS-\d{4}-\d{5}(?:[^)]*)\)/gi;
+const ALREADY_PAID_HINT_REGEX = /\bj[áa]\s+pago\b/i;
+const PRODUTO_PREFIX_REGEX = /^\s*\[Produto\]\s*/i;
+const NO_ITEMS_PREFIX_REGEX = /^\s*\[Sem itens\]\s*/i;
+
+/**
+ * Normaliza a descrição de um item de FEC para exibição em UI:
+ * - remove markers internos `[RCV:...]`, `[PLAN:...]` e prefixos `[Produto]`/`[Sem itens]`;
+ * - identifica o tipo (produto vs. serviço);
+ * - extrai a OS de origem citada entre parênteses (ex.: `... (OS-2026-12345)`);
+ * - detecta linhas marcadas como "já pago".
+ *
+ * Não consulta o banco — opera só sobre o texto bruto persistido em
+ * `ServiceOrderItem.description`.
+ */
+export function cleanFecItemDescriptionForDisplay(rawDescription: string): {
+  name: string;
+  type: "produto" | "servico";
+  sourceOrderNumber: string | null;
+  isAlreadyPaid: boolean;
+  isPlaceholder: boolean;
+} {
+  let working = rawDescription ?? "";
+  const isPlaceholder = NO_ITEMS_PREFIX_REGEX.test(working);
+  if (isPlaceholder) {
+    working = working.replace(NO_ITEMS_PREFIX_REGEX, "");
+  }
+
+  const isProduct = PRODUTO_PREFIX_REGEX.test(working);
+  if (isProduct) {
+    working = working.replace(PRODUTO_PREFIX_REGEX, "");
+  }
+
+  working = working.replace(RECEIVABLE_REFERENCE_REGEX, " ");
+  working = working.replace(PLAN_REFERENCE_REGEX, " ");
+
+  let sourceOrderNumber: string | null = null;
+  const alreadyPaidMatch = working.match(/refer[êe]ncia da (OS-\d{4}-\d{5})/i);
+  if (alreadyPaidMatch) {
+    sourceOrderNumber = alreadyPaidMatch[1];
+  }
+  working = working.replace(ALREADY_PAID_PAREN_REGEX, " ");
+
+  if (!sourceOrderNumber) {
+    const matches = Array.from(working.matchAll(SOURCE_ORDER_PAREN_REGEX));
+    if (matches.length > 0) {
+      const last = matches[matches.length - 1];
+      const inner = last[0].replace(/^[\s(]+|[\s)]+$/g, "");
+      const osMatch = inner.match(/(OS-\d{4}-\d{5})/);
+      if (osMatch) {
+        sourceOrderNumber = osMatch[1];
+      }
+    }
+    working = working.replace(SOURCE_ORDER_PAREN_REGEX, " ");
+  }
+
+  const isAlreadyPaid = ALREADY_PAID_HINT_REGEX.test(rawDescription);
+
+  working = working
+    .replace(/\s*[-–·]\s*j[áa]\s*pago/gi, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,;:])/g, "$1")
+    .trim();
+
+  return {
+    name: working || (isPlaceholder ? "Sem itens" : rawDescription.trim()),
+    type: isProduct ? "produto" : "servico",
+    sourceOrderNumber,
+    isAlreadyPaid,
+    isPlaceholder,
+  };
+}
+
 export function extractServiceOrderNumbersFromText(text: string): string[] {
   return Array.from(text.matchAll(SERVICE_ORDER_NUMBER_REGEX)).map((match) => match[0]);
 }
